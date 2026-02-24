@@ -1,0 +1,279 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+"use client";
+
+import React, { useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
+import { CtwDrillResult } from "@/libs/types/ctwDrill";
+import { Icon } from "@iconify/react";
+import { ctwDrillResultService } from "@/libs/services/ctwDrillResultService";
+import { ctwResultsModuleService } from "@/libs/services/ctwResultsModuleService";
+import { useAuth } from "@/libs/hooks/useAuth";
+import FullLogo from "@/components/ui/fulllogo";
+import DataTable, { Column } from "@/components/ui/DataTable";
+import ConfirmationModal from "@/components/ui/modal/ConfirmationModal";
+
+const FIRING_MODULE_CODE = "firing";
+
+export default function CtwFiringDrillResultsPage() {
+  const router = useRouter();
+  const { user } = useAuth();
+  const isInstructor = !!user?.instructor_biodata;
+
+  const [results, setResults] = useState<CtwDrillResult[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const [officialResults, setOfficialResults] = useState<any[]>([]);
+  const [officialLoading, setOfficialLoading] = useState(false);
+
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [deletingResult, setDeletingResult] = useState<CtwDrillResult | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [perPage, setPerPage] = useState(10);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pagination, setPagination] = useState({
+    current_page: 1,
+    last_page: 1,
+    per_page: 10,
+    total: 0,
+    from: 0,
+    to: 0,
+  });
+
+  const [firingModuleId, setFiringModuleId] = useState<number | null>(null);
+  const [moduleLoading, setModuleLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchModuleId = async () => {
+      try {
+        setModuleLoading(true);
+        const modulesRes = await ctwResultsModuleService.getAllModules({ per_page: 100 });
+        const firingModule = modulesRes.data.find((m: any) => m.code === FIRING_MODULE_CODE);
+        if (firingModule) {
+          setFiringModuleId(firingModule.id);
+        } else {
+          console.error(`Module with code ${FIRING_MODULE_CODE} not found.`);
+        }
+      } catch (err) {
+        console.error("Failed to fetch module ID:", err);
+      } finally {
+        setModuleLoading(false);
+      }
+    };
+    fetchModuleId();
+  }, []);
+
+  const loadResults = useCallback(async () => {
+    if (firingModuleId === null || !user?.id) return;
+    try {
+      setLoading(true);
+      const response = await ctwDrillResultService.getAllResults(firingModuleId, {
+        page: currentPage,
+        per_page: perPage,
+        search: searchTerm || undefined,
+        instructor_id: isInstructor ? user.id : undefined,
+      });
+      setResults(response.data);
+      setPagination({
+        current_page: response.current_page,
+        last_page: response.last_page,
+        per_page: response.per_page,
+        total: response.total,
+        from: response.from,
+        to: response.to,
+      });
+    } catch (error) {
+      console.error("Failed to load results:", error);
+    } finally {
+      setLoading(false);
+    }
+  }, [currentPage, perPage, searchTerm, firingModuleId, isInstructor, user?.id]);
+
+  const loadOfficialResults = useCallback(async () => {
+    if (firingModuleId === null) return;
+    try {
+      setOfficialLoading(true);
+      const data = await ctwDrillResultService.getGroupedResults({
+        ctw_results_module_id: firingModuleId,
+        search: searchTerm || undefined,
+      });
+      const flattened: any[] = [];
+      data.forEach(course => {
+        if (course.semesters) {
+          course.semesters.forEach((semester: any) => {
+            if (semester.results) {
+              semester.results.forEach((result: any) => {
+                flattened.push({
+                  ...result,
+                  course_details: course.course_details,
+                  semester_details: semester.semester_details,
+                });
+              });
+            }
+          });
+        }
+      });
+      setOfficialResults(flattened);
+    } catch (error) {
+      console.error("Failed to load official results:", error);
+    } finally {
+      setOfficialLoading(false);
+    }
+  }, [firingModuleId, searchTerm]);
+
+  useEffect(() => {
+    if (!moduleLoading && firingModuleId !== null && user?.id) {
+      if (isInstructor) {
+        loadResults();
+      } else {
+        loadOfficialResults();
+      }
+    }
+  }, [loadResults, loadOfficialResults, moduleLoading, firingModuleId, user?.id, isInstructor]);
+
+  const handleAddResult = () => router.push("/ctw/results/dt/firing/create");
+  const handleEditResult = (result: CtwDrillResult) => router.push(`/ctw/results/dt/firing/${result.id}/edit`);
+  const handleViewResult = (result: CtwDrillResult | any) => router.push(`/ctw/results/dt/firing/${result.id}`);
+  const handleDeleteResult = (result: CtwDrillResult) => { setDeletingResult(result); setDeleteModalOpen(true); };
+
+  const confirmDelete = async () => {
+    if (!deletingResult) return;
+    try {
+      setDeleteLoading(true);
+      await ctwDrillResultService.deleteResult(deletingResult.id);
+      await loadResults();
+      setDeleteModalOpen(false);
+      setDeletingResult(null);
+    } catch (error) {
+      console.error("Failed to delete result:", error);
+      alert("Failed to delete result");
+    } finally {
+      setDeleteLoading(false);
+    }
+  };
+
+  const handleExport = () => console.log("Export results");
+  const handleSearchChange = (value: string) => { setSearchTerm(value); setCurrentPage(1); };
+  const handlePerPageChange = (value: number) => { setPerPage(value); setCurrentPage(1); };
+
+  const TableLoading = () => (
+    <div className="w-full min-h-[20vh] flex items-center justify-center">
+      <Icon icon="hugeicons:fan-01" className="w-10 h-10 animate-spin mx-auto my-10 text-blue-500" />
+    </div>
+  );
+
+  const columns: Column<CtwDrillResult>[] = [
+    { key: "id", header: "SL.", headerAlign: "center", className: "text-center text-gray-900", render: (_, index) => (pagination.from || 0) + (index + 1) },
+    {
+      key: "course", header: "Course",
+      render: (result) => (<div><div className="font-medium text-gray-900">{result.course?.name || "N/A"}</div><div className="text-xs text-gray-500">{result.course?.code || ""}</div></div>),
+    },
+    {
+      key: "semester", header: "Semester",
+      render: (result) => (<div><div className="font-medium text-gray-900">{result.semester?.name || "N/A"}</div><div className="text-xs text-gray-500">{result.semester?.code || ""}</div></div>),
+    },
+    { key: "program", header: "Program", className: "text-gray-700", render: (result) => result.program?.name || "N/A" },
+    { key: "branch", header: "Branch", className: "text-gray-700", render: (result) => result.branch?.name || "N/A" },
+    { key: "exam_type", header: "Exam Type", className: "text-gray-700", render: (result) => result.exam_type?.name || "N/A" },
+    { key: "created_at", header: "Created At", className: "text-gray-700 text-sm", render: (result) => result.created_at ? new Date(result.created_at).toLocaleDateString("en-GB") : "—" },
+    {
+      key: "actions" as keyof CtwDrillResult, header: "Actions", headerAlign: "center" as const, className: "text-center no-print",
+      render: (result: CtwDrillResult) => (
+        <div className="flex items-center justify-center gap-1" onClick={(e) => e.stopPropagation()}>
+          <button onClick={() => handleViewResult(result)} className="p-1 text-blue-600 hover:bg-blue-50 rounded" title="View"><Icon icon="hugeicons:view" className="w-4 h-4" /></button>
+          <button onClick={() => handleEditResult(result)} className="p-1 text-yellow-600 hover:bg-yellow-50 rounded" title="Edit"><Icon icon="hugeicons:pencil-edit-01" className="w-4 h-4" /></button>
+          <button onClick={() => handleDeleteResult(result)} className="p-1 text-red-600 hover:bg-red-50 rounded" title="Delete"><Icon icon="hugeicons:delete-02" className="w-4 h-4" /></button>
+        </div>
+      ),
+    },
+  ];
+
+  const officialColumns: Column<any>[] = [
+    { key: "id", header: "SL.", headerAlign: "center", className: "text-center text-gray-900", render: (_, index) => index + 1 },
+    {
+      key: "course", header: "Course",
+      render: (row) => (<div><div className="font-medium text-gray-900">{row.course_details?.name || "N/A"}</div><div className="text-xs text-gray-500">{row.course_details?.code || ""}</div></div>),
+    },
+    {
+      key: "semester", header: "Semester",
+      render: (row) => (<div><div className="font-medium text-gray-900">{row.semester_details?.name || "N/A"}</div><div className="text-xs text-gray-500">{row.semester_details?.code || ""}</div></div>),
+    },
+    {
+      key: "module", header: "Module",
+      render: (row) => (<div><div className="font-medium text-gray-900">{row.module?.name || "N/A"}</div><div className="text-xs text-gray-500">{row.module?.code || ""}</div></div>),
+    },
+    { key: "exam_type", header: "Exam Type", className: "text-gray-700", render: (row) => row.exam_type || "N/A" },
+    {
+      key: "instructor", header: "Instructors", className: "text-gray-700 text-sm",
+      render: (row) => (<div className="space-y-1">{row.submissions?.map((s: any, i: number) => (<div key={i} className="font-medium text-blue-700">{s.instructor_details?.name}</div>))}</div>),
+    },
+    {
+      key: "cadets", header: "Cadets", className: "text-gray-700 text-center",
+      render: (row) => (<div className="space-y-1">{row.submissions?.map((s: any, i: number) => (<div key={i}>{s.instructor_details?.marks_count || 0}</div>))}</div>),
+    },
+    { key: "created_at", header: "Created At", className: "text-gray-700 text-sm", render: (row) => row.submissions?.[0]?.created_at ? new Date(row.submissions[0].created_at).toLocaleDateString("en-GB") : "—" },
+    {
+      key: "actions", header: "Actions", headerAlign: "center", className: "text-center no-print",
+      render: (row) => (
+        <div className="flex flex-col items-center gap-1">
+          <button onClick={() => router.push(`/ctw/results/dt/firing/course/${row.course_details.id}/semester/${row.semester_details.id}`)} className="p-1 text-blue-600 hover:bg-blue-50 rounded flex items-center gap-1 text-xs">
+            <Icon icon="hugeicons:view" className="w-3 h-3" /> View
+          </button>
+        </div>
+      ),
+    },
+  ];
+
+  return (
+    <div className="bg-white p-6 rounded-lg border border-gray-200 space-y-6">
+      <div className="text-center mb-8">
+        <div className="flex justify-center mb-4"><FullLogo /></div>
+        <h1 className="text-xl font-bold text-gray-900 uppercase">Bangladesh Air Force Academy</h1>
+        <h2 className="text-md font-semibold text-gray-700 mt-2 uppercase">CTW Firing Results</h2>
+      </div>
+
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+        <div className="relative w-80">
+          <Icon icon="hugeicons:search-01" className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+          <input type="text" placeholder="Search by course, semester, instructor..." value={searchTerm} onChange={(e) => handleSearchChange(e.target.value)} className="pl-10 pr-4 py-2 border border-gray-200 rounded-lg bg-white text-gray-900 w-full focus:outline-none focus:ring-0" />
+        </div>
+        <div className="flex items-center gap-3">
+          {isInstructor && (
+            <button onClick={handleAddResult} className="px-4 py-2 rounded-lg text-white flex items-center gap-1 bg-blue-600 hover:bg-blue-700"><Icon icon="hugeicons:add-circle" className="w-4 h-4 mr-2" />Add Result</button>
+          )}
+          <button onClick={handleExport} className="px-4 py-2 rounded-lg text-white flex items-center gap-1 bg-green-600 hover:bg-green-700"><Icon icon="hugeicons:download-04" className="w-4 h-4 mr-2" />Export</button>
+        </div>
+      </div>
+
+      {isInstructor ? (
+        (loading || moduleLoading) ? <TableLoading /> : (
+          <>
+            <DataTable columns={columns} data={results} keyExtractor={(result) => result.id.toString()} emptyMessage="No results found" />
+            <div className="flex items-center justify-between mt-6">
+              <div className="flex items-center gap-4">
+                <div className="text-sm text-gray-700">Showing {pagination.from || 0} to {pagination.to || 0} of {pagination.total} results</div>
+                <select value={perPage} onChange={(e) => handlePerPageChange(Number(e.target.value))} className="px-4 py-2 border border-gray-200 rounded-lg bg-white text-gray-900">
+                  <option value={5}>5 per page</option>
+                  <option value={10}>10 per page</option>
+                  <option value={25}>25 per page</option>
+                  <option value={50}>50 per page</option>
+                </select>
+              </div>
+              <div className="flex items-center gap-2">
+                <button onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))} disabled={currentPage === 1} className="px-4 py-2 text-sm border border-black rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"><Icon icon="hugeicons:arrow-left-01" className="w-4 h-4 inline mr-1" />Prev</button>
+                {Array.from({ length: pagination.last_page }, (_, i) => i + 1).map(page => (
+                  <button key={page} onClick={() => setCurrentPage(page)} className={`px-4 py-2 text-sm rounded-lg ${currentPage === page ? "bg-blue-600 text-white" : "border border-black hover:bg-gray-50"}`}>{page}</button>
+                ))}
+                <button onClick={() => setCurrentPage(prev => Math.min(pagination.last_page, prev + 1))} disabled={currentPage === pagination.last_page} className="px-4 py-2 text-sm border border-black rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed">Next<Icon icon="hugeicons:arrow-right-01" className="w-4 h-4 inline ml-1" /></button>
+              </div>
+            </div>
+          </>
+        )
+      ) : (
+        officialLoading ? <TableLoading /> : <DataTable columns={officialColumns} data={officialResults} keyExtractor={(_, index) => index} emptyMessage="No grouped results found" />
+      )}
+
+      <ConfirmationModal isOpen={deleteModalOpen} onClose={() => setDeleteModalOpen(false)} onConfirm={confirmDelete} title="Delete Result" message={`Are you sure you want to delete this result for "${deletingResult?.course?.name} - ${deletingResult?.semester?.name}"? This action cannot be undone.`} confirmText="Delete" cancelText="Cancel" loading={deleteLoading} variant="danger" />
+    </div>
+  );
+}
