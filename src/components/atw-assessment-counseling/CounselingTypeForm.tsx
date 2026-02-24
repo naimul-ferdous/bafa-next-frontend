@@ -15,7 +15,7 @@ interface CounselingTypeFormProps {
   isEdit?: boolean;
 }
 
-export interface EventInput {
+interface EventInput {
   id?: number;
   event_name: string;
   event_code: string;
@@ -71,7 +71,7 @@ export default function CounselingTypeForm({ initialData, onSubmit, onCancel, lo
         : [];
 
       setFormData({
-        course_id: initialData.course_id ?? "",
+        course_id: initialData.course_id || "",
         type_name: initialData.type_name,
         type_code: initialData.type_code,
         is_active: initialData.is_active,
@@ -81,7 +81,7 @@ export default function CounselingTypeForm({ initialData, onSubmit, onCancel, lo
           event_code: e.event_code,
           event_type: e.event_type,
           order: e.order,
-        })),
+        })) || [],
         semesters: initialData.semesters?.map(s => s.semester_id) || [],
       });
     }

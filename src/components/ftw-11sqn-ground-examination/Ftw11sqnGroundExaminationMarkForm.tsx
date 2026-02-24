@@ -66,7 +66,6 @@ export default function Ftw11sqnGroundExaminationMarkForm({ onSubmit, onCancel, 
   const [exercises, setExercises] = useState<Ftw11sqnGroundSyllabusExercise[]>([]);
   const [loadingInitial, setLoadingInitial] = useState(true);
   const [loadingExercises, setLoadingExercises] = useState(false);
-  const [loadingCadets, setLoadingCadets] = useState(false);
 
   // Load dropdown data
   useEffect(() => {
@@ -128,7 +127,6 @@ export default function Ftw11sqnGroundExaminationMarkForm({ onSubmit, onCancel, 
   useEffect(() => {
     if (isEdit) return;
 
-    setLoadingCadets(true);
     const rows: CadetRow[] = filteredCadets.map(cadet => ({
       cadet_id: cadet.id,
       cadet_bd_no: cadet.bd_no || cadet.cadet_number || "",
@@ -143,7 +141,6 @@ export default function Ftw11sqnGroundExaminationMarkForm({ onSubmit, onCancel, 
     }));
 
     setCadetRows(rows);
-    setLoadingCadets(false);
   }, [filteredCadets, isEdit]);
 
   // Load exercises when syllabus is selected
@@ -569,10 +566,6 @@ export default function Ftw11sqnGroundExaminationMarkForm({ onSubmit, onCancel, 
               <div className="text-center py-12 text-gray-500">
                 <Icon icon="hugeicons:filter" className="w-10 h-10 mx-auto mb-2" />
                 <p>Please select Course and Semester to load cadets</p>
-              </div>
-            ) : loadingCadets ? (
-              <div className="w-full min-h-[20vh] flex items-center justify-center">
-                <div><Icon icon="hugeicons:fan-01" className="w-10 h-10 animate-spin mx-auto my-10 text-blue-500" /></div>
               </div>
             ) : cadetRows.length === 0 ? (
               <div className="text-center py-12 text-gray-500">

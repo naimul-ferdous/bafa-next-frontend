@@ -58,14 +58,11 @@ export default function GstoAssessmentResultForm({ initialData, onSubmit, onCanc
   const [allCadets, setAllCadets] = useState<CadetProfile[]>([]);
   const [estimatedMarks, setEstimatedMarks] = useState<any[]>([]);
   const [moduleId, setModuleId] = useState<number>(0);
-  
   const [loadingInitial, setLoadingInitial] = useState(true);
   const [loadingEstimatedMarks, setLoadingEstimatedMarks] = useState(false);
-  const [loadingGeneratedMarks, setLoadingGeneratedMarks] = useState(false);
-  const [moduleAssigned, setModuleAssigned] = useState(true);
-
-  const [generatedCadetMarks, setGeneratedCadetMarks] = useState<Map<number, any>>(new Map());
+  const [generatedCadetMarks, setGeneratedCadetMarks] = useState<Map<number, {dt_estimated_per_instructor:number; dt_conversation_mark:number; pf_estimated_per_instructor:number; pf_conversation_mark:number; dt_achieved: number; pf_achieved: number; total_achieved: number; avg_achieved: number; dt_converted: number; pf_converted: number; combined_converted: number }>>(new Map());
   const [generatedConfig, setGeneratedConfig] = useState({ dt_conversation_mark: 0, pf_conversation_mark: 0 });
+  const [loadingGeneratedMarks, setLoadingGeneratedMarks] = useState(false);
 
   // Load dropdown data
   useEffect(() => {
@@ -101,52 +98,6 @@ export default function GstoAssessmentResultForm({ initialData, onSubmit, onCanc
 
     loadInitialData();
   }, []);
-
-  // Sync initialData
-  useEffect(() => {
-    if (initialData) {
-      setModuleAssigned(true);
-      setFormData({
-        course_id: initialData.course_id,
-        semester_id: initialData.semester_id,
-        program_id: initialData.program_id || 0,
-        branch_id: initialData.branch_id || 0,
-        group_id: initialData.group_id || 0,
-        exam_type_id: initialData.exam_type_id,
-        remarks: initialData.remarks || "",
-        is_active: initialData.is_active,
-      });
-
-      if (initialData.achieved_marks && initialData.achieved_marks.length > 0) {
-        const uniqueCadets = Array.from(new Set(initialData.achieved_marks.map((m: any) => m.cadet_id))) as number[];
-        const rows: CadetRow[] = uniqueCadets.map(cadetId => {
-          const mark = initialData.achieved_marks?.find((m: any) => m.cadet_id === cadetId);
-          const currentRank = mark?.cadet?.assigned_ranks?.find((ar: any) => ar.rank)?.rank;
-
-          const marksBreakdown: { [key: number]: number } = {};
-          if (mark?.details && mark.details.length > 0) {
-            mark.details.forEach((d: any) => {
-              if (d.ctw_results_module_estimated_marks_details_id) {
-                marksBreakdown[d.ctw_results_module_estimated_marks_details_id] = parseFloat(d.marks || 0);
-              }
-            });
-          }
-
-          return {
-            cadet_id: cadetId,
-            cadet_number: mark?.cadet?.cadet_number || "",
-            cadet_name: mark?.cadet?.name || "Unknown",
-            cadet_rank: currentRank?.short_name || currentRank?.name || "Officer Cadet",
-            branch: initialData.branch?.name || "N/A",
-            mark: mark?.achieved_mark || 0,
-            marks_breakdown: marksBreakdown,
-            is_active: mark?.is_active || true,
-          };
-        });
-        setCadetRows(rows);
-      }
-    }
-  }, [initialData]);
 
   // Filtered cadets based on course, semester, and user's wing/subwing assignments
   const filteredCadets = useMemo(() => {
@@ -233,7 +184,65 @@ export default function GstoAssessmentResultForm({ initialData, onSubmit, onCanc
     return estimatedMarks.some((em: any) => em.exam_type_id === examTypeId);
   };
 
+  const getMaxMark = (): number => {
+    if (!formData.exam_type_id) return 0;
+    const em = estimatedMarks.find((em: any) => em.exam_type_id === formData.exam_type_id);
+    return em?.estimated_mark_per_instructor || em?.estimated_mark || em?.mark || 0;
+  };
+
+  const getConversationMark = (): number => {
+    if (!formData.exam_type_id) return 0;
+    const em = estimatedMarks.find((em: any) => em.exam_type_id === formData.exam_type_id);
+    return em?.conversation_mark || em?.mark || 0;
+  };
+
+  const maxMark = getMaxMark();
+  const convMark = getConversationMark();
   const selectedEM = estimatedMarks.find((em: any) => em.exam_type_id === formData.exam_type_id);
+
+  useEffect(() => {
+    if (initialData) {
+      setFormData({
+        course_id: initialData.course_id,
+        semester_id: initialData.semester_id,
+        program_id: initialData.program_id || 0,
+        branch_id: initialData.branch_id || 0,
+        group_id: initialData.group_id || 0,
+        exam_type_id: initialData.exam_type_id,
+        remarks: initialData.remarks || "",
+        is_active: initialData.is_active,
+      });
+
+      if (initialData.achieved_marks && initialData.achieved_marks.length > 0) {
+        const uniqueCadets = Array.from(new Set(initialData.achieved_marks.map((m: any) => m.cadet_id))) as number[];
+        const rows: CadetRow[] = uniqueCadets.map(cadetId => {
+          const mark = initialData.achieved_marks?.find((m: any) => m.cadet_id === cadetId);
+          const currentRank = mark?.cadet?.assigned_ranks?.find((ar: any) => ar.rank)?.rank;
+
+          const marksBreakdown: { [key: number]: number } = {};
+          if (mark?.details && mark.details.length > 0) {
+            mark.details.forEach((d: any) => {
+              if (d.ctw_results_module_estimated_marks_details_id) {
+                marksBreakdown[d.ctw_results_module_estimated_marks_details_id] = parseFloat(d.marks || 0);
+              }
+            });
+          }
+
+          return {
+            cadet_id: cadetId,
+            cadet_number: mark?.cadet?.cadet_number || "",
+            cadet_name: mark?.cadet?.name || "Unknown",
+            cadet_rank: currentRank?.short_name || currentRank?.name || "Officer Cadet",
+            branch: initialData.branch?.name || "N/A",
+            mark: mark?.achieved_mark || 0,
+            marks_breakdown: marksBreakdown,
+            is_active: mark?.is_active || true,
+          };
+        });
+        setCadetRows(rows);
+      }
+    }
+  }, [initialData]);
 
   // Fetch generated marks from dt_assessment + pf_assessment when course/semester change
   useEffect(() => {
@@ -255,14 +264,20 @@ export default function GstoAssessmentResultForm({ initialData, onSubmit, onCanc
           semester_id: formData.semester_id,
         });
 
-        const marksMap = new Map<number, any>();
+        const marksMap = new Map<number, { dt_achieved: number; pf_achieved: number; total_achieved: number; avg_achieved: number; dt_converted: number; pf_converted: number; combined_converted: number; dt_estimated_per_instructor: number; dt_conversation_mark: number; pf_estimated_per_instructor: number; pf_conversation_mark: number }>();
         response.data.forEach((row: any) => {
           marksMap.set(row.cadet_id, {
-            ...row,
             dt_estimated_per_instructor: response.dt_estimated_per_instructor,
             dt_conversation_mark: response.dt_conversation_mark,
             pf_estimated_per_instructor: response.pf_estimated_per_instructor,
             pf_conversation_mark: response.pf_conversation_mark,
+            dt_achieved: row.dt_achieved,
+            pf_achieved: row.pf_achieved,
+            total_achieved: row.total_achieved,
+            avg_achieved: row.avg_achieved,
+            dt_converted: row.dt_converted,
+            pf_converted: row.pf_converted,
+            combined_converted: row.combined_converted,
           });
         });
 
@@ -285,6 +300,7 @@ export default function GstoAssessmentResultForm({ initialData, onSubmit, onCanc
 
   // Apply generated marks into cadet rows whenever they load or generated marks update
   useEffect(() => {
+    const selectedEM = estimatedMarks.find((em: any) => em.exam_type_id === formData.exam_type_id);
     if (!selectedEM?.details) return;
 
     const generatedDetails = selectedEM.details.filter((d: any) => d.is_generated);
@@ -316,7 +332,7 @@ export default function GstoAssessmentResultForm({ initialData, onSubmit, onCanc
         return { ...cadet, marks_breakdown: updatedBreakdown, mark: newTotal };
       });
     });
-  }, [generatedCadetMarks, formData.exam_type_id, estimatedMarks, cadetRows.length, selectedEM]);
+  }, [generatedCadetMarks, formData.exam_type_id, estimatedMarks, cadetRows.length]);
 
   const handleChange = (field: string, value: any) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -497,15 +513,6 @@ export default function GstoAssessmentResultForm({ initialData, onSubmit, onCanc
             <div className="text-center py-12 text-gray-500">
               <Icon icon="hugeicons:filter" className="w-10 h-10 mx-auto mb-2" />
               <p>Please select Course, Semester, and Exam Type to load cadets</p>
-            </div>
-          ) : loadingGeneratedMarks ? (
-            <div className="w-full min-h-[20vh] flex items-center justify-center">
-              <div><Icon icon="hugeicons:fan-01" className="w-10 h-10 animate-spin mx-auto my-10 text-blue-500" /></div>
-            </div>
-          ) : !moduleAssigned ? (
-            <div className="text-center py-12 text-red-500">
-              <Icon icon="hugeicons:alert-circle" className="w-10 h-10 mx-auto mb-2" />
-              <p className="font-medium">You are not assigned to the GSTO Assessment Observation module for the selected course & semester.</p>
             </div>
           ) : cadetRows.length === 0 ? (
             <div className="text-center py-12 text-gray-500">
