@@ -2,6 +2,8 @@
  * Menu and Permission Types
  */
 
+import type { Wing, SubWing } from './user';
+
 export interface PermissionAction {
   id: number;
   name: string;
@@ -35,6 +37,8 @@ export interface PermissionPivot {
 export interface Menu {
   id: number;
   parent_id?: number | null;
+  wing_id?: number | null;
+  subwing_id?: number | null;
   name: string;
   slug: string;
   icon?: string | null;
@@ -44,6 +48,8 @@ export interface Menu {
   created_at: string;
   updated_at: string;
   parent?: Menu | null;
+  wing?: Wing | null;
+  subwing?: SubWing | null;
   children?: Menu[];
   permissions?: Permission[];
 }
@@ -63,6 +69,8 @@ export interface MenuCreateData {
   icon?: string;
   route?: string;
   parent_id?: number | null;
+  wing_id?: number | null;
+  subwing_id?: number | null;
   order: number;
   is_active: boolean;
 }

@@ -7,7 +7,9 @@ import Input from "@/components/form/input/InputField";
 import Label from "@/components/form/Label";
 import { menuService } from "@/libs/services/menuService";
 import { permissionService } from "@/libs/services/permissionService";
+import { commonService } from "@/libs/services/commonService";
 import type { Menu, MenuCreateData, Permission } from "@/libs/types/menu";
+import type { Wing, SubWing } from "@/libs/types/user";
 
 interface MenuFormProps {
   initialData?: Menu | null;
@@ -19,12 +21,19 @@ interface MenuFormProps {
 
 export default function MenuForm({ initialData, onSubmit, onCancel, loading, isEdit }: MenuFormProps) {
   const [menus, setMenus] = useState<Menu[]>([]);
+  const [wings, setWings] = useState<Wing[]>([]);
+  const [allSubWings, setAllSubWings] = useState<SubWing[]>([]);
+  const [subWings, setSubWings] = useState<SubWing[]>([]);
+  const [optionsLoading, setOptionsLoading] = useState(false);
+
   const [formData, setFormData] = useState<MenuCreateData>({
     name: "",
     slug: "",
     icon: "",
     route: "",
     parent_id: null,
+    wing_id: null,
+    subwing_id: null,
     order: 0,
     is_active: true,
   });
@@ -38,6 +47,7 @@ export default function MenuForm({ initialData, onSubmit, onCancel, loading, isE
   useEffect(() => {
     loadMenus();
     loadPermissions();
+    loadOptions();
   }, []);
 
   useEffect(() => {
@@ -48,6 +58,8 @@ export default function MenuForm({ initialData, onSubmit, onCancel, loading, isE
         icon: initialData.icon || "",
         route: initialData.route || "",
         parent_id: initialData.parent_id || null,
+        wing_id: initialData.wing_id || null,
+        subwing_id: initialData.subwing_id || null,
         order: initialData.order,
         is_active: initialData.is_active,
       });
@@ -55,12 +67,37 @@ export default function MenuForm({ initialData, onSubmit, onCancel, loading, isE
     }
   }, [initialData]);
 
+  // Effect to filter sub-wings when wing_id or allSubWings change
+  useEffect(() => {
+    if (formData.wing_id) {
+      const filtered = allSubWings.filter(sw => sw.wing_id === formData.wing_id);
+      setSubWings(filtered);
+    } else {
+      setSubWings([]);
+    }
+  }, [formData.wing_id, allSubWings]);
+
   const loadMenus = async () => {
     try {
       const response = await menuService.getAllMenus({ per_page: 1000 });
       setMenus(response.data);
     } catch (error) {
       console.error("Failed to load menus:", error);
+    }
+  };
+
+  const loadOptions = async () => {
+    try {
+      setOptionsLoading(true);
+      const data = await commonService.getResultOptions();
+      if (data) {
+        setWings(data.wings || []);
+        setAllSubWings(data.sub_wings || []);
+      }
+    } catch (error) {
+      console.error("Failed to load options:", error);
+    } finally {
+      setOptionsLoading(false);
     }
   };
 
@@ -78,6 +115,11 @@ export default function MenuForm({ initialData, onSubmit, onCancel, loading, isE
 
   const handleChange = (field: string, value: any) => {
     setFormData(prev => ({ ...prev, [field]: value }));
+    
+    if (field === "wing_id") {
+      setFormData(prev => ({ ...prev, subwing_id: null }));
+    }
+
     if (field === "name" && !isEdit) {
       const slug = value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
       setFormData(prev => ({ ...prev, slug }));
@@ -225,6 +267,50 @@ export default function MenuForm({ initialData, onSubmit, onCancel, loading, isE
           </select>
         </div>
         <div>
+          <Label>Wing</Label>
+          <select
+            value={formData.wing_id || ""}
+            onChange={(e) => handleChange("wing_id", e.target.value ? parseInt(e.target.value) : null)}
+            className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900"
+            disabled={optionsLoading}
+          >
+            <option value="">All Wings</option>
+            {wings.map((wing) => (
+              <option key={wing.id} value={wing.id}>
+                {wing.name} {wing.code ? `(${wing.code})` : ""}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <Label>Sub Wing</Label>
+          <select
+            value={formData.subwing_id || ""}
+            onChange={(e) => handleChange("subwing_id", e.target.value ? parseInt(e.target.value) : null)}
+            className={`w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 ${
+              (!formData.wing_id || subWings.length === 0) && !optionsLoading ? "bg-gray-50 cursor-not-allowed" : ""
+            }`}
+            disabled={optionsLoading || !formData.wing_id || (subWings.length === 0 && !optionsLoading)}
+          >
+            {optionsLoading ? (
+              <option value="">Loading...</option>
+            ) : !formData.wing_id ? (
+              <option value="">Select Wing First</option>
+            ) : subWings.length === 0 ? (
+              <option value="">No Sub Wings Available</option>
+            ) : (
+              <>
+                <option value="">All Sub Wings</option>
+                {subWings.map((subWing) => (
+                  <option key={subWing.id} value={subWing.id}>
+                    {subWing.name} {subWing.code ? `(${subWing.code})` : ""}
+                  </option>
+                ))}
+              </>
+            )}
+          </select>
+        </div>
+        <div>
           <Label>Order <span className="text-red-500">*</span></Label>
           <Input
             type="number"
@@ -326,7 +412,7 @@ export default function MenuForm({ initialData, onSubmit, onCancel, loading, isE
               ))
             ) : (
               <div className="text-center py-8 text-gray-500">
-                <p>No permissions found matching "{searchTerm}"</p>
+                <p>No permissions found matching {searchTerm}</p>
               </div>
             )}
           </div>

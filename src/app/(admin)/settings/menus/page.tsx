@@ -157,6 +157,18 @@ export default function MenusPage() {
       render: (menu) => menu.parent?.name ?? "Root Menu",
     },
     {
+      key: "wing_id",
+      header: "Wing",
+      className: "text-gray-700",
+      render: (menu) => menu.wing?.name ?? "All Wings",
+    },
+    {
+      key: "subwing_id",
+      header: "Sub Wing",
+      className: "text-gray-700",
+      render: (menu) => menu.subwing?.name ?? "All Sub Wings",
+    },
+    {
       key: "route",
       header: "Route Path",
       render: (menu) =>

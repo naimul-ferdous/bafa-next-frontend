@@ -19,6 +19,8 @@ import type {
   User,
   CadetProfile,
   Rank,
+  Wing,
+  SubWing,
   SystemDivision,
   SystemDistrict,
   SystemPostOffice,
@@ -38,6 +40,8 @@ interface ResultOptionsResponse {
     groups: SystemGroup[];
     exams: SystemExam[];
     ranks: Rank[];
+    wings: Wing[];
+    sub_wings: SubWing[];
     divisions: SystemDivision[];
     warning_types: SystemWarningType[];
     subjects: AtwSubject[];
