@@ -115,7 +115,7 @@ export default function ViewInstructorPage() {
                             {instructor.user?.profile_photo ? (
                                 <div className="relative w-32 h-40 border-2 border-black">
                                     <Image
-                                        src={getImageUrl(instructor.user.profile_photo)}
+                                        src={instructor.user.profile_photo}
                                         alt={instructor.user?.name || "Profile"}
                                         fill
                                         className="object-cover"
@@ -555,7 +555,7 @@ export default function ViewInstructorPage() {
                         {instructor.user?.signature ? (
                             <div className="relative h-16 w-full border-b border-gray-900">
                                 <Image
-                                    src={getImageUrl(instructor.user?.signature)}
+                                    src={instructor.user?.signature}
                                     alt="Signature"
                                     fill
                                     className="object-contain"

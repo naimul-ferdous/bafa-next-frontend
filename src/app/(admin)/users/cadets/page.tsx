@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import { CadetProfile } from "@/libs/types/user";
 import { Icon } from "@iconify/react";
 import { cadetService } from "@/libs/services/cadetService";
@@ -212,12 +213,13 @@ function CadetsPageContent() {
       className: "font-medium text-gray-900",
       render: (cadet) => (
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-full bg-gray-100 flex-shrink-0 overflow-hidden border border-gray-200">
+          <div className="w-8 h-8 rounded-full bg-gray-100 flex-shrink-0 overflow-hidden border border-gray-200 relative">
             {cadet.profile_picture || cadet.profile_photo ? (
-              <img 
-                src={getImageUrl(cadet.profile_picture || cadet.profile_photo)} 
+              <Image 
+                src={cadet.profile_picture || cadet.profile_photo || ""} 
                 alt={cadet.name} 
-                className="w-full h-full object-cover"
+                fill
+                className="object-cover"
               />
             ) : (
               <div className="w-full h-full flex items-center justify-center bg-blue-50 text-blue-500">

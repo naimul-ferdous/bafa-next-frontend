@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import { InstructorBiodata, User } from "@/libs/types/user";
+import { InstructorBiodata } from "@/libs/types/user";
 import { Icon } from "@iconify/react";
 import { instructorService } from "@/libs/services/instructorService";
 import { userService } from "@/libs/services/userService";
@@ -21,11 +21,12 @@ import InstructorAssignCadetModal from "@/components/instructors/InstructorAssig
 import InstructorAssignModuleModal from "@/components/instructors/InstructorAssignModuleModal";
 import CtwInstructorAssignCadetModal from "@/components/instructors/CtwInstructorAssignCadetModal";
 import InstructorViewAssignedModulesModal from "@/components/instructors/InstructorViewAssignedModulesModal";
+import InstructorAssignRoleModal from "@/components/instructors/InstructorAssignRoleModal";
 import UserAssignRankModal from "@/components/users/UserAssignRankModal";
 import UserSignatureModal from "@/components/users/UserSignatureModal";
+import type { User } from "@/libs/types/user";
 import { useAuth } from "@/context/AuthContext";
-import { usePageContext, useCan } from "@/context/PagePermissionsContext";
-import { getImageUrl } from "@/libs/utils/formatter";
+import { useCan } from "@/context/PagePermissionsContext";
 
 function InstructorsPageContent() {
   const router = useRouter();
@@ -46,11 +47,15 @@ function InstructorsPageContent() {
 
   // Rank assignment modal state
   const [assignRankModalOpen, setAssignRankModalOpen] = useState(false);
-  const [rankingUser, setRankingUser] = useState<any>(null);
+  const [rankingUser, setRankingUser] = useState<User | null>(null);
 
   // Signature modal state
   const [signatureModalOpen, setSignatureModalOpen] = useState(false);
-  const [signingUser, setSigningUser] = useState<any>(null);
+  const [signingUser, setSigningUser] = useState<User | null>(null);
+
+  // Role assign modal state
+  const [assignRoleModalOpen, setAssignRoleModalOpen] = useState(false);
+  const [assigningRoleInstructor, setAssigningRoleInstructor] = useState<InstructorBiodata | null>(null);
 
   const [assignWingModalOpen, setAssignWingModalOpen] = useState(false);
   const [assigningInstructor, setAssigningInstructor] = useState<InstructorBiodata | null>(null);
@@ -99,7 +104,6 @@ function InstructorsPageContent() {
   const isItATWingUser = !userIsSystemAdmin && user?.role_assignments?.some(ra => ra.is_active && ra.wing?.code === 'ATW');
   const isItCTWingUser = !userIsSystemAdmin && user?.role_assignments?.some(ra => ra.is_active && ra.wing?.code === 'CTW');
   const isItFTWingUser = !userIsSystemAdmin && user?.role_assignments?.some(ra => ra.is_active && ra.wing?.code === 'FTW');
-  const isInstructor = !!user?.instructor_biodata;
 
   // Load common dropdown data
   useEffect(() => {
@@ -123,7 +127,7 @@ function InstructorsPageContent() {
   const loadInstructors = useCallback(async () => {
     try {
       setLoading(true);
-      const params: any = { page: currentPage, per_page: perPage, search: searchTerm || undefined };
+      const params: { page: number; per_page: number; search?: string; course_id?: number; semester_id?: number; program_id?: number; branch_id?: number; group_id?: number } = { page: currentPage, per_page: perPage, search: searchTerm || undefined };
       if (filterCourseId) params.course_id = filterCourseId;
       if (filterSemesterId) params.semester_id = filterSemesterId;
       if (filterProgramId) params.program_id = filterProgramId;
@@ -151,16 +155,17 @@ function InstructorsPageContent() {
   const handleViewInstructor = (instructor: InstructorBiodata) => router.push(`/users/instructors/${instructor.id}`);
   const handleBlockUser = (instructor: InstructorBiodata) => { setBlockingInstructor(instructor); setBlockModalOpen(true); };
   const handleUnblockUser = (instructor: InstructorBiodata) => { setUnblockingInstructor(instructor); setUnblockModalOpen(true); };
+  const handleAssignRole = (instructor: InstructorBiodata) => { setAssigningRoleInstructor(instructor); setAssignRoleModalOpen(true); };
   const handleAssignWing = (instructor: InstructorBiodata) => { setAssigningInstructor(instructor); setAssignWingModalOpen(true); };
   const handleApproveWing = (assignmentId: number, instructor: InstructorBiodata) => { setApprovingAssignment({ assignmentId, instructor }); setApproveModalOpen(true); };
   
   const handleAssignRank = (instructor: InstructorBiodata) => {
-    setRankingUser(instructor.user);
+    setRankingUser(instructor.user ?? null);
     setAssignRankModalOpen(true);
   };
 
   const handleUpdateSignature = (instructor: InstructorBiodata) => {
-    setSigningUser(instructor.user);
+    setSigningUser(instructor.user ?? null);
     setSignatureModalOpen(true);
   };
 
@@ -279,7 +284,7 @@ function InstructorsPageContent() {
   );
 
   const columns: Column<InstructorBiodata>[] = [
-    { key: "id", header: "SL.", className: "text-center text-gray-900", render: (instructor, index) => (pagination.from || 0) + (index) },
+    { key: "id", header: "SL.", className: "text-center text-gray-900", render: (_instructor, index) => (pagination.from || 0) + (index) },
     { key: "user", header: "BD Number", className: "font-mono text-sm text-gray-700", render: (instructor) => instructor.user?.service_number || "—" },
     { key: "user", header: "Name", className: "font-medium text-gray-900", render: (instructor) => instructor.user?.name || "—" },
     {
@@ -288,7 +293,7 @@ function InstructorsPageContent() {
           <div className="flex justify-center">
             <div className="relative w-10 h-10 overflow-hidden rounded-full border border-gray-200">
               <Image
-                src={getImageUrl(instructor.user.profile_photo)}
+                src={instructor.user.profile_photo}
                 alt={instructor.user?.name || "Profile"}
                 fill
                 className="object-cover"
@@ -313,7 +318,7 @@ function InstructorsPageContent() {
               onClick={can('edit') ? (e) => { e.stopPropagation(); handleUpdateSignature(instructor); } : undefined}
               title={can('edit') ? "Update Signature" : undefined}
             >
-              <Image src={getImageUrl(instructor.user.signature)} alt="Signature" fill className="object-contain" />
+              <Image src={instructor.user.signature} alt="Signature" fill className="object-contain" />
             </div>
           </div>
         ) : (
@@ -358,8 +363,37 @@ function InstructorsPageContent() {
         )}
       </div>
     )},
-    { key: "years_of_experience", header: "Experience", headerAlign: "center" as const, className: "text-gray-700 text-center", render: (instructor) => instructor.years_of_experience ? `${instructor.years_of_experience} years` : "—" },
     { key: "date_of_commission", header: "Commission Date", className: "text-gray-700", render: (instructor) => instructor.date_of_commission ? new Date(instructor.date_of_commission).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : "—" },
+    { key: "user", header: "Roles", className: "text-gray-700", render: (instructor) => {
+      const roleAssignments = instructor.user?.role_assignments || instructor.user?.roleAssignments || [];
+      const activeRoles = roleAssignments.filter(ra => ra.is_active && ra.role);
+      return (
+        <div className="flex flex-wrap items-center gap-1">
+          {activeRoles.length > 0 ? (
+            activeRoles.map(ra => (
+              <span
+                key={ra.id}
+                className={`px-2 py-0.5 text-xs rounded-full font-medium ${ra.is_primary ? "bg-blue-100 text-blue-700" : "bg-gray-100 text-gray-600"}`}
+                title={ra.role?.description || ra.role?.name}
+              >
+                {ra.role?.name}
+              </span>
+            ))
+          ) : (
+            <span className="text-gray-400 text-xs">No roles</span>
+          )}
+          {can('edit') && (
+            <button
+              onClick={(e) => { e.stopPropagation(); handleAssignRole(instructor); }}
+              className="ml-1 p-0.5 text-purple-600 hover:bg-purple-50 rounded border border-purple-100"
+              title="Manage Roles"
+            >
+              <Icon icon="hugeicons:plus-sign-circle" className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+      );
+    }},
     // Show Assigned Wings column if system-level user (Super Admin or CPTC)
     ...(showSystemView ? [{
       key: "assign_wings", header: `Assigned Wings`, className: "text-gray-700", render: (instructor: InstructorBiodata) => {
@@ -481,7 +515,7 @@ function InstructorsPageContent() {
         </span>
       );
     }},
-    ...(!isInstructor ? [{
+    {
       key: "actions", header: "Actions", headerAlign: "center" as const, className: "text-center no-print", render: (instructor: InstructorBiodata) => {
         const pendingAssignment = getPendingAssignmentForUserWing(instructor);
         const isApprovedForUserWing = hasApprovedWingForUser(instructor);
@@ -518,7 +552,7 @@ function InstructorsPageContent() {
           </div>
         );
       }
-    }] : []),
+    }
   ];
 
   return (
@@ -655,6 +689,7 @@ function InstructorsPageContent() {
       />
 
       <ConfirmationModal isOpen={approveModalOpen} onClose={() => { setApproveModalOpen(false); setApprovingAssignment(null); }} onConfirm={confirmApprove} title="Approve Wing Assignment" message={`Are you sure you want to approve wing assignment for ${approvingAssignment?.instructor?.user?.name || 'this instructor'}?`} confirmText="Approve" cancelText="Cancel" loading={approveLoading} variant="success" />
+      <InstructorAssignRoleModal isOpen={assignRoleModalOpen} onClose={() => { setAssignRoleModalOpen(false); setAssigningRoleInstructor(null); }} instructor={assigningRoleInstructor} onSuccess={() => loadInstructors()} />
       <InstructorAssignWingModal isOpen={assignWingModalOpen} onClose={() => { setAssignWingModalOpen(false); setAssigningInstructor(null); }} instructor={assigningInstructor} onSuccess={() => loadInstructors()} />
       <InstructorAssignSubjectModal isOpen={assignSubjectModalOpen} onClose={() => { setAssignSubjectModalOpen(false); setAssigningSubjectInstructor(null); }} instructor={assigningSubjectInstructor} onSuccess={() => loadInstructors()} />
       <InstructorAssignCadetModal isOpen={assignCadetModalOpen} onClose={() => { setAssignCadetModalOpen(false); setAssigningCadetInstructor(null); }} instructor={assigningCadetInstructor} onSuccess={() => loadInstructors()} />

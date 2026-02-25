@@ -21,6 +21,7 @@ interface SyllabusTableRow {
     solo_hours: number;
     total_sorties: number;
     total_hours: number;
+    is_active: boolean;
     syllabus: Ftw11sqnFlyingSyllabus;
 }
 
@@ -39,9 +40,12 @@ export default function Ftw11sqnFlyingSyllabusPage() {
     const router = useRouter();
     const [syllabusData, setSyllabusData] = useState<Ftw11sqnFlyingSyllabus[]>([]);
     const [loading, setLoading] = useState(true);
-    const [deleteModalOpen, setDeleteModalOpen] = useState(false);
-    const [deletingSyllabus, setDeletingSyllabus] = useState<SyllabusTableRow | null>(null);
-    const [deleteLoading, setDeleteLoading] = useState(false);
+    
+    // Status modal state
+    const [statusModalOpen, setStatusModalOpen] = useState(false);
+    const [statusSyllabus, setStatusSyllabus] = useState<SyllabusTableRow | null>(null);
+    const [statusLoading, setStatusLoading] = useState(false);
+
     const [perPage, setPerPage] = useState(50);
     const [currentPage, setCurrentPage] = useState(1);
     const [pagination, setPagination] = useState({
@@ -108,6 +112,7 @@ export default function Ftw11sqnFlyingSyllabusPage() {
                 solo_hours: soloHours,
                 total_sorties: dualSorties + soloSorties,
                 total_hours: dualHours + soloHours,
+                is_active: syllabus.is_active,
                 syllabus: syllabus,
             };
         }).sort((a, b) => a.phase_sort - b.phase_sort);
@@ -120,24 +125,28 @@ export default function Ftw11sqnFlyingSyllabusPage() {
     const handleViewSyllabus = (row: SyllabusTableRow) => {
         router.push(`/ftw/11sqn/results/flying/syllabus/${row.id}`);
     };
-    const handleDeleteSyllabus = (row: SyllabusTableRow) => {
-        setDeletingSyllabus(row);
-        setDeleteModalOpen(true);
+    
+    const handleToggleStatus = (row: SyllabusTableRow) => {
+        setStatusSyllabus(row);
+        setStatusModalOpen(true);
     };
 
-    const confirmDelete = async () => {
-        if (!deletingSyllabus) return;
+    const confirmToggleStatus = async () => {
+        if (!statusSyllabus) return;
+
         try {
-            setDeleteLoading(true);
-            await ftw11sqnFlyingSyllabusService.delete(deletingSyllabus.id);
+            setStatusLoading(true);
+            await ftw11sqnFlyingSyllabusService.update(statusSyllabus.id, {
+                is_active: !statusSyllabus.is_active
+            });
             await loadSyllabus();
-            setDeleteModalOpen(false);
-            setDeletingSyllabus(null);
+            setStatusModalOpen(false);
+            setStatusSyllabus(null);
         } catch (error) {
-            console.error("Failed to delete flying syllabus:", error);
-            alert("Failed to delete flying syllabus");
+            console.error("Failed to update status:", error);
+            alert("Failed to update status");
         } finally {
-            setDeleteLoading(false);
+            setStatusLoading(false);
         }
     };
 
@@ -211,6 +220,7 @@ export default function Ftw11sqnFlyingSyllabusPage() {
                                 <th colSpan={2} className="px-3 py-2 text-center font-semibold text-gray-700 border-r border-black">DUAL</th>
                                 <th colSpan={2} className="px-3 py-2 text-center font-semibold text-gray-700 border-r border-black">SOLO</th>
                                 <th colSpan={2} className="px-3 py-2 text-center font-semibold text-gray-700 border-r border-black">TOTAL</th>
+                                <th rowSpan={2} className="px-3 py-3 text-center font-semibold text-gray-700 border-r border-black">STATUS</th>
                                 <th rowSpan={2} className="px-3 py-3 text-center font-semibold text-gray-700">ACTIONS</th>
                             </tr>
                             <tr className="border-b border-black">
@@ -225,14 +235,18 @@ export default function Ftw11sqnFlyingSyllabusPage() {
                         <tbody>
                             {tableData.length === 0 ? (
                                 <tr>
-                                    <td colSpan={12} className="px-4 py-8 text-center text-gray-500">
+                                    <td colSpan={13} className="px-4 py-8 text-center text-gray-500">
                                         No flying syllabus found
                                     </td>
                                 </tr>
                             ) : (
                                 tableData.map((row, index) => (
-                                    <tr key={row.id} className={`hover:bg-gray-50 ${index !== tableData.length - 1 ? "border-b border-black" : ""}`}>
-                                        <td className="px-2 py-2 text-center border-r border-black">
+                                    <tr 
+                                        key={row.id} 
+                                        className={`hover:bg-gray-50 cursor-pointer ${index !== tableData.length - 1 ? "border-b border-black" : ""}`}
+                                        onClick={() => handleViewSyllabus(row)}
+                                    >
+                                        <td className="px-2 py-2 text-center border-r border-black" onClick={(e) => e.stopPropagation()}>
                                             <div className="flex items-center justify-center gap-1">
                                                 <button
                                                     onClick={() => handleMoveUp(index)}
@@ -282,15 +296,13 @@ export default function Ftw11sqnFlyingSyllabusPage() {
                                         <td className="px-3 py-2 text-center font-semibold text-green-700 border-r border-black">
                                             {formatHoursToHHMM(row.total_hours)}
                                         </td>
-                                        <td className="px-3 py-2 text-center">
+                                        <td className="px-3 py-2 text-center border-r border-black" onClick={(e) => e.stopPropagation()}>
+                                            <span className={`inline-flex items-center px-2.5 py-1 text-xs font-semibold rounded-full ${row.is_active ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}`}>
+                                                {row.is_active ? "Active" : "Inactive"}
+                                            </span>
+                                        </td>
+                                        <td className="px-3 py-2 text-center" onClick={(e) => e.stopPropagation()}>
                                             <div className="flex items-center justify-center gap-1">
-                                                <button
-                                                    onClick={() => handleViewSyllabus(row)}
-                                                    className="p-1 text-blue-600 hover:bg-blue-50 rounded"
-                                                    title="View"
-                                                >
-                                                    <Icon icon="hugeicons:view" className="w-4 h-4" />
-                                                </button>
                                                 <button
                                                     onClick={() => handleEditSyllabus(row)}
                                                     className="p-1 text-yellow-600 hover:bg-yellow-50 rounded"
@@ -298,13 +310,23 @@ export default function Ftw11sqnFlyingSyllabusPage() {
                                                 >
                                                     <Icon icon="hugeicons:pencil-edit-01" className="w-4 h-4" />
                                                 </button>
-                                                <button
-                                                    onClick={() => handleDeleteSyllabus(row)}
-                                                    className="p-1 text-red-600 hover:bg-red-50 rounded"
-                                                    title="Delete"
-                                                >
-                                                    <Icon icon="hugeicons:delete-02" className="w-4 h-4" />
-                                                </button>
+                                                {row.is_active ? (
+                                                    <button
+                                                        onClick={() => handleToggleStatus(row)}
+                                                        className="p-1 text-red-600 hover:bg-red-50 rounded"
+                                                        title="Deactivate"
+                                                    >
+                                                        <Icon icon="hugeicons:unavailable" className="w-4 h-4" />
+                                                    </button>
+                                                ) : (
+                                                    <button
+                                                        onClick={() => handleToggleStatus(row)}
+                                                        className="p-1 text-green-600 hover:bg-green-50 rounded"
+                                                        title="Activate"
+                                                    >
+                                                        <Icon icon="hugeicons:checkmark-circle-02" className="w-4 h-4" />
+                                                    </button>
+                                                )}
                                             </div>
                                         </td>
                                     </tr>
@@ -335,15 +357,15 @@ export default function Ftw11sqnFlyingSyllabusPage() {
             </div>
 
             <ConfirmationModal
-                isOpen={deleteModalOpen}
-                onClose={() => setDeleteModalOpen(false)}
-                onConfirm={confirmDelete}
-                title="Delete Flying Syllabus"
-                message={`Are you sure you want to delete "${deletingSyllabus?.phase_full_name}"? This will delete all associated types and exercises. This action cannot be undone.`}
-                confirmText="Delete"
+                isOpen={statusModalOpen}
+                onClose={() => setStatusModalOpen(false)}
+                onConfirm={confirmToggleStatus}
+                title={statusSyllabus?.is_active ? "Deactivate Syllabus" : "Activate Syllabus"}
+                message={`Are you sure you want to ${statusSyllabus?.is_active ? "deactivate" : "activate"} the syllabus "${statusSyllabus?.phase_full_name}"?`}
+                confirmText={statusSyllabus?.is_active ? "Deactivate" : "Activate"}
                 cancelText="Cancel"
-                loading={deleteLoading}
-                variant="danger"
+                loading={statusLoading}
+                variant={statusSyllabus?.is_active ? "danger" : "success"}
             />
         </div>
     );

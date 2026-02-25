@@ -2,6 +2,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import Image from "next/image";
 import { Icon } from "@iconify/react";
 import Input from "@/components/form/input/InputField";
 import Label from "@/components/form/Label";
@@ -401,7 +402,7 @@ export default function CadetForm({ initialData, onSubmit, onCancel, loading: ex
       setContactNo(initialData.contact_no || "");
 
       if (initialData.profile_picture) {
-        setProfilePicturePreview(getImageUrl(initialData.profile_picture));
+        setProfilePicturePreview(initialData.profile_picture);
       }
 
       // Assignments - Extract current assignments from lists
@@ -804,8 +805,7 @@ export default function CadetForm({ initialData, onSubmit, onCancel, loading: ex
               <Label>Photo</Label>
               <label className="mt-2 flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100 relative overflow-hidden">
                 {profilePicturePreview ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={profilePicturePreview} alt="Profile Preview" className="w-full h-full object-cover" />
+                  <Image src={profilePicturePreview} alt="Profile Preview" fill className="object-cover" />
                 ) : (
                   <>
                     <Icon icon="hugeicons:user-circle" className="w-10 h-10 text-blue-400 mb-1" />

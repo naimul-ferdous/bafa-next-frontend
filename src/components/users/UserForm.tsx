@@ -2,6 +2,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import Image from "next/image";
 import Input from "@/components/form/input/InputField";
 import Label from "@/components/form/Label";
 import { roleService } from "@/libs/services/roleService";
@@ -219,8 +220,7 @@ export default function UserForm({ initialData, onSubmit, onCancel, loading: ext
                 <Label>Profile Picture</Label>
                 <label className="mt-2 flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100 relative overflow-hidden">
                   {profilePhotoPreview ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={profilePhotoPreview} alt="Profile Preview" className="w-full h-full object-cover" />
+                    <Image src={profilePhotoPreview} alt="Profile Preview" fill className="object-cover" />
                   ) : (
                     <>
                       <Icon icon="hugeicons:user-circle" className="w-12 h-12 text-blue-400 mb-2" />
@@ -237,8 +237,7 @@ export default function UserForm({ initialData, onSubmit, onCancel, loading: ext
                 <Label>Signature</Label>
                 <label className="mt-2 flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100 relative overflow-hidden">
                   {signaturePreview ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={signaturePreview} alt="Signature Preview" className="w-full h-full object-cover" />
+                    <Image src={signaturePreview} alt="Signature Preview" fill className="object-cover" />
                   ) : (
                     <>
                       <Icon icon="hugeicons:pen-tool-01" className="w-12 h-12 text-blue-400 mb-2" />

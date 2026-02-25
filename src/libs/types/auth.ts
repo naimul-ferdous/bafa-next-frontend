@@ -95,8 +95,16 @@ export interface ProfileResponse extends ApiResponse {
 
 export interface UpdateProfileRequest {
   name?: string;
+  email?: string;
+  phone?: string;
   contact_number?: string;
   blood_group?: string;
+  rank_id?: number | string;
+  date_of_birth?: string | null;
+  date_of_joining?: string | null;
+  address?: string | null;
+  profile_photo?: string | null;
+  signature?: string | null;
 }
 
 export interface UpdateProfileResponse extends ApiResponse {

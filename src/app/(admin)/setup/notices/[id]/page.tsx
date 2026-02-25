@@ -3,6 +3,7 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import { useRouter, useParams } from "next/navigation";
+import Image from "next/image";
 import { Icon } from "@iconify/react";
 import { aroService } from "@/libs/services/aroService";
 import FullLogo from "@/components/ui/fulllogo";
@@ -51,11 +52,12 @@ function FilePreview({ url }: { url: string }) {
         {/* ── Image ── */}
         {type === "image" && (
           <div className="flex items-center justify-center p-4 bg-gray-100 min-h-[300px]">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
+            <Image
               src={url}
               alt="Attachment preview"
-              className="max-w-full max-h-[600px] object-contain rounded shadow"
+              width={1200}
+              height={800}
+              className="max-w-full h-auto max-h-[600px] object-contain rounded shadow"
             />
           </div>
         )}

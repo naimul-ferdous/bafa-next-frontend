@@ -74,6 +74,7 @@ export interface Ftw11sqnFlyingSyllabus {
   created_by?: number;
   created_at?: string;
   updated_at?: string;
+  flying_type?: Ftw11sqnFlyingType;
   flying_phase_type?: Ftw11sqnFlyingPhaseType;
   syllabus_types?: Ftw11sqnFlyingSyllabusType[];
   creator?: User;

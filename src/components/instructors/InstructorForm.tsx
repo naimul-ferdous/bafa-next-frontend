@@ -2,16 +2,18 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
+import Image from "next/image";
 import { Icon } from "@iconify/react";
 import FullLogo from "@/components/ui/fulllogo";
 import Input from "@/components/form/input/InputField";
 import Label from "@/components/form/Label";
 import { geoLocationService, type Division, type District, type PostOffice } from "@/libs/services/geoLocationService";
 import DatePicker from "@/components/form/input/DatePicker";
-import type { InstructorBiodata } from "@/libs/types/user";
+import type { InstructorBiodata, Role } from "@/libs/types/user";
 import { getImageUrl } from "@/libs/utils/formatter";
 import userService from "@/libs/services/userService";
 import instructorService from "@/libs/services/instructorService";
+import { roleService } from "@/libs/services/roleService";
 
 interface Child {
   name: string;
@@ -160,6 +162,10 @@ export default function InstructorForm({ initialData, onSubmit, onCancel, loadin
   const [yearsOfExperience, setYearsOfExperience] = useState("");
   const [instructorSince, setInstructorSince] = useState("");
 
+  // Role Assignment
+  const [availableRoles, setAvailableRoles] = useState<Role[]>([]);
+  const [selectedRoleIds, setSelectedRoleIds] = useState<number[]>([]);
+
   // Bangladesh Geo Data
   const [divisions, setDivisions] = useState<Division[]>([]);
   const [presentDistricts, setPresentDistricts] = useState<District[]>([]);
@@ -251,6 +257,7 @@ export default function InstructorForm({ initialData, onSubmit, onCancel, loadin
     setQualification("");
     setYearsOfExperience("");
     setInstructorSince("");
+    setSelectedRoleIds([]);
   }, [propIsEdit]);
 
   const populateForm = useCallback((data: InstructorBiodata) => {
@@ -367,6 +374,14 @@ export default function InstructorForm({ initialData, onSubmit, onCancel, loadin
     setYearsOfExperience(data.years_of_experience?.toString() || "");
     setInstructorSince(formatDateForDisplay(data.instructor_since));
 
+    // Pre-select existing role assignments (API returns role_assignments snake_case)
+    const roleAssignments = u?.role_assignments || u?.roleAssignments || [];
+    if (roleAssignments.length > 0) {
+      setSelectedRoleIds(roleAssignments.map(ra => ra.role_id));
+    } else {
+      setSelectedRoleIds([]);
+    }
+
     if (u?.profile_photo) setProfilePicturePreview(getImageUrl(u.profile_photo));
     if (u?.signature) setSignaturePreview(getImageUrl(u.signature));
   }, []);
@@ -376,6 +391,21 @@ export default function InstructorForm({ initialData, onSubmit, onCancel, loadin
       populateForm(initialData);
     }
   }, [initialData, populateForm]);
+
+  // Fetch all available roles on mount; auto-select "Instructor" role for add mode
+  useEffect(() => {
+    roleService.getAllRoles({ per_page: 100 }).then(res => {
+      setAvailableRoles(res.data);
+      if (!propIsEdit) {
+        const instructorRole = res.data.find(r => r.name.toLowerCase().includes('instructor'));
+        if (instructorRole) {
+          setSelectedRoleIds(prev =>
+            prev.includes(instructorRole.id) ? prev : [...prev, instructorRole.id]
+          );
+        }
+      }
+    });
+  }, [propIsEdit]);
 
   const handleSearchBdNumber = async () => {
     if (!bdNumberSearch) return;
@@ -451,7 +481,7 @@ export default function InstructorForm({ initialData, onSubmit, onCancel, loadin
         const base64 = await convertToBase64(file);
         setProfilePicture(base64);
         setProfilePicturePreview(URL.createObjectURL(file));
-      } catch (_err) { setError("Failed to process profile picture"); }
+      } catch { setError("Failed to process profile picture"); }
     }
   };
 
@@ -463,7 +493,7 @@ export default function InstructorForm({ initialData, onSubmit, onCancel, loadin
         const base64 = await convertToBase64(file);
         setSignature(base64);
         setSignaturePreview(URL.createObjectURL(file));
-      } catch (_err) { setError("Failed to process signature"); }
+      } catch { setError("Failed to process signature"); }
     }
   };
 
@@ -513,6 +543,15 @@ export default function InstructorForm({ initialData, onSubmit, onCancel, loadin
     setLanguages(updated);
   };
 
+  const toggleRole = (roleId: number) => {
+    const role = availableRoles.find(r => r.id === roleId);
+    // Instructor role is always locked in add mode
+    if (!localIsEdit && role?.name.toLowerCase().includes('instructor')) return;
+    setSelectedRoleIds(prev =>
+      prev.includes(roleId) ? prev.filter(id => id !== roleId) : [...prev, roleId]
+    );
+  };
+
   const addCertification = () => setCertifications([...certifications, { examFullName: "", examShortName: "", passingYear: "", grade: "", outOf: "", instituteName: "", others: "" }]);
   const removeCertification = (index: number) => setCertifications(certifications.filter((_, i) => i !== index));
   const updateCertification = (index: number, field: keyof Certification, value: string) => {
@@ -533,6 +572,13 @@ export default function InstructorForm({ initialData, onSubmit, onCancel, loadin
     e.preventDefault();
     setLoading(true);
     setError("");
+
+    if (selectedRoleIds.length === 0) {
+      setError("Please select at least one role before saving.");
+      setLoading(false);
+      document.getElementById("role-assignment-section")?.scrollIntoView({ behavior: "smooth", block: "center" });
+      return;
+    }
 
     try {
       const formData = {
@@ -603,6 +649,7 @@ export default function InstructorForm({ initialData, onSubmit, onCancel, loadin
         qualification,
         yearsOfExperience,
         instructorSince,
+        roleIds: selectedRoleIds,
       };
 
       await onSubmit(formData);
@@ -678,14 +725,14 @@ export default function InstructorForm({ initialData, onSubmit, onCancel, loadin
             <div>
               <Label>Profile Picture</Label>
               <label className="mt-2 flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100 relative overflow-hidden">
-                {profilePicturePreview ? <img src={profilePicturePreview} alt="Profile Preview" className="w-full h-full object-cover" /> : <><Icon icon="hugeicons:user-circle" className="w-12 h-12 text-blue-400 mb-2" /><p className="text-xs text-red-500">No file selected</p><p className="text-xs text-gray-500">Max file size 1 MB</p></>}
+                {profilePicturePreview ? <Image src={profilePicturePreview} alt="Profile Preview" fill className="object-cover" /> : <><Icon icon="hugeicons:user-circle" className="w-12 h-12 text-blue-400 mb-2" /><p className="text-xs text-red-500">No file selected</p><p className="text-xs text-gray-500">Max file size 1 MB</p></>}
                 <input type="file" className="hidden" accept="image/*" onChange={handleProfilePictureChange} />
               </label>
             </div>
             <div>
               <Label>Signature</Label>
               <label className="mt-2 flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100 relative overflow-hidden">
-                {signaturePreview ? <img src={signaturePreview} alt="Signature Preview" className="w-full h-full object-cover" /> : <><Icon icon="hugeicons:pen-tool-01" className="w-12 h-12 text-blue-400 mb-2" /><p className="text-xs text-red-500">No file selected</p><p className="text-xs text-gray-500">Max file size 1 MB</p></>}
+                {signaturePreview ? <Image src={signaturePreview} alt="Signature Preview" fill className="object-cover" /> : <><Icon icon="hugeicons:pen-tool-01" className="w-12 h-12 text-blue-400 mb-2" /><p className="text-xs text-red-500">No file selected</p><p className="text-xs text-gray-500">Max file size 1 MB</p></>}
                 <input type="file" className="hidden" accept="image/*" onChange={handleSignatureChange} />
               </label>
             </div>
@@ -919,8 +966,77 @@ export default function InstructorForm({ initialData, onSubmit, onCancel, loadin
           </div>
         </div>
 
+        <div className="mb-8" id="role-assignment-section">
+          <h2 className="text-lg font-bold text-gray-900 mb-4 pb-2 border-b border-dashed border-gray-300">
+            12. Role Assignment <span className="text-red-500">*</span>
+          </h2>
+          {availableRoles.length === 0 ? (
+            <p className="text-sm text-gray-500 flex items-center gap-2">
+              <Icon icon="hugeicons:loading-03" className="w-4 h-4 animate-spin" />
+              Loading roles...
+            </p>
+          ) : (
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+              {availableRoles.map(role => {
+                const isSelected = selectedRoleIds.includes(role.id);
+                const isInstructorRole = role.name.toLowerCase().includes('instructor');
+                const isDisabled = localIsEdit || (!localIsEdit && isInstructorRole);
+                return (
+                  <label
+                    key={role.id}
+                    className={`flex items-center gap-3 p-3 rounded-lg border transition-all select-none ${
+                      isDisabled
+                        ? 'cursor-not-allowed opacity-70'
+                        : 'cursor-pointer'
+                    } ${
+                      isSelected
+                        ? 'border-blue-400 bg-blue-50'
+                        : 'border-gray-200 bg-white hover:border-gray-300'
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={() => !isDisabled && toggleRole(role.id)}
+                      disabled={isDisabled}
+                      className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 disabled:cursor-not-allowed"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p className={`text-sm font-semibold truncate ${isSelected ? 'text-blue-700' : 'text-gray-900'}`}>
+                        {role.name}
+                      </p>
+                      {role.description && (
+                        <p className="text-xs text-gray-500 truncate">{role.description}</p>
+                      )}
+                    </div>
+                    {isSelected && (
+                      <Icon icon="hugeicons:checkmark-circle-02" className="w-4 h-4 text-blue-500 flex-shrink-0" />
+                    )}
+                  </label>
+                );
+              })}
+            </div>
+          )}
+          {localIsEdit ? (
+            <p className="mt-3 text-xs text-gray-500 flex items-center gap-1">
+              <Icon icon="hugeicons:information-circle" className="w-3.5 h-3.5 flex-shrink-0" />
+              Role assignments are locked in edit mode. Use the <strong className="mx-1">Assign Role</strong> button on the instructors list to manage roles.
+            </p>
+          ) : selectedRoleIds.length > 0 ? (
+            <p className="mt-3 text-xs text-blue-600">
+              <Icon icon="hugeicons:information-circle" className="w-3.5 h-3.5 inline mr-1" />
+              {selectedRoleIds.length} role{selectedRoleIds.length > 1 ? 's' : ''} selected. The first selected role will be set as primary.
+            </p>
+          ) : (
+            <p className="mt-3 text-xs text-red-500 flex items-center gap-1">
+              <Icon icon="hugeicons:alert-circle" className="w-3.5 h-3.5 flex-shrink-0" />
+              At least one role must be selected.
+            </p>
+          )}
+        </div>
+
         <div className="mb-8">
-          <h2 className="text-lg font-bold text-gray-900 mb-4 pb-2 border-b border-dashed border-gray-300">12. Emergency Contact</h2>
+          <h2 className="text-lg font-bold text-gray-900 mb-4 pb-2 border-b border-dashed border-gray-300">13. Emergency Contact</h2>
           <div className="grid grid-cols-2 gap-4">
             <div><Label>Contact Name</Label><Input value={emergencyContactName} onChange={(e) => setEmergencyContactName(e.target.value)} placeholder="Enter emergency contact name" /></div>
             <div><Label>Contact Phone</Label><Input value={emergencyContactPhone} onChange={(e) => setEmergencyContactPhone(e.target.value)} placeholder="Enter emergency contact phone" /></div>

@@ -32,10 +32,7 @@ export const formatDateTime = (dateString: string) => {
 export const getImageUrl = (path: string | null | undefined) => {
   if (!path) return "";
   
-  let baseUrl = process.env.NEXT_PUBLIC_API_URL?.replace('/api', '') || '';
-  if (baseUrl.endsWith('/')) {
-    baseUrl = baseUrl.slice(0, -1);
-  }
+  const baseUrl = process.env.NEXT_PUBLIC_API_URL?.replace('/api', '') || '';
   
   if (path.startsWith('http')) {
     // If it's already an absolute URL, check if it already has /public/
@@ -46,6 +43,5 @@ export const getImageUrl = (path: string | null | undefined) => {
   }
   
   // For relative paths, prepend the base URL and /public/
-  const cleanPath = path.startsWith('/') ? path.slice(1) : path;
-  return `${baseUrl}/public/${cleanPath}`;
+  return `${baseUrl}/public/${path}`;
 };

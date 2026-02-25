@@ -115,7 +115,7 @@ export default function ViewCadetPage() {
                             {cadet.profile_picture ? (
                                 <div className="relative w-32 h-40 border-2 border-black">
                                     <Image
-                                        src={getImageUrl(cadet.profile_picture)}
+                                        src={cadet.profile_picture}
                                         alt={cadet.name || "Profile"}
                                         fill
                                         className="object-cover"
