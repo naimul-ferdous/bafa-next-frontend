@@ -25,6 +25,7 @@ import UserAssignRankModal from "@/components/users/UserAssignRankModal";
 import UserSignatureModal from "@/components/users/UserSignatureModal";
 import { useAuth } from "@/context/AuthContext";
 import { usePageContext, useCan } from "@/context/PagePermissionsContext";
+import { getImageUrl } from "@/libs/utils/formatter";
 
 function InstructorsPageContent() {
   const router = useRouter();
@@ -287,7 +288,7 @@ function InstructorsPageContent() {
           <div className="flex justify-center">
             <div className="relative w-10 h-10 overflow-hidden rounded-full border border-gray-200">
               <Image
-                src={instructor.user.profile_photo}
+                src={getImageUrl(instructor.user.profile_photo)}
                 alt={instructor.user?.name || "Profile"}
                 fill
                 className="object-cover"
@@ -312,7 +313,7 @@ function InstructorsPageContent() {
               onClick={can('edit') ? (e) => { e.stopPropagation(); handleUpdateSignature(instructor); } : undefined}
               title={can('edit') ? "Update Signature" : undefined}
             >
-              <Image src={instructor.user.signature} alt="Signature" fill className="object-contain" />
+              <Image src={getImageUrl(instructor.user.signature)} alt="Signature" fill className="object-contain" />
             </div>
           </div>
         ) : (

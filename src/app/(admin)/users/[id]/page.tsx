@@ -110,7 +110,7 @@ export default function ViewUserPage() {
                             {user.profile_photo ? (
                                 <div className="relative w-32 h-40 border-2 border-black">
                                     <Image
-                                        src={user.profile_photo}
+                                        src={getImageUrl(user.profile_photo)}
                                         alt={user.name || "Profile"}
                                         fill
                                         className="object-cover"
@@ -280,7 +280,7 @@ export default function ViewUserPage() {
                         <div className="text-center w-48">
                             <div className="relative w-full h-16 mb-2">
                                 <Image
-                                    src={user.signature}
+                                    src={getImageUrl(user.signature)}
                                     alt="Signature"
                                     fill
                                     className="object-contain"

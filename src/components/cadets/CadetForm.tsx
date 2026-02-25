@@ -401,7 +401,7 @@ export default function CadetForm({ initialData, onSubmit, onCancel, loading: ex
       setContactNo(initialData.contact_no || "");
 
       if (initialData.profile_picture) {
-        setProfilePicturePreview(initialData.profile_picture);
+        setProfilePicturePreview(getImageUrl(initialData.profile_picture));
       }
 
       // Assignments - Extract current assignments from lists

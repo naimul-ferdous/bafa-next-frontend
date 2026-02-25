@@ -215,7 +215,7 @@ function CadetsPageContent() {
           <div className="w-8 h-8 rounded-full bg-gray-100 flex-shrink-0 overflow-hidden border border-gray-200">
             {cadet.profile_picture || cadet.profile_photo ? (
               <img 
-                src={cadet.profile_picture || cadet.profile_photo} 
+                src={getImageUrl(cadet.profile_picture || cadet.profile_photo)} 
                 alt={cadet.name} 
                 className="w-full h-full object-cover"
               />

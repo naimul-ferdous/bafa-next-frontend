@@ -2,7 +2,8 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { User } from "@/libs/types/user";
+import { formatDate, getImageUrl } from "@/libs/utils/formatter";
+import type { User } from "@/libs/types/user";
 import { Icon } from "@iconify/react";
 import { userService } from "@/libs/services/userService";
 import FullLogo from "@/components/ui/fulllogo";
@@ -163,7 +164,7 @@ export default function UsersPage() {
         <div className="flex justify-center">
           <div className="relative w-10 h-10 overflow-hidden rounded-full border border-gray-200">
             <Image 
-              src={user.profile_photo} 
+              src={getImageUrl(user.profile_photo)} 
               alt={user.name} 
               fill
               className="object-cover"
@@ -188,7 +189,7 @@ export default function UsersPage() {
             onClick={can('edit') ? (e) => { e.stopPropagation(); handleUpdateSignature(user); } : undefined}
             title={can('edit') ? "Update Signature" : undefined}
           >
-            <Image src={user.signature} alt="Signature" fill className="object-contain" />
+            <Image src={getImageUrl(user.signature)} alt="Signature" fill className="object-contain" />
           </div>
         </div>
       ) : (
