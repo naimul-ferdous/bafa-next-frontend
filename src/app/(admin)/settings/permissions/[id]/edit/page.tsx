@@ -6,7 +6,7 @@ import { Icon } from "@iconify/react";
 import { permissionService } from "@/libs/services/permissionService";
 import FullLogo from "@/components/ui/fulllogo";
 import PermissionForm from "@/components/permissions/PermissionForm";
-import type { Permission } from "@/libs/types/menu";
+import type { Permission, PermissionAction } from "@/libs/types/menu";
 
 export default function EditPermissionPage() {
   const router = useRouter();
@@ -41,7 +41,7 @@ export default function EditPermissionPage() {
     }
   }, [permissionId]);
 
-  const handleSubmit = async (formData: any) => {
+  const handleSubmit = async (formData: any, _selectedActions?: PermissionAction[]) => {
     setLoading(true);
     try {
       await permissionService.updatePermission(parseInt(permissionId), formData);

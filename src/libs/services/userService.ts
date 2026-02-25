@@ -155,6 +155,23 @@ export const userService = {
     }
   },
 
+  async findUserByServiceNumber(serviceNumber: string): Promise<User | null> {
+    try {
+      const token = getToken();
+      const result = await apiClient.get<UserApiResponse>(`/users?search=${serviceNumber}`, token);
+      
+      if (result && result.success && result.data && result.data.length > 0) {
+        // Find exact match just in case
+        const exactMatch = result.data.find(u => u.service_number === serviceNumber);
+        return exactMatch || result.data[0];
+      }
+      return null;
+    } catch (error) {
+      console.error(`Failed to find user with service number ${serviceNumber}:`, error);
+      return null;
+    }
+  },
+
   async assignRole(userId: number, data: { role_id: number; wing_id?: number | null; sub_wing_id?: number | null; is_primary?: boolean }): Promise<boolean> {
     try {
       const token = getToken();

@@ -253,7 +253,7 @@ export default function UserForm({ initialData, onSubmit, onCancel, loading: ext
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               <div>
-                <Label>BD Number <span className="text-red-500">*</span></Label>
+                <Label>BD/Service Number <span className="text-red-500">*</span></Label>
                 <Input value={formData.service_number} onChange={(e) => handleChange("service_number", e.target.value)} placeholder="e.g. 123456" required />
               </div>
               <div>

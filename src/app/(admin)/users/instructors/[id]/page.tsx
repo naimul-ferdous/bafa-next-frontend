@@ -112,10 +112,10 @@ export default function ViewInstructorPage() {
                             </p>
                         </div>
                         <div className="cv-profile absolute right-10 ml-8 flex-shrink-0">
-                            {instructor.profile_picture ? (
+                            {instructor.user?.profile_photo ? (
                                 <div className="relative w-32 h-40 border-2 border-black">
                                     <Image
-                                        src={getImageUrl(instructor.profile_picture)}
+                                        src={instructor.user.profile_photo}
                                         alt={instructor.user?.name || "Profile"}
                                         fill
                                         className="object-cover"
@@ -552,10 +552,10 @@ export default function ViewInstructorPage() {
                 {/* Signature Section */}
                 <div className="mt-12 flex justify-end">
                     <div className="flex flex-col items-center w-48">
-                        {instructor.signature ? (
+                        {instructor.user?.signature ? (
                             <div className="relative h-16 w-full border-b border-gray-900">
                                 <Image
-                                    src={getImageUrl(instructor.signature)}
+                                    src={instructor.user?.signature}
                                     alt="Signature"
                                     fill
                                     className="object-contain"

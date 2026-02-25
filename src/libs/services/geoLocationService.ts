@@ -27,10 +27,8 @@ export interface PostOffice {
 }
 
 interface GeoApiResponse<T> {
-  status: {
-    code: number;
-    message: string;
-  };
+  success: boolean;
+  message: string;
   data: T;
 }
 
@@ -41,7 +39,7 @@ export const geoLocationService = {
   async getDivisions(): Promise<Division[]> {
     try {
       const result = await apiClient.get<GeoApiResponse<Division[]>>('/geo/divisions');
-      if (result.status.code === 200) {
+      if (result.success) {
         return result.data || [];
       }
       return [];
@@ -57,7 +55,7 @@ export const geoLocationService = {
   async getDistricts(divisionId: number): Promise<District[]> {
     try {
       const result = await apiClient.get<GeoApiResponse<District[]>>(`/geo/division/${divisionId}/districts`);
-      if (result.status.code === 200) {
+      if (result.success) {
         return result.data || [];
       }
       return [];
@@ -73,7 +71,7 @@ export const geoLocationService = {
   async getPostOffices(districtId: number): Promise<PostOffice[]> {
     try {
       const result = await apiClient.get<GeoApiResponse<PostOffice[]>>(`/geo/district/${districtId}/post-offices`);
-      if (result.status.code === 200) {
+      if (result.success) {
         return result.data || [];
       }
       return [];

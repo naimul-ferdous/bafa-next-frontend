@@ -9,6 +9,7 @@ import FullLogo from "@/components/ui/fulllogo";
 import DataTable, { Column } from "@/components/ui/DataTable";
 import ConfirmationModal from "@/components/ui/modal/ConfirmationModal";
 import Pagination from "@/components/ui/Pagination";
+import RolePermissionModal from "@/components/roles/RolePermissionModal";
 
 export default function RolesPage() {
     const router = useRouter();
@@ -19,6 +20,9 @@ export default function RolesPage() {
     const [statusModalOpen, setStatusModalOpen] = useState(false);
     const [statusRole, setStatusRole] = useState<Role | null>(null);
     const [statusLoading, setStatusLoading] = useState(false);
+
+    // Permission assignment modal state
+    const [permissionRole, setPermissionRole] = useState<Role | null>(null);
 
     const [searchTerm, setSearchTerm] = useState("");
     const [perPage, setPerPage] = useState(10);
@@ -233,7 +237,7 @@ export default function RolesPage() {
             header: "Permissions",
             className: "text-gray-700 whitespace-nowrap",
             render: (role) => (
-                <div className="flex flex-wrap gap-1 max-w-md">
+                <div className="flex flex-wrap items-center gap-1 max-w-md">
                     {role.permissions && role.permissions.length > 0 ? (
                         role.permissions.slice(0, 3).map((permission, index) => (
                             <span
@@ -250,6 +254,14 @@ export default function RolesPage() {
                     {role.permissions && role.permissions.length > 3 && (
                         <span className="text-xs text-gray-500">+{role.permissions.length - 3} more</span>
                     )}
+                    <button
+                        onClick={(e) => { e.stopPropagation(); setPermissionRole(role); }}
+                        className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors"
+                        title="Assign permissions"
+                    >
+                        <Icon icon="hugeicons:add-circle" className="w-3.5 h-3.5" />
+                        Assign
+                    </button>
                 </div>
             ),
         },
@@ -387,6 +399,13 @@ export default function RolesPage() {
                 onPerPageChange={handlePerPageChange}
             />
             
+            <RolePermissionModal
+                isOpen={!!permissionRole}
+                role={permissionRole}
+                onClose={() => setPermissionRole(null)}
+                onSaved={loadRoles}
+            />
+
             <ConfirmationModal
                 isOpen={statusModalOpen}
                 onClose={() => setStatusModalOpen(false)}

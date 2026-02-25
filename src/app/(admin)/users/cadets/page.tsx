@@ -211,12 +211,11 @@ function CadetsPageContent() {
       header: "Name", 
       className: "font-medium text-gray-900",
       render: (cadet) => (
-        <div className="flex items-center gap-3">2
+        <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-full bg-gray-100 flex-shrink-0 overflow-hidden border border-gray-200">
             {cadet.profile_picture || cadet.profile_photo ? (
-              // eslint-disable-next-line @next/next/no-img-element
               <img 
-                src={getImageUrl(cadet.profile_picture || cadet.profile_photo)} 
+                src={cadet.profile_picture || cadet.profile_photo} 
                 alt={cadet.name} 
                 className="w-full h-full object-cover"
               />

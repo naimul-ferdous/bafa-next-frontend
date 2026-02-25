@@ -11,60 +11,45 @@ import FullLogo from "@/components/ui/fulllogo";
 import DataTable, { Column } from "@/components/ui/DataTable";
 import ConfirmationModal from "@/components/ui/modal/ConfirmationModal";
 import Pagination from "@/components/ui/Pagination";
+import MenuPermissionModal from "@/components/menus/MenuPermissionModal";
 
 export default function MenusPage() {
   const router = useRouter();
   const [menus, setMenus] = useState<Menu[]>([]);
   const [loading, setLoading] = useState(true);
-  
+
   // Status modal state
   const [statusModalOpen, setStatusModalOpen] = useState(false);
   const [statusMenu, setStatusMenu] = useState<Menu | null>(null);
   const [statusLoading, setStatusLoading] = useState(false);
 
+  // Permission assignment modal state
+  const [permissionMenu, setPermissionMenu] = useState<Menu | null>(null);
+
   const [searchTerm, setSearchTerm] = useState("");
-  const [perPage, setPerPage] = useState(10);
   const [currentPage, setCurrentPage] = useState(1);
+  const [perPage, setPerPage] = useState(10);
   const [pagination, setPagination] = useState({
-    current_page: 1,
-    last_page: 1,
-    per_page: 10,
-    total: 0,
-    from: 0,
-    to: 0,
+    current_page: 1, last_page: 1, per_page: 10, total: 0, from: 0, to: 0,
   });
   const { refreshUser } = useAuth();
 
   const loadMenus = useCallback(async () => {
-    // Flatten nested menu structure for table display
-    const flattenMenus = (menuList: Menu[]): Menu[] => {
-      let result: Menu[] = [];
-      menuList.forEach(menu => {
-        const { children, ...menuWithoutChildren } = menu;
-        result.push(menuWithoutChildren as Menu);
-        if (children && children.length > 0) {
-          result = result.concat(flattenMenus(children));
-        }
-      });
-      return result;
-    };
-
     try {
       setLoading(true);
-      const response = await menuService.getAllMenus({
+      const response = await menuService.getRawMenus({
         page: currentPage,
         per_page: perPage,
         search: searchTerm || undefined,
       });
-      const flatMenus = flattenMenus(response.data);
-      setMenus(flatMenus);
+      setMenus(response.data);
       setPagination({
         current_page: response.current_page,
-        last_page: response.last_page,
-        per_page: response.per_page,
-        total: response.total,
-        from: response.from,
-        to: response.to,
+        last_page:    response.last_page,
+        per_page:     response.per_page,
+        total:        response.total,
+        from:         response.from,
+        to:           response.to,
       });
     } catch (error) {
       console.error("Failed to load menus:", error);
@@ -122,20 +107,15 @@ export default function MenusPage() {
     console.log("Export menus");
   };
 
-  const getParentMenuName = (parentId: number | null | undefined) => {
-    if (!parentId) return "Root Menu";
-    const parent = menus.find(m => m.id === parentId);
-    return parent?.name || "Unknown";
-  };
 
   const handleSearchChange = (value: string) => {
     setSearchTerm(value);
-    setCurrentPage(1); // Reset to first page on search
+    setCurrentPage(1);
   };
 
   const handlePerPageChange = (value: number) => {
     setPerPage(value);
-    setCurrentPage(1); // Reset to first page when changing items per page
+    setCurrentPage(1);
   };
 
   // Table skeleton loader
@@ -153,7 +133,7 @@ export default function MenusPage() {
       key: "id",
       header: "SL. No.",
       className: "text-gray-900",
-      render: (menu, index) => (pagination.from || 0) + index,
+      render: (_, index) => (pagination.from || 0) + index,
     },
     {
       key: "name",
@@ -174,7 +154,7 @@ export default function MenusPage() {
       key: "parent_id",
       header: "Parent Menu",
       className: "text-gray-700",
-      render: (menu) => getParentMenuName(menu.parent_id),
+      render: (menu) => menu.parent?.name ?? "Root Menu",
     },
     {
       key: "route",
@@ -209,7 +189,7 @@ export default function MenusPage() {
       header: "Required Permissions",
       className: "text-gray-700",
       render: (menu) => (
-        <div className="flex flex-wrap gap-1 max-w-xs">
+        <div className="flex flex-wrap items-center gap-1 max-w-xs">
           {menu.permissions && menu.permissions.length > 0 ? (
             menu.permissions.slice(0, 3).map((permission: Permission) => (
               <span
@@ -226,6 +206,14 @@ export default function MenusPage() {
           {menu.permissions && menu.permissions.length > 3 && (
             <span className="text-xs text-gray-500">+{menu.permissions.length - 3} more</span>
           )}
+          <button
+            onClick={(e) => { e.stopPropagation(); setPermissionMenu(menu); }}
+            className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors"
+            title="Assign permissions"
+          >
+            <Icon icon="hugeicons:add-circle" className="w-3.5 h-3.5" />
+            Assign
+          </button>
         </div>
       ),
     },
@@ -328,7 +316,6 @@ export default function MenusPage() {
         />
       )}
 
-      {/* Pagination */}
       <Pagination
         currentPage={currentPage}
         lastPage={pagination.last_page}
@@ -338,6 +325,13 @@ export default function MenusPage() {
         perPage={perPage}
         onPageChange={setCurrentPage}
         onPerPageChange={handlePerPageChange}
+      />
+
+      <MenuPermissionModal
+        isOpen={!!permissionMenu}
+        menu={permissionMenu}
+        onClose={() => setPermissionMenu(null)}
+        onSaved={loadMenus}
       />
 
       <ConfirmationModal

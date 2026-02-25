@@ -1,67 +1,28 @@
 /**
  * Permission Service
- * API calls for permission management
+ * API calls for permission and permission action management
  */
 
 import apiClient from '@/libs/auth/api-client';
 import { getToken } from '@/libs/auth/auth-token';
-import type { Permission } from '@/libs/types/menu';
-
-export interface PermissionQueryParams {
-  page?: number;
-  per_page?: number;
-  search?: string;
-}
-
-export interface PermissionCreateData {
-  name: string;
-  slug: string;
-  description?: string;
-  module: string;
-  is_active: boolean;
-}
-
-export interface PermissionPaginatedResponse {
-  data: Permission[];
-  current_page: number;
-  last_page: number;
-  per_page: number;
-  total: number;
-  from: number;
-  to: number;
-}
-
-interface PermissionApiResponse {
-  success: boolean;
-  message: string;
-  data: Permission[];
-  pagination?: {
-    current_page: number;
-    last_page: number;
-    per_page: number;
-    total: number;
-    from: number;
-    to: number;
-  };
-}
-
-interface SinglePermissionApiResponse {
-  success: boolean;
-  message: string;
-  data: Permission;
-}
-
-interface PermissionActionApiResponse {
-  success: boolean;
-  message: string;
-  data?: Permission | null;
-}
+import type { 
+  Permission, 
+  PermissionQueryParams, 
+  PermissionPaginatedResponse,
+  PermissionApiResponse,
+  SinglePermissionApiResponse,
+  PermissionAction,
+  PermissionActionArrayApiResponse,
+  Menu,
+  MenuArrayApiResponse,
+  SingleMenuApiResponse
+} from '@/libs/types/menu';
 
 export const permissionService = {
   /**
    * Get all permissions with pagination
    */
-  async getAllPermissions(params?: PermissionQueryParams): Promise<PermissionPaginatedResponse> {
+  async getPermissions(params?: PermissionQueryParams): Promise<PermissionPaginatedResponse> {
     try {
       const query = new URLSearchParams();
 
@@ -77,7 +38,16 @@ export const permissionService = {
         query.append('search', params.search);
       }
 
-      const endpoint = `/permissions${query.toString() ? `?${query.toString()}` : ''}`;
+      if (params?.sort_by) {
+        query.append('sort_by', params.sort_by);
+      }
+
+      if (params?.sort_order) {
+        query.append('sort_order', params.sort_order);
+      }
+
+      const queryString = query.toString();
+      const endpoint = `/permissions${queryString ? `?${queryString}` : ''}`;
 
       const token = getToken();
       const result = await apiClient.get<PermissionApiResponse>(endpoint, token);
@@ -120,7 +90,7 @@ export const permissionService = {
   /**
    * Get single permission
    */
-  async getPermission(id: number): Promise<Permission | null> {
+  async getPermission(id: number | string): Promise<Permission | null> {
     try {
       const token = getToken();
       const result = await apiClient.get<SinglePermissionApiResponse>(`/permissions/${id}`, token);
@@ -137,28 +107,139 @@ export const permissionService = {
   },
 
   /**
-   * Create new permission
+   * Get all distinct module values from permissions
    */
-  async createPermission(data: PermissionCreateData): Promise<Permission | null> {
+  async getModules(): Promise<string[]> {
     try {
       const token = getToken();
+      const result = await apiClient.get<{ success: boolean; data: string[] }>('/permissions/get-modules', token);
+      return result?.data || [];
+    } catch (error) {
+      console.error('Failed to fetch permission modules:', error);
+      return [];
+    }
+  },
 
-      if (!token) {
-        throw new Error('Authentication token not found. Please login again.');
-      }
+  /**
+   * Get all available permission actions
+   */
+  async getAvailableActions(): Promise<PermissionAction[]> {
+    try {
+      const token = getToken();
+      const result = await apiClient.get<PermissionActionArrayApiResponse>('/permissions/get-actions', token);
+      return result?.data || [];
+    } catch (error) {
+      console.error('Failed to fetch permission actions:', error);
+      return [];
+    }
+  },
 
-      const result = await apiClient.post<PermissionActionApiResponse>('/permissions', data, token);
+  /**
+   * Get all modules (Menus) with their organized permissions
+   */
+  async getAllModules(): Promise<Menu[]> {
+    try {
+      const token = getToken();
+      const result = await apiClient.get<MenuArrayApiResponse>('/permissions/all-modules', token);
+      return result?.data || [];
+    } catch (error) {
+      console.error('Failed to fetch modules:', error);
+      return [];
+    }
+  },
+
+  /**
+   * Sync permissions for a menu
+   */
+  async syncMenuPermissions(data: { menu_id: number; action_codes: string[] }): Promise<Menu | null> {
+    try {
+      const token = getToken();
+      if (!token) throw new Error('Authentication token not found');
+
+      const result = await apiClient.post<SingleMenuApiResponse>('/permissions/sync-menu-permissions', data, token);
 
       if (!result || !result.success) {
-        throw new Error(result?.message || 'Failed to create permission');
+        throw new Error(result?.message || 'Failed to sync menu permissions');
       }
 
       return result.data || null;
-    } catch (error: unknown) {
+    } catch (error) {
+      console.error('Failed to sync menu permissions:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Get permissions grouped by module
+   * Response: { "module_name": [ ...permissions ] }
+   */
+  async getGroupedByModule(): Promise<Record<string, Permission[]>> {
+    try {
+      const token = getToken();
+      const result = await apiClient.get<{ success: boolean; data: Record<string, Permission[]> }>('/permissions/grouped-by-module', token);
+      return result?.data || {};
+    } catch (error) {
+      console.error('Failed to fetch permissions grouped by module:', error);
+      return {};
+    }
+  },
+
+  /**
+   * Get permissions grouped by code with pagination and search
+   */
+  async getGroupedByCode(params?: { page?: number; per_page?: number; search?: string }): Promise<{
+    data: Record<string, Permission[]>;
+    current_page: number;
+    per_page: number;
+    total: number;
+    last_page: number;
+    from: number;
+    to: number;
+  }> {
+    const empty = { data: {}, current_page: 1, per_page: 10, total: 0, last_page: 1, from: 0, to: 0 };
+    try {
+      const query = new URLSearchParams();
+      if (params?.page)     query.append('page',     params.page.toString());
+      if (params?.per_page) query.append('per_page', params.per_page.toString());
+      if (params?.search)   query.append('search',   params.search);
+
+      const queryString = query.toString();
+      const endpoint = `/permissions/grouped-by-code${queryString ? `?${queryString}` : ''}`;
+
+      const token = getToken();
+      const result = await apiClient.get<{
+        success: boolean;
+        data: Record<string, Permission[]>;
+        pagination: { current_page: number; per_page: number; total: number; last_page: number; from: number; to: number };
+      }>(endpoint, token);
+
+      if (!result) return empty;
+
+      return {
+        data:         result.data                    || {},
+        current_page: result.pagination?.current_page || 1,
+        per_page:     result.pagination?.per_page     || 10,
+        total:        result.pagination?.total         || 0,
+        last_page:    result.pagination?.last_page     || 1,
+        from:         result.pagination?.from          || 0,
+        to:           result.pagination?.to            || 0,
+      };
+    } catch (error) {
+      console.error('Failed to fetch permissions grouped by code:', error);
+      return empty;
+    }
+  },
+
+  /**
+   * Create new permission
+   */
+  async createPermission(data: any): Promise<Permission | null> {
+    try {
+      const token = getToken();
+      const result = await apiClient.post<SinglePermissionApiResponse>('/permissions', data, token);
+      return result?.data || null;
+    } catch (error) {
       console.error('Failed to create permission:', error);
-      if (typeof error === 'object' && error !== null && 'status' in error && error.status === 401) {
-        throw new Error('Session expired. Please login again.');
-      }
       throw error;
     }
   },
@@ -166,26 +247,13 @@ export const permissionService = {
   /**
    * Update permission
    */
-  async updatePermission(id: number, data: Partial<PermissionCreateData>): Promise<Permission | null> {
+  async updatePermission(id: number | string, data: any): Promise<Permission | null> {
     try {
       const token = getToken();
-
-      if (!token) {
-        throw new Error('Authentication token not found. Please login again.');
-      }
-
-      const result = await apiClient.put<PermissionActionApiResponse>(`/permissions/${id}`, data, token);
-
-      if (!result || !result.success) {
-        throw new Error(result?.message || 'Failed to update permission');
-      }
-
-      return result.data || null;
-    } catch (error: unknown) {
+      const result = await apiClient.put<SinglePermissionApiResponse>(`/permissions/${id}`, data, token);
+      return result?.data || null;
+    } catch (error) {
       console.error(`Failed to update permission ${id}:`, error);
-      if (typeof error === 'object' && error !== null && 'status' in error && error.status === 401) {
-        throw new Error('Session expired. Please login again.');
-      }
       throw error;
     }
   },
@@ -193,10 +261,10 @@ export const permissionService = {
   /**
    * Delete permission
    */
-  async deletePermission(id: number): Promise<boolean> {
+  async deletePermission(id: number | string): Promise<boolean> {
     try {
       const token = getToken();
-      const result = await apiClient.delete<PermissionActionApiResponse>(`/permissions/${id}`, token);
+      const result = await apiClient.delete<any>(`/permissions/${id}`, token);
       return result?.success || false;
     } catch (error) {
       console.error(`Failed to delete permission ${id}:`, error);

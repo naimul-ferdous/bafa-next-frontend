@@ -254,6 +254,23 @@ export const instructorService = {
       return false;
     }
   },
+
+  async findInstructorByServiceNumber(serviceNumber: string): Promise<InstructorBiodata | null> {
+    try {
+      const token = getToken();
+      const result = await apiClient.get<InstructorApiResponse>(`/instructors?search=${serviceNumber}`, token);
+      
+      if (result && result.success && result.data && result.data.length > 0) {
+        // Find exact match just in case
+        const exactMatch = result.data.find(i => i.user?.service_number === serviceNumber);
+        return exactMatch || result.data[0];
+      }
+      return null;
+    } catch (error) {
+      console.error(`Failed to find instructor with service number ${serviceNumber}:`, error);
+      return null;
+    }
+  },
 };
 
 export default instructorService;

@@ -14,10 +14,17 @@ import UserSignatureModal from "@/components/users/UserSignatureModal";
 import InstructorAssignWingModal from "@/components/instructors/InstructorAssignWingModal";
 import CadetAssignWingModal from "@/components/users/CadetAssignWingModal";
 import Image from "next/image";
-import { getImageUrl } from "@/libs/utils/formatter";
+import { usePageContext, useCan } from "@/context/PagePermissionsContext";
 
 export default function UsersPage() {
   const router = useRouter();
+  const { menu, permissions } = usePageContext();
+  const can = useCan();
+
+  useEffect(() => {
+    console.log("Page permissions:", permissions);
+  }, [menu, permissions]);
+
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   
@@ -150,13 +157,13 @@ export default function UsersPage() {
   );
 
   const columns: Column<User>[] = [
-    { key: "id", header: "SL.", className: "text-center text-gray-900", render: (user, index) => (pagination.from || 0) + (index + 1) },
+    { key: "id", header: "SL.", className: "text-center text-gray-900", render: (user, index) => (pagination.from || 0) + (index) },
     { key: "profile_photo", header: "Profile", className: "text-center", render: (user) => (
       user.profile_photo ? (
         <div className="flex justify-center">
           <div className="relative w-10 h-10 overflow-hidden rounded-full border border-gray-200">
             <Image 
-              src={`${process.env.NEXT_PUBLIC_API_URL?.replace('/api', '')}/public/${user.profile_photo}`} 
+              src={user.profile_photo} 
               alt={user.name} 
               fill
               className="object-cover"
@@ -176,27 +183,24 @@ export default function UsersPage() {
     { key: "signature", header: "Signature", className: "text-center", render: (user) => (
       user.signature ? (
         <div className="flex justify-center">
-          <div 
-            className="relative w-20 h-10 overflow-hidden rounded border border-gray-200 bg-gray-50 cursor-pointer hover:bg-gray-100"
-            onClick={(e) => { e.stopPropagation(); handleUpdateSignature(user); }}
-            title="Update Signature"
+          <div
+            className={`relative w-20 h-10 overflow-hidden rounded border border-gray-200 bg-gray-50 ${can('edit') ? 'cursor-pointer hover:bg-gray-100' : ''}`}
+            onClick={can('edit') ? (e) => { e.stopPropagation(); handleUpdateSignature(user); } : undefined}
+            title={can('edit') ? "Update Signature" : undefined}
           >
-            <Image 
-              src={getImageUrl(user.signature)} 
-              alt="Signature" 
-              fill
-              className="object-contain"
-            />
+            <Image src={user.signature} alt="Signature" fill className="object-contain" />
           </div>
         </div>
       ) : (
-        <button 
-          onClick={(e) => { e.stopPropagation(); handleUpdateSignature(user); }}
-          className="p-1 text-blue-600 hover:bg-blue-50 rounded-full border border-blue-100"
-          title="Add Signature"
-        >
-          <Icon icon="hugeicons:plus-sign" className="w-4 h-4" />
-        </button>
+        can('edit') ? (
+          <button
+            onClick={(e) => { e.stopPropagation(); handleUpdateSignature(user); }}
+            className="p-1 text-blue-600 hover:bg-blue-50 rounded-full border border-blue-100"
+            title="Add Signature"
+          >
+            <Icon icon="hugeicons:plus-sign" className="w-4 h-4" />
+          </button>
+        ) : <span className="text-gray-400 text-xs">—</span>
       )
     )},
     { key: "email", header: "Email", className: "text-gray-700" },
@@ -206,23 +210,27 @@ export default function UsersPage() {
         {user.rank ? (
           <>
             <span className="flex-1">{user.rank.name}</span>
-            <button 
-              onClick={(e) => { e.stopPropagation(); handleAssignRank(user); }}
-              className="p-0.5 text-blue-600 hover:bg-blue-50 rounded border border-blue-100"
-              title="Update Rank"
-            >
-              <Icon icon="hugeicons:pencil-edit-01" className="w-3.5 h-3.5" />
-            </button>
+            {can('edit') && (
+              <button
+                onClick={(e) => { e.stopPropagation(); handleAssignRank(user); }}
+                className="p-0.5 text-blue-600 hover:bg-blue-50 rounded border border-blue-100"
+                title="Update Rank"
+              >
+                <Icon icon="hugeicons:pencil-edit-01" className="w-3.5 h-3.5" />
+              </button>
+            )}
           </>
         ) : (
-          <button 
-            onClick={(e) => { e.stopPropagation(); handleAssignRank(user); }}
-            className="p-1 text-blue-600 hover:bg-blue-50 rounded border border-blue-100 flex items-center gap-1"
-            title="Assign Rank"
-          >
-            <Icon icon="hugeicons:plus-sign" className="w-3.5 h-3.5" />
-            <span className="text-xs font-medium">Add Rank</span>
-          </button>
+          can('edit') ? (
+            <button
+              onClick={(e) => { e.stopPropagation(); handleAssignRank(user); }}
+              className="p-1 text-blue-600 hover:bg-blue-50 rounded border border-blue-100 flex items-center gap-1"
+              title="Assign Rank"
+            >
+              <Icon icon="hugeicons:plus-sign" className="w-3.5 h-3.5" />
+              <span className="text-xs font-medium">Add Rank</span>
+            </button>
+          ) : <span className="text-gray-400 text-xs">—</span>
         )}
       </div>
     )},
@@ -244,13 +252,15 @@ export default function UsersPage() {
         ) : (
           <span className="text-gray-400 text-xs">No roles</span>
         )}
-        <button 
-          onClick={(e) => { e.stopPropagation(); handleAssignRole(user); }}
-          className="ml-1 p-0.5 text-blue-600 hover:bg-blue-50 rounded border border-blue-100"
-          title="Add / Manage Roles"
-        >
-          <Icon icon="hugeicons:plus-sign-circle" className="w-3.5 h-3.5" />
-        </button>
+        {can('edit') && (
+          <button
+            onClick={(e) => { e.stopPropagation(); handleAssignRole(user); }}
+            className="ml-1 p-0.5 text-blue-600 hover:bg-blue-50 rounded border border-blue-100"
+            title="Add / Manage Roles"
+          >
+            <Icon icon="hugeicons:plus-sign-circle" className="w-3.5 h-3.5" />
+          </button>
+        )}
       </div>
     )},
     { key: "is_active", header: "Status", className: "text-center", render: (user) => {
@@ -269,12 +279,18 @@ export default function UsersPage() {
     }},
     { key: "actions", header: "Actions", headerAlign: "center", className: "text-center no-print", render: (user) => (
       <div className="flex items-center justify-center gap-1" onClick={(e) => e.stopPropagation()}>
-        <button onClick={() => handleEditUser(user)} className="p-1 text-yellow-600 hover:bg-yellow-50 rounded" title="Edit"><Icon icon="hugeicons:pencil-edit-01" className="w-4 h-4" /></button>
-        <button onClick={() => handleAssignWing(user)} className="p-1 text-green-600 hover:bg-green-50 rounded" title="Assign Wing"><Icon icon="hugeicons:hierarchy-square-01" className="w-4 h-4" /></button>
-        {(!user.is_active) ? (
-          <button onClick={() => handleUnblockUser(user)} className="p-1 text-orange-600 hover:bg-orange-50 rounded" title="Unblock / Activate"><Icon icon="hugeicons:checkmark-circle-02" className="w-4 h-4" /></button>
-        ) : (
-          <button onClick={() => handleBlockUser(user)} className="p-1 text-red-600 hover:bg-red-50 rounded" title="Block / Deactivate"><Icon icon="hugeicons:unavailable" className="w-4 h-4" /></button>
+        {can('edit') && (
+          <button onClick={() => handleEditUser(user)} className="p-1 text-yellow-600 hover:bg-yellow-50 rounded" title="Edit"><Icon icon="hugeicons:pencil-edit-01" className="w-4 h-4" /></button>
+        )}
+        {can('edit') && (
+          <button onClick={() => handleAssignWing(user)} className="p-1 text-green-600 hover:bg-green-50 rounded" title="Assign Wing"><Icon icon="hugeicons:hierarchy-square-01" className="w-4 h-4" /></button>
+        )}
+        {can('delete') && (
+          (!user.is_active) ? (
+            <button onClick={() => handleUnblockUser(user)} className="p-1 text-orange-600 hover:bg-orange-50 rounded" title="Unblock / Activate"><Icon icon="hugeicons:checkmark-circle-02" className="w-4 h-4" /></button>
+          ) : (
+            <button onClick={() => handleBlockUser(user)} className="p-1 text-red-600 hover:bg-red-50 rounded" title="Block / Deactivate"><Icon icon="hugeicons:unavailable" className="w-4 h-4" /></button>
+          )
         )}
       </div>
     )},
@@ -294,12 +310,14 @@ export default function UsersPage() {
           <input type="text" placeholder="Search by name, service number, email..." value={searchTerm} onChange={(e) => handleSearchChange(e.target.value)} className="pl-10 pr-4 py-2 border border-gray-200 rounded-lg bg-white text-gray-900 w-full focus:outline-none focus:ring-0" />
         </div>
         <div className="flex items-center gap-3">
-          <button onClick={handleAddUser} className="px-4 py-2 rounded-lg text-white flex items-center gap-1 bg-blue-600 hover:bg-blue-700"><Icon icon="hugeicons:add-circle" className="w-4 h-4 mr-2" />Add User</button>
+          {can('add') && (
+            <button onClick={handleAddUser} className="px-4 py-2 rounded-lg text-white flex items-center gap-1 bg-blue-600 hover:bg-blue-700"><Icon icon="hugeicons:add-circle" className="w-4 h-4 mr-2" />Add User</button>
+          )}
           <button onClick={handleExport} className="px-4 py-2 rounded-lg text-white flex items-center gap-1 bg-green-600 hover:bg-green-700"><Icon icon="hugeicons:download-04" className="w-4 h-4 mr-2" />Export</button>
         </div>
       </div>
 
-      {loading ? <TableLoading /> : <DataTable columns={columns} data={users} keyExtractor={(user) => user.id.toString()} emptyMessage="No users found" onRowClick={(user) => handleViewUser(user)} />}
+      {loading ? <TableLoading /> : <DataTable columns={columns} data={users} keyExtractor={(user) => user.id.toString()} emptyMessage="No users found" onRowClick={can('view') ? (user) => handleViewUser(user) : undefined} />}
 
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">

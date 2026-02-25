@@ -13,7 +13,11 @@ export default function CreateInstructorPage() {
   const handleSubmit = async (formData: any) => {
     setLoading(true);
     try {
-      await instructorService.createInstructor(formData);
+      if (formData.isEdit && formData.id) {
+        await instructorService.updateInstructor(formData.id, formData);
+      } else {
+        await instructorService.createInstructor(formData);
+      }
       router.push("/users/instructors");
     } catch (err: any) {
       throw err; // Form will handle the error display

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { Permission } from "@/libs/types/menu";
 import { Icon } from "@iconify/react";
@@ -10,19 +10,18 @@ import DataTable, { Column } from "@/components/ui/DataTable";
 import ConfirmationModal from "@/components/ui/modal/ConfirmationModal";
 import Pagination from "@/components/ui/Pagination";
 
+type GroupRow = {
+    code: string;
+    permissions: Permission[];
+};
+
 export default function PermissionsPage() {
     const router = useRouter();
-    const [permissions, setPermissions] = useState<Permission[]>([]);
+    const [grouped, setGrouped] = useState<Record<string, Permission[]>>({});
     const [loading, setLoading] = useState(true);
-    
-    // Status toggle modal state
-    const [statusModalOpen, setStatusModalOpen] = useState(false);
-    const [statusPermission, setStatusPermission] = useState<Permission | null>(null);
-    const [statusLoading, setStatusLoading] = useState(false);
-
     const [searchTerm, setSearchTerm] = useState("");
-    const [perPage, setPerPage] = useState(10);
     const [currentPage, setCurrentPage] = useState(1);
+    const [perPage, setPerPage] = useState(10);
     const [pagination, setPagination] = useState({
         current_page: 1,
         last_page: 1,
@@ -32,22 +31,27 @@ export default function PermissionsPage() {
         to: 0,
     });
 
+    // Status toggle modal state
+    const [statusModalOpen, setStatusModalOpen] = useState(false);
+    const [statusPermission, setStatusPermission] = useState<Permission | null>(null);
+    const [statusLoading, setStatusLoading] = useState(false);
+
     const loadPermissions = useCallback(async () => {
         try {
             setLoading(true);
-            const response = await permissionService.getAllPermissions({
+            const response = await permissionService.getGroupedByCode({
                 page: currentPage,
                 per_page: perPage,
                 search: searchTerm || undefined,
             });
-            setPermissions(response.data);
+            setGrouped(response.data);
             setPagination({
                 current_page: response.current_page,
-                last_page: response.last_page,
-                per_page: response.per_page,
-                total: response.total,
-                from: response.from,
-                to: response.to,
+                last_page:    response.last_page,
+                per_page:     response.per_page,
+                total:        response.total,
+                from:         response.from,
+                to:           response.to,
             });
         } catch (error) {
             console.error("Failed to load permissions:", error);
@@ -60,24 +64,24 @@ export default function PermissionsPage() {
         loadPermissions();
     }, [loadPermissions]);
 
-    // Listen for permission updates
-    useEffect(() => {
-        const handlePermissionUpdate = () => loadPermissions();
-        window.addEventListener('permissionUpdated', handlePermissionUpdate);
-        return () => window.removeEventListener('permissionUpdated', handlePermissionUpdate);
-    }, [loadPermissions]);
-
-    const handleAddPermission = () => {
-        router.push("/settings/permissions/create");
+    const handleSearchChange = (value: string) => {
+        setSearchTerm(value);
+        setCurrentPage(1);
     };
 
-    const handleEditPermission = (permission: Permission) => {
-        router.push(`/settings/permissions/${permission.id}/edit`);
+    const handlePerPageChange = (value: number) => {
+        setPerPage(value);
+        setCurrentPage(1);
     };
 
-    const handleViewPermission = (permission: Permission) => {
-        router.push(`/settings/permissions/${permission.id}`);
-    };
+    // Convert grouped object → flat rows for DataTable
+    const rows = useMemo<GroupRow[]>(() =>
+        Object.entries(grouped).map(([code, permissions]) => ({ code, permissions })),
+    [grouped]);
+
+    const handleAddPermission = () => router.push("/settings/permissions/create");
+    const handleEditPermission = (p: Permission) => router.push(`/settings/permissions/${p.id}/edit`);
+    const handleViewPermission = (p: Permission) => router.push(`/settings/permissions/${p.id}`);
 
     const handleToggleStatus = (permission: Permission) => {
         setStatusPermission(permission);
@@ -86,14 +90,13 @@ export default function PermissionsPage() {
 
     const confirmToggleStatus = async () => {
         if (!statusPermission) return;
-
         try {
             setStatusLoading(true);
             await permissionService.updatePermission(statusPermission.id, {
                 name: statusPermission.name,
                 slug: statusPermission.slug,
                 module: statusPermission.module,
-                is_active: !statusPermission.is_active
+                is_active: !statusPermission.is_active,
             });
             await loadPermissions();
             setStatusModalOpen(false);
@@ -106,132 +109,79 @@ export default function PermissionsPage() {
         }
     };
 
-    const handleExport = () => {
-        console.log("Export permissions");
-    };
-
-    const handleSearchChange = (value: string) => {
-        setSearchTerm(value);
-        setCurrentPage(1); // Reset to first page on search
-    };
-
-    const handlePerPageChange = (value: number) => {
-        setPerPage(value);
-        setCurrentPage(1); // Reset to first page when changing items per page
-    };
-
-    // Table skeleton loader
-    const TableLoading = () => (
-        <div className="w-full min-h-[20vh] flex items-center justify-center">
-            <div>
-                <Icon icon="hugeicons:fan-01" className="w-10 h-10 animate-spin mx-auto my-10 text-blue-500" />
-            </div>
-        </div>
-    );
-
-    // Define table columns
-    const columns: Column<Permission>[] = [
+    const columns: Column<GroupRow>[] = [
         {
-            key: "id",
+            key: "sl",
             header: "SL.",
-            className: "text-center text-gray-900",
-            render: (permission, index) => (pagination.from || 0) + (index + 1),
+            className: "text-center text-gray-900 w-12",
+            render: (_, index) => index + 1,
         },
         {
-            key: "name",
-            header: "Permission Name",
-            className: "font-medium text-gray-900",
+            key: "code",
+            header: "Code",
+            className: "font-semibold text-gray-800 uppercase w-32 whitespace-nowrap",
         },
         {
-            key: "slug",
-            header: "Slug",
-            className: "text-gray-700 font-mono text-sm",
-        },
-        {
-            key: "module",
-            header: "Module",
-            className: "text-gray-700",
-            render: (permission) => (
-                <span className="inline-flex items-center px-2.5 py-1 text-xs font-semibold rounded-full bg-indigo-100 text-indigo-800 uppercase tracking-tighter">
-                    {permission.module}
-                </span>
-            ),
-        },
-        {
-            key: "description",
-            header: "Description",
-            className: "text-gray-700",
-            render: (permission) => (
-                <span className="line-clamp-2">
-                    {permission.description || "—"}
-                </span>
-            ),
-        },
-        {
-            key: "is_active",
-            header: "Status",
-            className: "text-center",
-            headerAlign: "center",
-            render: (permission) => (
-                <span className={`inline-flex items-center justify-center px-3 py-1 text-xs font-semibold rounded-full ${
-                    permission.is_active
-                        ? "bg-green-100 text-green-800"
-                        : "bg-red-100 text-red-800"
-                }`}>
-                    {permission.is_active ? "Active" : "Inactive"}
-                </span>
-            ),
-        },
-        {
-            key: "created_at",
-            header: "Created At",
-            className: "text-gray-700 whitespace-nowrap",
-            render: (permission) =>
-                new Date(permission.created_at).toLocaleDateString("en-GB", {
-                    day: "2-digit",
-                    month: "short",
-                    year: "numeric",
-                }),
-        },
-        {
-            key: "actions",
-            header: "Actions",
-            headerAlign: "center",
-            className: "text-center no-print",
-            render: (permission) => (
-                <div className="flex items-center justify-center gap-1" onClick={(e) => e.stopPropagation()}>
-                    <button
-                        onClick={() => handleViewPermission(permission)}
-                        className="p-1 text-blue-600 hover:bg-blue-50 rounded transition-colors"
-                        title="View"
-                    >
-                        <Icon icon="hugeicons:view" className="w-4 h-4" />
-                    </button>
-                    <button
-                        onClick={() => handleEditPermission(permission)}
-                        className="p-1 text-yellow-600 hover:bg-yellow-50 rounded transition-colors"
-                        title="Edit"
-                    >
-                        <Icon icon="hugeicons:pencil-edit-01" className="w-4 h-4" />
-                    </button>
-                    {permission.is_active ? (
-                        <button
-                            onClick={() => handleToggleStatus(permission)}
-                            className="p-1 text-red-600 hover:bg-red-50 rounded transition-colors"
-                            title="Deactivate"
+            key: "permissions",
+            header: "Permissions",
+            render: (row) => (
+                <div className="flex flex-wrap gap-2 py-1">
+                    {row.permissions.map((permission) => (
+                        <div
+                            key={permission.id}
+                            className="group relative flex items-center gap-1.5 px-3 py-1 rounded-full border border-gray-200 bg-gray-50 hover:bg-blue-50 hover:border-blue-300 transition-colors cursor-default text-sm"
                         >
-                            <Icon icon="hugeicons:unavailable" className="w-4 h-4" />
-                        </button>
-                    ) : (
-                        <button
-                            onClick={() => handleToggleStatus(permission)}
-                            className="p-1 text-green-600 hover:bg-green-50 rounded transition-colors"
-                            title="Activate"
-                        >
-                            <Icon icon="hugeicons:checkmark-circle-02" className="w-4 h-4" />
-                        </button>
-                    )}
+                            <span className="text-gray-700 group-hover:text-blue-700 font-medium">
+                                {permission.name}
+                            </span>
+                            <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
+                                permission.is_active ? "bg-green-500" : "bg-red-400"
+                            }`} />
+                            {/* Hover actions */}
+                            <span className="hidden group-hover:flex items-center gap-0.5 ml-1">
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); handleViewPermission(permission); }}
+                                    className="p-0.5 text-blue-600 hover:bg-blue-100 rounded"
+                                    title="View"
+                                >
+                                    <Icon icon="hugeicons:view" className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); handleEditPermission(permission); }}
+                                    className="p-0.5 text-yellow-600 hover:bg-yellow-100 rounded"
+                                    title="Edit"
+                                >
+                                    <Icon icon="hugeicons:pencil-edit-01" className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); handleToggleStatus(permission); }}
+                                    className={`p-0.5 rounded ${
+                                        permission.is_active
+                                            ? "text-red-600 hover:bg-red-100"
+                                            : "text-green-600 hover:bg-green-100"
+                                    }`}
+                                    title={permission.is_active ? "Deactivate" : "Activate"}
+                                >
+                                    <Icon
+                                        icon={permission.is_active ? "hugeicons:unavailable" : "hugeicons:checkmark-circle-02"}
+                                        className="w-3.5 h-3.5"
+                                    />
+                                </button>
+                            </span>
+                        </div>
+                    ))}
                 </div>
+            ),
+        },
+        {
+            key: "count",
+            header: "Count",
+            className: "text-center w-16",
+            headerAlign: "center",
+            render: (row) => (
+                <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-blue-100 text-blue-700 text-xs font-bold">
+                    {row.permissions.length}
+                </span>
             ),
         },
     ];
@@ -247,45 +197,50 @@ export default function PermissionsPage() {
                     Bangladesh Air Force Academy
                 </h1>
                 <h2 className="text-md font-semibold text-gray-700 mt-1 uppercase">
-                    All Permissions List
+                    Permission Management System
                 </h2>
             </div>
 
             {/* Controls */}
             <div className="flex items-center justify-between gap-4 mb-6">
-                <div className="relative w-80">
-                    <Icon icon="hugeicons:search-01" className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
-                    <input
-                        type="text"
-                        placeholder="Search by permission name..."
-                        value={searchTerm}
-                        onChange={(e) => handleSearchChange(e.target.value)}
-                        className="pl-10 pr-4 py-2 border border-gray-200 rounded-lg bg-gray-50 text-gray-900 w-full focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all"
-                    />
+                <div className="flex items-center gap-3">
+                    <div className="relative w-80">
+                        <Icon icon="hugeicons:search-01" className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                        <input
+                            type="text"
+                            placeholder="Search by code or permission name..."
+                            value={searchTerm}
+                            onChange={(e) => handleSearchChange(e.target.value)}
+                            className="pl-10 pr-4 py-2 border border-gray-200 rounded-lg bg-gray-50 text-gray-900 w-full focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all"
+                        />
+                    </div>
+                    {!loading && (
+                        <span className="text-sm text-gray-500">
+                            {pagination.total} group{pagination.total !== 1 ? "s" : ""}
+                        </span>
+                    )}
                 </div>
 
-                <div className="flex items-center gap-3">
-                    <button onClick={handleAddPermission} className="px-4 py-2 rounded-lg text-white flex items-center gap-1 bg-blue-600 hover:bg-blue-700 transition-all shadow-md active:scale-95">
-                        <Icon icon="hugeicons:add-circle" className="w-4 h-4 mr-2" />
-                        Add Permission
-                    </button>
-                    <button onClick={handleExport} className="px-4 py-2 rounded-lg text-gray-700 flex items-center gap-1 bg-white border border-gray-200 hover:bg-gray-50 transition-all">
-                        <Icon icon="hugeicons:download-04" className="w-4 h-4 mr-2" />
-                        Export
-                    </button>
-                </div>
+                <button
+                    onClick={handleAddPermission}
+                    className="px-4 py-2 rounded-lg text-white flex items-center gap-1 bg-blue-600 hover:bg-blue-700 transition-all shadow-md active:scale-95"
+                >
+                    <Icon icon="hugeicons:add-circle" className="w-4 h-4 mr-2" />
+                    Add Permission
+                </button>
             </div>
 
             {/* Table */}
             {loading ? (
-                <TableLoading />
+                <div className="w-full min-h-[20vh] flex items-center justify-center">
+                    <Icon icon="hugeicons:fan-01" className="w-10 h-10 animate-spin text-blue-500" />
+                </div>
             ) : (
                 <DataTable
                     columns={columns}
-                    data={permissions}
-                    keyExtractor={(permission) => permission.id.toString()}
+                    data={rows}
+                    keyExtractor={(row) => row.code}
                     emptyMessage="No permissions found"
-                    onRowClick={handleViewPermission}
                 />
             )}
 
@@ -300,7 +255,7 @@ export default function PermissionsPage() {
                 onPageChange={setCurrentPage}
                 onPerPageChange={handlePerPageChange}
             />
-            
+
             <ConfirmationModal
                 isOpen={statusModalOpen}
                 onClose={() => setStatusModalOpen(false)}

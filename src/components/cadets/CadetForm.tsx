@@ -8,14 +8,10 @@ import Label from "@/components/form/Label";
 import FullLogo from "@/components/ui/fulllogo";
 import DatePicker from "@/components/form/input/DatePicker";
 import { geoLocationService, type Division, type District, type PostOffice } from "@/libs/services/geoLocationService";
-import { courseService } from "@/libs/services/courseService";
-import { semesterService } from "@/libs/services/semesterService";
-import { programService } from "@/libs/services/programService";
-import { branchService } from "@/libs/services/branchService";
-import { groupService } from "@/libs/services/groupService";
+import { commonService } from "@/libs/services/commonService";
 import { rankService } from "@/libs/services/rankService";
 import type { SystemCourse, SystemSemester, SystemProgram, SystemBranch, SystemGroup } from "@/libs/types/system";
-import type { CadetProfile, Rank } from "@/libs/types/user";
+import type { CadetProfile, Rank, SystemDistrict, SystemDivision, SystemPostOffice } from "@/libs/types/user";
 import { getImageUrl } from "@/libs/utils/formatter";
 
 interface FamilyMember {
@@ -144,7 +140,6 @@ export default function CadetForm({ initialData, onSubmit, onCancel, loading: ex
 
   // 2. Personal Details
   const [gender, setGender] = useState<"male" | "female" | "other" | "">("");
-  const [haveProfessional, setHaveProfessional] = useState(false);
   const [religion, setReligion] = useState("");
   const [caste, setCaste] = useState("");
   const [bloodGroup, setBloodGroup] = useState("");
@@ -278,13 +273,17 @@ export default function CadetForm({ initialData, onSubmit, onCancel, loading: ex
   const [emergencyContactEmail, setEmergencyContactEmail] = useState("");
 
   // Bangladesh Geo Data
-  const [divisions, setDivisions] = useState<Division[]>([]);
-  const [permanentDistricts, setPermanentDistricts] = useState<District[]>([]);
-  const [presentDistricts, setPresentDistricts] = useState<District[]>([]);
-  const [guardianDistricts, setGuardianDistricts] = useState<District[]>([]);
-  const [permanentPostOffices, setPermanentPostOffices] = useState<PostOffice[]>([]);
-  const [presentPostOffices, setPresentPostOffices] = useState<PostOffice[]>([]);
-  const [guardianPostOffices, setGuardianPostOffices] = useState<PostOffice[]>([]);
+  const [divisions, setDivisions] = useState<SystemDivision[]>([]);
+  const [allDistricts, setAllDistricts] = useState<SystemDistrict[]>([]);
+  const [allPostOffices, setAllPostOffices] = useState<SystemPostOffice[]>([]);
+  
+  const [permanentDistricts, setPermanentDistricts] = useState<SystemDistrict[]>([]);
+  const [presentDistricts, setPresentDistricts] = useState<SystemDistrict[]>([]);
+  const [guardianDistricts, setGuardianDistricts] = useState<SystemDistrict[]>([]);
+  
+  const [permanentPostOffices, setPermanentPostOffices] = useState<SystemPostOffice[]>([]);
+  const [presentPostOffices, setPresentPostOffices] = useState<SystemPostOffice[]>([]);
+  const [guardianPostOffices, setGuardianPostOffices] = useState<SystemPostOffice[]>([]);
 
   // System Data for Dropdowns
   const [courses, setCourses] = useState<SystemCourse[]>([]);
@@ -305,119 +304,90 @@ export default function CadetForm({ initialData, onSubmit, onCancel, loading: ex
     return `${d}/${m}/${y}`;
   };
 
-  // Fetch divisions on component mount
+  // Fetch all system data and address options on component mount
   useEffect(() => {
-    const fetchDivisions = async () => {
-      const data = await geoLocationService.getDivisions();
-      setDivisions(data);
+    const fetchAllData = async () => {
+      try {
+        // 1. Get bulk options from common service
+        const commonOptions = await commonService.getResultOptions();
+        if (commonOptions) {
+          setCourses(commonOptions.courses || []);
+          setSemesters(commonOptions.semesters || []);
+          setPrograms(commonOptions.programs || []);
+          setBranches(commonOptions.branches || []);
+          setGroups(commonOptions.groups || []);
+          setRanks(commonOptions.ranks || []);
+        }
+
+        // 2. Get address options from common service
+        const addressOptions = await commonService.getAddressOptions();
+        if (addressOptions) {
+          setDivisions(addressOptions.divisions || []);
+          setAllDistricts(addressOptions.districts || []);
+          setAllPostOffices(addressOptions.post_offices || []);
+        }
+      } catch (error) {
+        console.error("Failed to fetch system data:", error);
+      }
     };
-    fetchDivisions();
+    fetchAllData();
   }, []);
 
-  // Fetch courses, semesters, programs, branches, exams, groups on component mount
-  useEffect(() => {
-    const fetchSystemData = async () => {
-      const [coursesData, semestersData, programsData, branchesData, groupsData, ranksData] = await Promise.all([
-        courseService.getAllCourses({ per_page: 100 }),
-        semesterService.getAllSemesters({ per_page: 100 }),
-        programService.getAllPrograms({ per_page: 100 }),
-        branchService.getAllBranches({ per_page: 100 }),
-        groupService.getAllGroups({ per_page: 100 }),
-        rankService.getAllRanks({ per_page: 100 }),
-      ]);
-      setCourses(coursesData.data);
-      setSemesters(semestersData.data);
-      setPrograms(programsData.data);
-      setBranches(branchesData.data);
-      setGroups(groupsData.data);
-      setRanks(ranksData.data);
-    };
-    fetchSystemData();
-  }, []);
-
-  // Fetch districts for Permanent Address
+  // Update filtered districts when divisions change
   useEffect(() => {
     if (permanentDivision) {
-      const fetchDistricts = async () => {
-        const data = await geoLocationService.getDistricts(Number(permanentDivision));
-        setPermanentDistricts(data);
-      };
-      fetchDistricts();
+      setPermanentDistricts(allDistricts.filter(d => d.division_id === Number(permanentDivision)));
     } else {
       setPermanentDistricts([]);
       setPermanentDistrict("");
     }
-  }, [permanentDivision]);
+  }, [permanentDivision, allDistricts]);
 
-  // Fetch districts for Present Address
   useEffect(() => {
     if (presentDivision) {
-      const fetchDistricts = async () => {
-        const data = await geoLocationService.getDistricts(Number(presentDivision));
-        setPresentDistricts(data);
-      };
-      fetchDistricts();
+      setPresentDistricts(allDistricts.filter(d => d.division_id === Number(presentDivision)));
     } else {
       setPresentDistricts([]);
       setPresentDistrict("");
     }
-  }, [presentDivision]);
+  }, [presentDivision, allDistricts]);
 
-  // Fetch districts for Guardian Address
   useEffect(() => {
     if (guardianDivision) {
-      const fetchDistricts = async () => {
-        const data = await geoLocationService.getDistricts(Number(guardianDivision));
-        setGuardianDistricts(data);
-      };
-      fetchDistricts();
+      setGuardianDistricts(allDistricts.filter(d => d.division_id === Number(guardianDivision)));
     } else {
       setGuardianDistricts([]);
       setGuardianDistrict("");
     }
-  }, [guardianDivision]);
+  }, [guardianDivision, allDistricts]);
 
-  // Fetch post offices for Permanent Address
+  // Update filtered post offices when districts change
   useEffect(() => {
     if (permanentDistrict) {
-      const fetchPostOffices = async () => {
-        const data = await geoLocationService.getPostOffices(Number(permanentDistrict));
-        setPermanentPostOffices(data);
-      };
-      fetchPostOffices();
+      setPermanentPostOffices(allPostOffices.filter(po => po.district_id === Number(permanentDistrict)));
     } else {
       setPermanentPostOffices([]);
       setPermanentPostOffice("");
     }
-  }, [permanentDistrict]);
+  }, [permanentDistrict, allPostOffices]);
 
-  // Fetch post offices for Present Address
   useEffect(() => {
     if (presentDistrict) {
-      const fetchPostOffices = async () => {
-        const data = await geoLocationService.getPostOffices(Number(presentDistrict));
-        setPresentPostOffices(data);
-      };
-      fetchPostOffices();
+      setPresentPostOffices(allPostOffices.filter(po => po.district_id === Number(presentDistrict)));
     } else {
       setPresentPostOffices([]);
       setPresentPostOffice("");
     }
-  }, [presentDistrict]);
+  }, [presentDistrict, allPostOffices]);
 
-  // Fetch post offices for Guardian Address
   useEffect(() => {
     if (guardianDistrict) {
-      const fetchPostOffices = async () => {
-        const data = await geoLocationService.getPostOffices(Number(guardianDistrict));
-        setGuardianPostOffices(data);
-      };
-      fetchPostOffices();
+      setGuardianPostOffices(allPostOffices.filter(po => po.district_id === Number(guardianDistrict)));
     } else {
       setGuardianPostOffices([]);
       setGuardianPostOffice("");
     }
-  }, [guardianDistrict]);
+  }, [guardianDistrict, allPostOffices]);
 
   // Load initial data for editing
   useEffect(() => {
@@ -430,22 +400,31 @@ export default function CadetForm({ initialData, onSubmit, onCancel, loading: ex
       setEmail(initialData.email || "");
       setContactNo(initialData.contact_no || "");
 
-      if (initialData.profile_photo) {
-        setProfilePicturePreview(getImageUrl(initialData.profile_photo));
+      if (initialData.profile_picture) {
+        setProfilePicturePreview(initialData.profile_picture);
       }
 
-      // Assignments
-      setBranch((initialData as any).assign_branch_id?.toString() || "");
-      setCourse((initialData as any).assign_course_id?.toString() || "");
-      setSemester((initialData as any).assign_semester_id?.toString() || "");
-      setExamType((initialData as any).assign_exam_type_id?.toString() || "");
-      setProgram((initialData as any).assign_program_id?.toString() || "");
-      setYearGroup((initialData as any).assign_year_group_id?.toString() || "");
-      setRank(initialData.rank_id?.toString() || "");
+      // Assignments - Extract current assignments from lists
+      const currentBranch = initialData.assigned_branchs?.find(b => b.is_current);
+      if (currentBranch) setBranch(currentBranch.branch_id.toString());
+
+      const currentCourse = initialData.assigned_courses?.find(c => c.is_current);
+      if (currentCourse) setCourse(currentCourse.course_id.toString());
+
+      const currentSemester = initialData.assigned_semesters?.find(s => s.is_current);
+      if (currentSemester) setSemester(currentSemester.semester_id.toString());
+
+      const currentProgram = initialData.assigned_programs?.find(p => p.is_current);
+      if (currentProgram) setProgram(currentProgram.program_id.toString());
+
+      const currentGroup = initialData.assigned_groups?.find(g => g.is_current);
+      if (currentGroup) setYearGroup(currentGroup.group_id.toString());
+
+      const currentRank = initialData.assigned_ranks?.find(r => r.is_current);
+      if (currentRank) setRank(currentRank.rank_id.toString());
 
       // Personal Details
       setGender((initialData.gender as any) || "");
-      setHaveProfessional(initialData.have_professional || false);
       setReligion(initialData.religion || "");
       setCaste(initialData.caste || "");
       setBloodGroup(initialData.blood_group || "");
@@ -666,7 +645,7 @@ export default function CadetForm({ initialData, onSubmit, onCancel, loading: ex
         short_name: shortName,
         email,
         contact_no: contactNo,
-        profile_photo: profilePicture || undefined,
+        profile_picture: profilePicture || undefined,
         rank_id: rank || undefined,
 
         // Assignments
@@ -675,7 +654,6 @@ export default function CadetForm({ initialData, onSubmit, onCancel, loading: ex
 
         // Personal Details
         gender: gender || undefined,
-        have_professional: haveProfessional,
         religion,
         caste,
         blood_group: bloodGroup,
@@ -896,18 +874,6 @@ export default function CadetForm({ initialData, onSubmit, onCancel, loading: ex
             2. Personal Details
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div>
-              <Label>Have Professional</Label>
-              <div className="flex items-center h-[42px]">
-                <input
-                  type="checkbox"
-                  checked={haveProfessional}
-                  onChange={(e) => setHaveProfessional(e.target.checked)}
-                  className="w-5 h-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                />
-                <span className="ml-2 text-gray-700">{haveProfessional ? "Yes" : "No"}</span>
-              </div>
-            </div>
             <div>
               <Label>Religion</Label>
               <select value={religion} onChange={(e) => setReligion(e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
@@ -1165,7 +1131,7 @@ export default function CadetForm({ initialData, onSubmit, onCancel, loading: ex
               <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
                 <div>
                   <Label>Relationship</Label>
-                  <select value={member.relationship} onChange={(e) => updateFamilyMember(index, "relationship", e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                  <select value={member.relationship || ""} onChange={(e) => updateFamilyMember(index, "relationship", e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
                     <option value="">Select relationship</option>
                     <option value="father">Father</option>
                     <option value="mother">Mother</option>
@@ -1182,34 +1148,34 @@ export default function CadetForm({ initialData, onSubmit, onCancel, loading: ex
                 </div>
                 <div>
                   <Label>Status</Label>
-                  <select value={member.status} onChange={(e) => updateFamilyMember(index, "status", e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                  <select value={member.status || ""} onChange={(e) => updateFamilyMember(index, "status", e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
                     <option value="alive">Alive</option>
                     <option value="dead">Dead</option>
                   </select>
                 </div>
                 <div>
                   <Label>Name</Label>
-                  <Input value={member.name} onChange={(e) => updateFamilyMember(index, "name", e.target.value)} placeholder="Enter name" />
+                  <Input value={member.name || ""} onChange={(e) => updateFamilyMember(index, "name", e.target.value)} placeholder="Enter name" />
                 </div>
                 <div>
                   <Label>Mobile No</Label>
-                  <Input value={member.mobileNo} onChange={(e) => updateFamilyMember(index, "mobileNo", e.target.value)} placeholder="Enter mobile no" />
+                  <Input value={member.mobileNo || ""} onChange={(e) => updateFamilyMember(index, "mobileNo", e.target.value)} placeholder="Enter mobile no" />
                 </div>
                 <div>
                   <Label>Occupation</Label>
-                  <Input value={member.occupation} onChange={(e) => updateFamilyMember(index, "occupation", e.target.value)} placeholder="Occupation" />
+                  <Input value={member.occupation || ""} onChange={(e) => updateFamilyMember(index, "occupation", e.target.value)} placeholder="Occupation" />
                 </div>
                 <div>
                   <Label>Age</Label>
-                  <Input value={member.age} onChange={(e) => updateFamilyMember(index, "age", e.target.value)} placeholder="Age" />
+                  <Input value={member.age || ""} onChange={(e) => updateFamilyMember(index, "age", e.target.value)} placeholder="Age" />
                 </div>
                 <div>
                   <Label>Address</Label>
-                  <Input value={member.address} onChange={(e) => updateFamilyMember(index, "address", e.target.value)} placeholder="Address" />
+                  <Input value={member.address || ""} onChange={(e) => updateFamilyMember(index, "address", e.target.value)} placeholder="Address" />
                 </div>
                 <div>
                   <Label>Political Involvement</Label>
-                  <select value={member.politicalInvolvement} onChange={(e) => updateFamilyMember(index, "politicalInvolvement", e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                  <select value={member.politicalInvolvement || ""} onChange={(e) => updateFamilyMember(index, "politicalInvolvement", e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
                     <option value="">Select</option>
                     <option value="yes">Yes</option>
                     <option value="no">No</option>
@@ -1222,7 +1188,7 @@ export default function CadetForm({ initialData, onSubmit, onCancel, loading: ex
                 <div>
                   <Label>Guardian</Label>
                   <label className="flex items-center gap-2 mt-2 cursor-pointer">
-                    <input type="checkbox" checked={member.isGuardian} onChange={(e) => updateFamilyMember(index, "isGuardian", e.target.checked)} className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-2 focus:ring-blue-500" />
+                    <input type="checkbox" checked={!!member.isGuardian} onChange={(e) => updateFamilyMember(index, "isGuardian", e.target.checked)} className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-2 focus:ring-blue-500" />
                     <span className="text-gray-700">Is Guardian</span>
                   </label>
                 </div>
@@ -1258,11 +1224,11 @@ export default function CadetForm({ initialData, onSubmit, onCancel, loading: ex
                 <Label>Exam Type</Label>
                 <div className="flex items-center gap-4 mt-2">
                   <label className="flex items-center gap-2 cursor-pointer">
-                    <input type="checkbox" checked={record.withinBafa} onChange={(e) => updateEducationalRecord(index, "withinBafa", e.target.checked)} className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-2 focus:ring-blue-500" />
+                    <input type="checkbox" checked={!!record.withinBafa} onChange={(e) => updateEducationalRecord(index, "withinBafa", e.target.checked)} className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-2 focus:ring-blue-500" />
                     <span className="text-gray-700">Within BAFA</span>
                   </label>
                   <label className="flex items-center gap-2 cursor-pointer">
-                    <input type="checkbox" checked={record.inBafa} onChange={(e) => updateEducationalRecord(index, "inBafa", e.target.checked)} className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-2 focus:ring-blue-500" />
+                    <input type="checkbox" checked={!!record.inBafa} onChange={(e) => updateEducationalRecord(index, "inBafa", e.target.checked)} className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-2 focus:ring-blue-500" />
                     <span className="text-gray-700">In BAFA</span>
                   </label>
                 </div>
@@ -1271,7 +1237,7 @@ export default function CadetForm({ initialData, onSubmit, onCancel, loading: ex
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                 <div>
                   <Label>Exam <span className="text-red-500">*</span></Label>
-                  <select value={record.exam} onChange={(e) => updateEducationalRecord(index, "exam", e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                  <select value={record.exam || ""} onChange={(e) => updateEducationalRecord(index, "exam", e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
                     <option value="">Select Exam</option>
                     <option value="ssc">SSC</option>
                     <option value="hsc">HSC</option>
@@ -1283,33 +1249,33 @@ export default function CadetForm({ initialData, onSubmit, onCancel, loading: ex
                 </div>
                 <div>
                   <Label>Institution <span className="text-red-500">*</span></Label>
-                  <Input value={record.institution} onChange={(e) => updateEducationalRecord(index, "institution", e.target.value)} placeholder="Select institution" />
+                  <Input value={record.institution || ""} onChange={(e) => updateEducationalRecord(index, "institution", e.target.value)} placeholder="Select institution" />
                 </div>
                 <div>
                   <Label>Board Name</Label>
-                  <Input value={record.boardName} onChange={(e) => updateEducationalRecord(index, "boardName", e.target.value)} placeholder="Board name" />
+                  <Input value={record.boardName || ""} onChange={(e) => updateEducationalRecord(index, "boardName", e.target.value)} placeholder="Board name" />
                 </div>
                 <div>
                   <Label>Year Type</Label>
-                  <Input value={record.yearFrom} onChange={(e) => updateEducationalRecord(index, "yearFrom", e.target.value)} placeholder="From year" />
+                  <Input value={record.yearFrom || ""} onChange={(e) => updateEducationalRecord(index, "yearFrom", e.target.value)} placeholder="From year" />
                 </div>
               </div>
               <div className="grid grid-cols-4 gap-4 mt-3">
                 <div>
                   <Label>To Year</Label>
-                  <Input value={record.yearTo} onChange={(e) => updateEducationalRecord(index, "yearTo", e.target.value)} placeholder="To year" />
+                  <Input value={record.yearTo || ""} onChange={(e) => updateEducationalRecord(index, "yearTo", e.target.value)} placeholder="To year" />
                 </div>
                 <div>
                   <Label>Subject/Group</Label>
-                  <Input value={record.subjectGroup} onChange={(e) => updateEducationalRecord(index, "subjectGroup", e.target.value)} placeholder="Subject group" />
+                  <Input value={record.subjectGroup || ""} onChange={(e) => updateEducationalRecord(index, "subjectGroup", e.target.value)} placeholder="Subject group" />
                 </div>
                 <div>
                   <Label>Marks/GPA</Label>
-                  <Input value={record.totalMarksGpa} onChange={(e) => updateEducationalRecord(index, "totalMarksGpa", e.target.value)} placeholder="5.00" />
+                  <Input value={record.totalMarksGpa || ""} onChange={(e) => updateEducationalRecord(index, "totalMarksGpa", e.target.value)} placeholder="5.00" />
                 </div>
                 <div>
                   <Label>Out of</Label>
-                  <Input value={record.out_of} onChange={(e) => updateEducationalRecord(index, "out_of", e.target.value)} placeholder="5.00" />
+                  <Input value={record.out_of || ""} onChange={(e) => updateEducationalRecord(index, "out_of", e.target.value)} placeholder="5.00" />
                 </div>
               </div>
             </div>
@@ -1342,21 +1308,24 @@ export default function CadetForm({ initialData, onSubmit, onCancel, loading: ex
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                 <div>
                   <Label>Rank</Label>
-                  <select value={relation.rank} onChange={(e) => updateArmyRelation(index, "rank", e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                  <select value={relation.rank || ""} onChange={(e) => updateArmyRelation(index, "rank", e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
                     <option value="">Select rank</option>
+                    {ranks.map((r) => (
+                      <option key={r.id} value={r.name}>{r.name}</option>
+                    ))}
                   </select>
                 </div>
                 <div>
                   <Label>Name</Label>
-                  <Input value={relation.name} onChange={(e) => updateArmyRelation(index, "name", e.target.value)} placeholder="Enter name" />
+                  <Input value={relation.name || ""} onChange={(e) => updateArmyRelation(index, "name", e.target.value)} placeholder="Enter name" />
                 </div>
                 <div>
                   <Label>BA No</Label>
-                  <Input value={relation.baNo} onChange={(e) => updateArmyRelation(index, "baNo", e.target.value)} placeholder="Enter BA no" />
+                  <Input value={relation.baNo || ""} onChange={(e) => updateArmyRelation(index, "baNo", e.target.value)} placeholder="Enter BA no" />
                 </div>
                 <div>
                   <Label>Relationship</Label>
-                  <select value={relation.relationship} onChange={(e) => updateArmyRelation(index, "relationship", e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                  <select value={relation.relationship || ""} onChange={(e) => updateArmyRelation(index, "relationship", e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
                     <option value="">Select your relationship</option>
                     <option value="father">Father</option>
                     <option value="mother">Mother</option>
@@ -1371,7 +1340,7 @@ export default function CadetForm({ initialData, onSubmit, onCancel, loading: ex
               </div>
               <div className="mt-3">
                 <Label>Present Address</Label>
-                <textarea value={relation.presentAddress} onChange={(e) => updateArmyRelation(index, "presentAddress", e.target.value)} placeholder="Present address" rows={2} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                <textarea value={relation.presentAddress || ""} onChange={(e) => updateArmyRelation(index, "presentAddress", e.target.value)} placeholder="Present address" rows={2} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
             </div>
           ))}
@@ -1403,15 +1372,15 @@ export default function CadetForm({ initialData, onSubmit, onCancel, loading: ex
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 <div>
                   <Label>Name</Label>
-                  <Input value={relation.name} onChange={(e) => updatePoliticsRelation(index, "name", e.target.value)} placeholder="Enter name" />
+                  <Input value={relation.name || ""} onChange={(e) => updatePoliticsRelation(index, "name", e.target.value)} placeholder="Enter name" />
                 </div>
                 <div>
                   <Label>Political Party Name</Label>
-                  <Input value={relation.politicalPartyName} onChange={(e) => updatePoliticsRelation(index, "politicalPartyName", e.target.value)} placeholder="Enter party name" />
+                  <Input value={relation.politicalPartyName || ""} onChange={(e) => updatePoliticsRelation(index, "politicalPartyName", e.target.value)} placeholder="Enter party name" />
                 </div>
                 <div>
                   <Label>Appointment</Label>
-                  <Input value={relation.appointment} onChange={(e) => updatePoliticsRelation(index, "appointment", e.target.value)} placeholder="Enter appointment" />
+                  <Input value={relation.appointment || ""} onChange={(e) => updatePoliticsRelation(index, "appointment", e.target.value)} placeholder="Enter appointment" />
                 </div>
               </div>
             </div>
@@ -1444,7 +1413,7 @@ export default function CadetForm({ initialData, onSubmit, onCancel, loading: ex
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <Label>Language Name</Label>
-                  <select value={lang.language} onChange={(e) => updateLanguage(index, "language", e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                  <select value={lang.language || ""} onChange={(e) => updateLanguage(index, "language", e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
                     <option value="">Select language</option>
                     <option value="bengali">Bengali</option>
                     <option value="english">English</option>
@@ -1461,15 +1430,15 @@ export default function CadetForm({ initialData, onSubmit, onCancel, loading: ex
                   <Label>Language Skill</Label>
                   <div className="flex items-center gap-6 mt-2">
                     <label className="flex items-center gap-2 cursor-pointer">
-                      <input type="checkbox" checked={lang.write} onChange={(e) => updateLanguage(index, "write", e.target.checked)} className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-2 focus:ring-blue-500" />
+                      <input type="checkbox" checked={!!lang.write} onChange={(e) => updateLanguage(index, "write", e.target.checked)} className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-2 focus:ring-blue-500" />
                       <span className="text-gray-700">Write</span>
                     </label>
                     <label className="flex items-center gap-2 cursor-pointer">
-                      <input type="checkbox" checked={lang.read} onChange={(e) => updateLanguage(index, "read", e.target.checked)} className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-2 focus:ring-blue-500" />
+                      <input type="checkbox" checked={!!lang.read} onChange={(e) => updateLanguage(index, "read", e.target.checked)} className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-2 focus:ring-blue-500" />
                       <span className="text-gray-700">Read</span>
                     </label>
                     <label className="flex items-center gap-2 cursor-pointer">
-                      <input type="checkbox" checked={lang.speak} onChange={(e) => updateLanguage(index, "speak", e.target.checked)} className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-2 focus:ring-blue-500" />
+                      <input type="checkbox" checked={!!lang.speak} onChange={(e) => updateLanguage(index, "speak", e.target.checked)} className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-2 focus:ring-blue-500" />
                       <span className="text-gray-700">Speak</span>
                     </label>
                   </div>
@@ -1505,19 +1474,19 @@ export default function CadetForm({ initialData, onSubmit, onCancel, loading: ex
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div>
                   <Label>Country Name</Label>
-                  <Input value={visit.countryName} onChange={(e) => updateVisitAbord(index, "countryName", e.target.value)} placeholder="Enter country name" />
+                  <Input value={visit.countryName || ""} onChange={(e) => updateVisitAbord(index, "countryName", e.target.value)} placeholder="Enter country name" />
                 </div>
                 <div>
                   <Label>Purpose of Visit</Label>
-                  <Input value={visit.purpose} onChange={(e) => updateVisitAbord(index, "purpose", e.target.value)} placeholder="Enter purpose of visit" />
+                  <Input value={visit.purpose || ""} onChange={(e) => updateVisitAbord(index, "purpose", e.target.value)} placeholder="Enter purpose of visit" />
                 </div>
                 <div>
                   <Label>From Date <span className="text-red-500">*</span></Label>
-                  <DatePicker value={visit.fromdate} onChange={(e) => updateVisitAbord(index, "fromdate", e.target.value)} placeholder="dd/mm/yyyy" />
+                  <DatePicker value={visit.fromdate || ""} onChange={(e) => updateVisitAbord(index, "fromdate", e.target.value)} placeholder="dd/mm/yyyy" />
                 </div>
                 <div>
                   <Label>To Date <span className="text-red-500">*</span></Label>
-                  <DatePicker value={visit.todate} onChange={(e) => updateVisitAbord(index, "todate", e.target.value)} placeholder="dd/mm/yyyy" />
+                  <DatePicker value={visit.todate || ""} onChange={(e) => updateVisitAbord(index, "todate", e.target.value)} placeholder="dd/mm/yyyy" />
                 </div>
               </div>
             </div>
@@ -1550,23 +1519,23 @@ export default function CadetForm({ initialData, onSubmit, onCancel, loading: ex
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 <div>
                   <Label>Name of Organization</Label>
-                  <Input value={emp.organizationName} onChange={(e) => updateEmployment(index, "organizationName", e.target.value)} placeholder="Enter Name of Organization" />
+                  <Input value={emp.organizationName || ""} onChange={(e) => updateEmployment(index, "organizationName", e.target.value)} placeholder="Enter Name of Organization" />
                 </div>
                 <div>
                   <Label>Nature of Responsibilities</Label>
-                  <Input value={emp.natureOfResponsibilities} onChange={(e) => updateEmployment(index, "natureOfResponsibilities", e.target.value)} placeholder="Enter nature of responsibilities" />
+                  <Input value={emp.natureOfResponsibilities || ""} onChange={(e) => updateEmployment(index, "natureOfResponsibilities", e.target.value)} placeholder="Enter nature of responsibilities" />
                 </div>
                 <div>
                   <Label>Date of Appointment</Label>
-                  <DatePicker value={emp.dateOfAppointment} onChange={(e) => updateEmployment(index, "dateOfAppointment", e.target.value)} placeholder="Enter appointment date" />
+                  <DatePicker value={emp.dateOfAppointment || ""} onChange={(e) => updateEmployment(index, "dateOfAppointment", e.target.value)} placeholder="Enter appointment date" />
                 </div>
                 <div>
                   <Label>Gross Salary</Label>
-                  <Input value={emp.grossSalary} onChange={(e) => updateEmployment(index, "grossSalary", e.target.value)} placeholder="Gross salary" />
+                  <Input value={emp.grossSalary || ""} onChange={(e) => updateEmployment(index, "grossSalary", e.target.value)} placeholder="Gross salary" />
                 </div>
                 <div>
                   <Label>Present State</Label>
-                  <select value={emp.presentState} onChange={(e) => updateEmployment(index, "presentState", e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                  <select value={emp.presentState || ""} onChange={(e) => updateEmployment(index, "presentState", e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
                     <option value="">Select Present state</option>
                     <option value="active">Active</option>
                     <option value="resigned">Resigned</option>
@@ -1742,11 +1711,11 @@ export default function CadetForm({ initialData, onSubmit, onCancel, loading: ex
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
                 <div>
                   <Label>Name</Label>
-                  <Input value={kin.name} onChange={(e) => updateNextOfKin(index, "name", e.target.value)} placeholder="Enter your name" />
+                  <Input value={kin.name || ""} onChange={(e) => updateNextOfKin(index, "name", e.target.value)} placeholder="Enter your name" />
                 </div>
                 <div>
                   <Label>Relationship</Label>
-                  <select value={kin.relationship} onChange={(e) => updateNextOfKin(index, "relationship", e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                  <select value={kin.relationship || ""} onChange={(e) => updateNextOfKin(index, "relationship", e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
                     <option value="">Select your relationship</option>
                     <option value="father">Father</option>
                     <option value="mother">Mother</option>
@@ -1758,15 +1727,15 @@ export default function CadetForm({ initialData, onSubmit, onCancel, loading: ex
                 </div>
                 <div>
                   <Label>Address</Label>
-                  <Input value={kin.address} onChange={(e) => updateNextOfKin(index, "address", e.target.value)} placeholder="Enter address" />
+                  <Input value={kin.address || ""} onChange={(e) => updateNextOfKin(index, "address", e.target.value)} placeholder="Enter address" />
                 </div>
                 <div>
                   <Label>Mobile No</Label>
-                  <Input value={kin.mobileNo} onChange={(e) => updateNextOfKin(index, "mobileNo", e.target.value)} placeholder="Enter mobile number" />
+                  <Input value={kin.mobileNo || ""} onChange={(e) => updateNextOfKin(index, "mobileNo", e.target.value)} placeholder="Enter mobile number" />
                 </div>
                 <div>
                   <Label>Authorized By</Label>
-                  <Input value={kin.authorizedBy} onChange={(e) => updateNextOfKin(index, "authorizedBy", e.target.value)} placeholder="Authorized by admin" />
+                  <Input value={kin.authorizedBy || ""} onChange={(e) => updateNextOfKin(index, "authorizedBy", e.target.value)} placeholder="Authorized by admin" />
                 </div>
               </div>
             </div>
@@ -1799,27 +1768,27 @@ export default function CadetForm({ initialData, onSubmit, onCancel, loading: ex
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 <div>
                   <Label>Policy Name</Label>
-                  <Input value={ins.policyName} onChange={(e) => updateInsuranceInfo(index, "policyName", e.target.value)} placeholder="Enter Policy Name" />
+                  <Input value={ins.policyName || ""} onChange={(e) => updateInsuranceInfo(index, "policyName", e.target.value)} placeholder="Enter Policy Name" />
                 </div>
                 <div>
                   <Label>Name of Insurance Company</Label>
-                  <Input value={ins.companyName} onChange={(e) => updateInsuranceInfo(index, "companyName", e.target.value)} placeholder="Enter insurance company" />
+                  <Input value={ins.companyName || ""} onChange={(e) => updateInsuranceInfo(index, "companyName", e.target.value)} placeholder="Enter insurance company" />
                 </div>
                 <div>
                   <Label>Insurance Amount</Label>
-                  <Input value={ins.amount} onChange={(e) => updateInsuranceInfo(index, "amount", e.target.value)} placeholder="Enter insurance amount" />
+                  <Input value={ins.amount || ""} onChange={(e) => updateInsuranceInfo(index, "amount", e.target.value)} placeholder="Enter insurance amount" />
                 </div>
                 <div>
                   <Label>Next of Kin</Label>
-                  <Input value={ins.nextofKin} onChange={(e) => updateInsuranceInfo(index, "nextofKin", e.target.value)} placeholder="Type Next of Kin" />
+                  <Input value={ins.nextofKin || ""} onChange={(e) => updateInsuranceInfo(index, "nextofKin", e.target.value)} placeholder="Type Next of Kin" />
                 </div>
                 <div>
                   <Label>Next of Kin Address</Label>
-                  <Input value={ins.nextofKinAddress} onChange={(e) => updateInsuranceInfo(index, "nextofKinAddress", e.target.value)} placeholder="Next of Kin Address" />
+                  <Input value={ins.nextofKinAddress || ""} onChange={(e) => updateInsuranceInfo(index, "nextofKinAddress", e.target.value)} placeholder="Next of Kin Address" />
                 </div>
                 <div>
                   <Label>Date Start of the Life Insurance</Label>
-                  <DatePicker value={ins.startDate} onChange={(e) => updateInsuranceInfo(index, "startDate", e.target.value)} placeholder="Date start" />
+                  <DatePicker value={ins.startDate || ""} onChange={(e) => updateInsuranceInfo(index, "startDate", e.target.value)} placeholder="Date start" />
                 </div>
               </div>
             </div>
@@ -1852,7 +1821,7 @@ export default function CadetForm({ initialData, onSubmit, onCancel, loading: ex
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div>
                   <Label>Select Nominee Type</Label>
-                  <select value={nom.nomineeType} onChange={(e) => updateNomineeInfo(index, "nomineeType", e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                  <select value={nom.nomineeType || ""} onChange={(e) => updateNomineeInfo(index, "nomineeType", e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
                     <option value="">Select Nominee Type</option>
                     <option value="primary">Primary</option>
                     <option value="secondary">Secondary</option>
@@ -1860,19 +1829,19 @@ export default function CadetForm({ initialData, onSubmit, onCancel, loading: ex
                 </div>
                 <div>
                   <Label>Nominee Name</Label>
-                  <Input value={nom.name} onChange={(e) => updateNomineeInfo(index, "name", e.target.value)} placeholder="Enter Nominee Name" />
+                  <Input value={nom.name || ""} onChange={(e) => updateNomineeInfo(index, "name", e.target.value)} placeholder="Enter Nominee Name" />
                 </div>
                 <div>
                   <Label>Nominee Relationship</Label>
-                  <Input value={nom.relationship} onChange={(e) => updateNomineeInfo(index, "relationship", e.target.value)} placeholder="Enter Nominee Relationship" />
+                  <Input value={nom.relationship || ""} onChange={(e) => updateNomineeInfo(index, "relationship", e.target.value)} placeholder="Enter Nominee Relationship" />
                 </div>
                 <div>
                   <Label>Nominee Percentage</Label>
-                  <Input value={nom.percentage} onChange={(e) => updateNomineeInfo(index, "percentage", e.target.value)} placeholder="Enter Nominee Percentage" />
+                  <Input value={nom.percentage || ""} onChange={(e) => updateNomineeInfo(index, "percentage", e.target.value)} placeholder="Enter Nominee Percentage" />
                 </div>
                 <div>
                   <Label>Nominee Address</Label>
-                  <Input value={nom.address} onChange={(e) => updateNomineeInfo(index, "address", e.target.value)} placeholder="Enter Nominee Address" />
+                  <Input value={nom.address || ""} onChange={(e) => updateNomineeInfo(index, "address", e.target.value)} placeholder="Enter Nominee Address" />
                 </div>
               </div>
             </div>

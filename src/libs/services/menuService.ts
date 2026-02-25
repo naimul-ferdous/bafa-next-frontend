@@ -96,6 +96,35 @@ export const menuService = {
   },
 
   /**
+   * Get all menus as a flat raw list with pagination and search
+   */
+  async getRawMenus(params?: { page?: number; per_page?: number; search?: string }): Promise<MenuPaginatedResponse> {
+    const empty = { data: [], current_page: 1, per_page: 10, total: 0, last_page: 1, from: 0, to: 0 };
+    try {
+      const query = new URLSearchParams();
+      if (params?.page)     query.append('page',     params.page.toString());
+      if (params?.per_page) query.append('per_page', params.per_page.toString());
+      if (params?.search)   query.append('search',   params.search);
+      const endpoint = `/menus/raw${query.toString() ? `?${query.toString()}` : ''}`;
+      const token = getToken();
+      const result = await apiClient.get<MenuApiResponse>(endpoint, token);
+      if (!result) return empty;
+      return {
+        data:         result.data                     || [],
+        current_page: result.pagination?.current_page  || 1,
+        per_page:     result.pagination?.per_page      || 10,
+        total:        result.pagination?.total          || 0,
+        last_page:    result.pagination?.last_page      || 1,
+        from:         result.pagination?.from           || 0,
+        to:           result.pagination?.to             || 0,
+      };
+    } catch (error) {
+      console.error('Failed to fetch raw menus:', error);
+      return empty;
+    }
+  },
+
+  /**
    * Get single menu
    */
   async getMenu(id: number): Promise<Menu | null> {
@@ -198,6 +227,24 @@ export const menuService = {
       return result?.success || false;
     } catch (error) {
       console.error(`Failed to assign permissions to menu ${menuId}:`, error);
+      return false;
+    }
+  },
+
+  /**
+   * Sync permission action codes with menu
+   */
+  async syncPermissions(menuId: number, actionCodes: string[]): Promise<boolean> {
+    try {
+      const token = getToken();
+      const result = await apiClient.post<MenuActionApiResponse>(
+        '/permissions/sync-menu-permissions',
+        { menu_id: menuId, action_codes: actionCodes },
+        token
+      );
+      return result?.success || false;
+    } catch (error) {
+      console.error(`Failed to sync permissions for menu ${menuId}:`, error);
       return false;
     }
   },

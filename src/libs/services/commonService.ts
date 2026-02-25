@@ -15,7 +15,14 @@ import type {
   AtwSubject,
   SystemWarningType,
 } from '@/libs/types/system';
-import type { User, CadetProfile } from '@/libs/types/user';
+import type {
+  User,
+  CadetProfile,
+  Rank,
+  SystemDivision,
+  SystemDistrict,
+  SystemPostOffice,
+} from '@/libs/types/user';
 import type { CtwAssessmentOlqType } from '@/libs/types/ctwAssessmentOlq';
 import type { Ftw11sqnFlyingPhaseType, Ftw11sqnFlyingSyllabus, Ftw11sqnGroundSyllabus } from '@/libs/types/ftw11sqnFlying';
 import type { Ftw12sqnFlyingPhaseType, Ftw12sqnFlyingSyllabus, Ftw12sqnGroundSyllabus } from '@/libs/types/ftw12sqnFlying';
@@ -30,6 +37,8 @@ interface ResultOptionsResponse {
     branches: SystemBranch[];
     groups: SystemGroup[];
     exams: SystemExam[];
+    ranks: Rank[];
+    divisions: SystemDivision[];
     warning_types: SystemWarningType[];
     subjects: AtwSubject[];
     instructors: User[];
@@ -44,6 +53,16 @@ interface ResultOptionsResponse {
   };
 }
 
+interface AddressOptionsResponse {
+  success: boolean;
+  message: string;
+  data: {
+    divisions: SystemDivision[];
+    districts: SystemDistrict[];
+    post_offices: SystemPostOffice[];
+  };
+}
+
 export const commonService = {
   /**
    * Get all common options for Result creation/filtering
@@ -55,6 +74,20 @@ export const commonService = {
       return result?.data || null;
     } catch (error) {
       console.error('Failed to fetch result options:', error);
+      return null;
+    }
+  },
+
+  /**
+   * Get all address-related options (Divisions, Districts, Post Offices)
+   */
+  async getAddressOptions(): Promise<AddressOptionsResponse['data'] | null> {
+    try {
+      const token = getToken();
+      const result = await apiClient.get<AddressOptionsResponse>('/common/address-options', token);
+      return result?.data || null;
+    } catch (error) {
+      console.error('Failed to fetch address options:', error);
       return null;
     }
   },

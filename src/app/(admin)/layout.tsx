@@ -3,6 +3,7 @@
 import Footer from "@/components/footer/Footer";
 import { useSidebar } from "@/context/SidebarContext";
 import { useAuth } from "@/context/AuthContext";
+import { PagePermissionsProvider } from "@/context/PagePermissionsContext";
 import AppHeader from "@/layout/AppHeader";
 import AppSidebar from "@/layout/AppSidebar";
 import Backdrop from "@/layout/Backdrop";
@@ -61,9 +62,11 @@ export default function AdminLayout({
         {/* Header */}
         <AppHeader />
         {/* Page Content */}
-        <div className="p-4 mx-auto md:p-6">{children}
-
-        <Footer/>
+        <div className="p-4 mx-auto md:p-6">
+          <PagePermissionsProvider>
+            {children}
+          </PagePermissionsProvider>
+          <Footer/>
         </div>
       </div>
     </div>

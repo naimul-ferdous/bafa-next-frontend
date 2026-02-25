@@ -5,15 +5,34 @@ import { useRouter } from "next/navigation";
 import { permissionService } from "@/libs/services/permissionService";
 import FullLogo from "@/components/ui/fulllogo";
 import PermissionForm from "@/components/permissions/PermissionForm";
+import type { PermissionAction } from "@/libs/types/menu";
 
 export default function CreatePermissionPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
 
-  const handleSubmit = async (formData: any) => {
+  const handleSubmit = async (formData: any, selectedActions?: PermissionAction[]) => {
     setLoading(true);
     try {
-      await permissionService.createPermission(formData);
+      if (selectedActions && selectedActions.length > 0) {
+        // Bulk create permissions
+        const promises = selectedActions.map(action => {
+          const permissionData = {
+            ...formData,
+            name: `${formData.name} ${action.name}`,
+            slug: `${formData.code}-${action.code}`,
+            code: formData.code,
+            permission_action_id: action.id,
+          };
+          return permissionService.createPermission(permissionData);
+        });
+        
+        await Promise.all(promises);
+      } else {
+        // Single create
+        await permissionService.createPermission(formData);
+      }
+      
       window.dispatchEvent(new CustomEvent("permissionUpdated"));
       router.push("/settings/permissions");
     } catch (err: any) {

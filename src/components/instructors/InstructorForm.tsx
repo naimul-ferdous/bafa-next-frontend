@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { Icon } from "@iconify/react";
 import FullLogo from "@/components/ui/fulllogo";
 import Input from "@/components/form/input/InputField";
@@ -10,6 +10,8 @@ import { geoLocationService, type Division, type District, type PostOffice } fro
 import DatePicker from "@/components/form/input/DatePicker";
 import type { InstructorBiodata } from "@/libs/types/user";
 import { getImageUrl } from "@/libs/utils/formatter";
+import userService from "@/libs/services/userService";
+import instructorService from "@/libs/services/instructorService";
 
 interface Child {
   name: string;
@@ -48,11 +50,19 @@ interface InstructorFormProps {
   isEdit?: boolean;
 }
 
-export default function InstructorForm({ initialData, onSubmit, onCancel, loading: externalLoading, isEdit = false }: InstructorFormProps) {
+export default function InstructorForm({ initialData, onSubmit, onCancel, loading: externalLoading, isEdit: propIsEdit = false }: InstructorFormProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [bdNumberSearch, setBdNumberSearch] = useState("");
-  const [userFound, setUserFound] = useState(false);
+  const [searchStatus, setSearchStatus] = useState<{
+    type: 'idle' | 'loading' | 'found' | 'not_found' | 'already_instructor';
+    message: string;
+  }>({ type: 'idle', message: '' });
+
+  const [localIsEdit, setLocalIsEdit] = useState(propIsEdit);
+  const [instructorId, setInstructorId] = useState<number | null>(null);
+  const [isExistingUser, setIsExistingUser] = useState(false);
+  const [changePassword, setChangePassword] = useState(false);
 
   // Basic Information
   const [profilePicture, setProfilePicture] = useState<string>("");
@@ -170,118 +180,258 @@ export default function InstructorForm({ initialData, onSubmit, onCancel, loadin
     return `${d}/${m}/${y}`;
   };
 
+  const resetForm = useCallback(() => {
+    setInstructorId(null);
+    setLocalIsEdit(propIsEdit);
+    setIsExistingUser(false);
+    setChangePassword(false);
+    setProfilePicture("");
+    setProfilePicturePreview("");
+    setSignature("");
+    setSignaturePreview("");
+    setName("");
+    setNameBangla("");
+    setShortName("");
+    setGender("");
+    setMaritalStatus("");
+    setReligion("");
+    setDateOfBirth("");
+    setWeight("");
+    setHeight("");
+    setBloodGroup("");
+    setHairColor("");
+    setEyeColor("");
+    setCaste("");
+    setComplexion("");
+    setIdentificationMark("");
+    setOtherInformation("");
+    setNationalId("");
+    setMobile("");
+    setPassword("");
+    setImo("");
+    setEmail("");
+    setWhatsapp("");
+    setViber("");
+    setFacebookId("");
+    setDrivingLicense("");
+    setPassport("");
+    setHasSpouse(false);
+    setSpouseName("");
+    setSpouseGender("wife");
+    setHasChildren(false);
+    setChildren([]);
+    setLanguages([{ language: "", write: false, read: false, speak: false }]);
+    setUnit("");
+    setTrade("");
+    setDateOfCommission("");
+    setJoiningDate("");
+    setEmployeeType("");
+    setLegend("");
+    setPostingDate("");
+    setPresentDivision("");
+    setPresentDistrict("");
+    setPresentPostOffice("");
+    setPresentPostCode("");
+    setPresentAddress("");
+    setPermanentDivision("");
+    setPermanentDistrict("");
+    setPermanentPostOffice("");
+    setPermanentPostCode("");
+    setPermanentAddress("");
+    setGuardianDivision("");
+    setGuardianDistrict("");
+    setGuardianPostOffice("");
+    setGuardianPostCode("");
+    setGuardianAddress("");
+    setCertifications([{ examFullName: "", examShortName: "", passingYear: "", grade: "", outOf: "", instituteName: "", others: "" }]);
+    setAchievements([{ achievementTitle: "", description: "", achievementDate: "", awardedBy: "" }]);
+    setEmergencyContactName("");
+    setEmergencyContactPhone("");
+    setSpecialization("");
+    setQualification("");
+    setYearsOfExperience("");
+    setInstructorSince("");
+  }, [propIsEdit]);
+
+  const populateForm = useCallback((data: InstructorBiodata) => {
+    const u = data.user;
+    setInstructorId(data.id);
+    setIsExistingUser(true);
+    setChangePassword(false);
+    setBdNumberSearch(u?.service_number || "");
+    setName(u?.name || "");
+    setEmail(u?.email || "");
+    setMobile(u?.phone || "");
+
+    setNameBangla(data.name_bangla || "");
+    setShortName(data.short_name || "");
+    setGender(data.gender || "");
+    setMaritalStatus(data.marital_status || "");
+    setReligion(data.religion || "");
+    setDateOfBirth(formatDateForDisplay(data.date_of_birth));
+    setWeight(data.weight || "");
+    setHeight(data.height || "");
+    setBloodGroup(data.blood_group || "");
+    setHairColor(data.hair_color || "");
+    setEyeColor(data.eye_color || "");
+    setCaste(data.caste || "");
+    setComplexion(data.complexion || "");
+    setIdentificationMark(data.identification_mark || "");
+    setOtherInformation(data.other_information || "");
+
+    setNationalId(data.national_id || "");
+    setImo(data.imo || "");
+    setWhatsapp(data.whatsapp || "");
+    setViber(data.viber || "");
+    setFacebookId(data.facebook_id || "");
+    setDrivingLicense(data.driving_license || "");
+    setPassport(data.passport || "");
+
+    setHasSpouse(data.has_spouse || false);
+    setSpouseName(data.spouse_name || "");
+    setSpouseGender((data.spouse_gender as any) || "wife");
+    setHasChildren(data.has_children || false);
+    if (data.children && data.children.length > 0) {
+      setChildren(data.children.map(c => ({ name: c.name, gender: c.gender as any })));
+    } else {
+      setChildren([]);
+    }
+
+    if (data.languages && data.languages.length > 0) {
+      setLanguages(data.languages.map(l => ({
+        language: l.language,
+        write: l.write,
+        read: l.read,
+        speak: l.speak
+      })));
+    } else {
+      setLanguages([{ language: "", write: false, read: false, speak: false }]);
+    }
+
+    setUnit(data.unit || "");
+    setTrade(data.trade || "");
+    setDateOfCommission(formatDateForDisplay(data.date_of_commission));
+    setJoiningDate(formatDateForDisplay(data.joining_date));
+    setEmployeeType(data.employee_type || "");
+    setLegend(data.legend || "");
+    setPostingDate(formatDateForDisplay(data.posting_date));
+
+    setPresentDivision(data.present_division || "");
+    setPresentDistrict(data.present_district || "");
+    setPresentPostOffice(data.present_post_office || "");
+    setPresentPostCode(data.present_post_code || "");
+    setPresentAddress(data.present_address || "");
+
+    setPermanentDivision(data.permanent_division || "");
+    setPermanentDistrict(data.permanent_district || "");
+    setPermanentPostOffice(data.permanent_post_office || "");
+    setPermanentPostCode(data.permanent_post_code || "");
+    setPermanentAddress(data.permanent_address || "");
+
+    setGuardianDivision(data.guardian_division || "");
+    setGuardianDistrict(data.guardian_district || "");
+    setGuardianPostOffice(data.guardian_post_office || "");
+    setGuardianPostCode(data.guardian_post_code || "");
+    setGuardianAddress(data.guardian_address || "");
+
+    if (data.certifications && data.certifications.length > 0) {
+      setCertifications(data.certifications.map(c => ({
+        examFullName: c.exam_full_name,
+        examShortName: c.exam_short_name || "",
+        passingYear: c.passing_year || "",
+        grade: c.grade || "",
+        outOf: c.out_of || "",
+        instituteName: c.institute_name || "",
+        others: c.others || ""
+      })));
+    } else {
+      setCertifications([{ examFullName: "", examShortName: "", passingYear: "", grade: "", outOf: "", instituteName: "", others: "" }]);
+    }
+
+    if (data.achievements && data.achievements.length > 0) {
+      setAchievements(data.achievements.map(a => ({
+        achievementTitle: a.achievement_title,
+        description: a.description || "",
+        achievementDate: formatDateForDisplay(a.achievement_date),
+        awardedBy: a.awarded_by || ""
+      })));
+    } else {
+      setAchievements([{ achievementTitle: "", description: "", achievementDate: "", awardedBy: "" }]);
+    }
+
+    setEmergencyContactName(data.emergency_contact_name || "");
+    setEmergencyContactPhone(data.emergency_contact_phone || "");
+
+    setSpecialization(data.specialization || "");
+    setQualification(data.qualification || "");
+    setYearsOfExperience(data.years_of_experience?.toString() || "");
+    setInstructorSince(formatDateForDisplay(data.instructor_since));
+
+    if (u?.profile_photo) setProfilePicturePreview(getImageUrl(u.profile_photo));
+    if (u?.signature) setSignaturePreview(getImageUrl(u.signature));
+  }, []);
+
   useEffect(() => {
     if (initialData) {
-      const u = initialData.user;
-      setBdNumberSearch(u?.service_number || "");
-      setName(u?.name || "");
-      setEmail(u?.email || "");
-      setMobile(u?.phone || "");
-      
-      setNameBangla(initialData.name_bangla || "");
-      setShortName(initialData.short_name || "");
-      setGender(initialData.gender || "");
-      setMaritalStatus(initialData.marital_status || "");
-      setReligion(initialData.religion || "");
-      setDateOfBirth(formatDateForDisplay(initialData.date_of_birth));
-      setWeight(initialData.weight || "");
-      setHeight(initialData.height || "");
-      setBloodGroup(initialData.blood_group || "");
-      setHairColor(initialData.hair_color || "");
-      setEyeColor(initialData.eye_color || "");
-      setCaste(initialData.caste || "");
-      setComplexion(initialData.complexion || "");
-      setIdentificationMark(initialData.identification_mark || "");
-      setOtherInformation(initialData.other_information || "");
-
-      setNationalId(initialData.national_id || "");
-      setImo(initialData.imo || "");
-      setWhatsapp(initialData.whatsapp || "");
-      setViber(initialData.viber || "");
-      setFacebookId(initialData.facebook_id || "");
-      setDrivingLicense(initialData.driving_license || "");
-      setPassport(initialData.passport || "");
-
-      setHasSpouse(initialData.has_spouse || false);
-      setSpouseName(initialData.spouse_name || "");
-      setSpouseGender((initialData.spouse_gender as any) || "wife");
-      setHasChildren(initialData.has_children || false);
-      if (initialData.children && initialData.children.length > 0) {
-        setChildren(initialData.children.map(c => ({ name: c.name, gender: c.gender as any })));
-      }
-
-      if (initialData.languages && initialData.languages.length > 0) {
-        setLanguages(initialData.languages.map(l => ({ 
-          language: l.language, 
-          write: l.write, 
-          read: l.read, 
-          speak: l.speak 
-        })));
-      }
-
-      setUnit(initialData.unit || "");
-      setTrade(initialData.trade || "");
-      setDateOfCommission(formatDateForDisplay(initialData.date_of_commission));
-      setJoiningDate(formatDateForDisplay(initialData.joining_date));
-      setEmployeeType(initialData.employee_type || "");
-      setLegend(initialData.legend || "");
-      setPostingDate(formatDateForDisplay(initialData.posting_date));
-
-      setPresentDivision(initialData.present_division || "");
-      setPresentDistrict(initialData.present_district || "");
-      setPresentPostOffice(initialData.present_post_office || "");
-      setPresentPostCode(initialData.present_post_code || "");
-      setPresentAddress(initialData.present_address || "");
-
-      setPermanentDivision(initialData.permanent_division || "");
-      setPermanentDistrict(initialData.permanent_district || "");
-      setPermanentPostOffice(initialData.permanent_post_office || "");
-      setPermanentPostCode(initialData.permanent_post_code || "");
-      setPermanentAddress(initialData.permanent_address || "");
-
-      setGuardianDivision(initialData.guardian_division || "");
-      setGuardianDistrict(initialData.guardian_district || "");
-      setGuardianPostOffice(initialData.guardian_post_office || "");
-      setGuardianPostCode(initialData.guardian_post_code || "");
-      setGuardianAddress(initialData.guardian_address || "");
-
-      if (initialData.certifications && initialData.certifications.length > 0) {
-        setCertifications(initialData.certifications.map(c => ({
-          examFullName: c.exam_full_name,
-          examShortName: c.exam_short_name || "",
-          passingYear: c.passing_year || "",
-          grade: c.grade || "",
-          outOf: c.out_of || "",
-          instituteName: c.institute_name || "",
-          others: c.others || ""
-        })));
-      }
-
-      if (initialData.achievements && initialData.achievements.length > 0) {
-        setAchievements(initialData.achievements.map(a => ({
-          achievementTitle: a.achievement_title,
-          description: a.description || "",
-          achievementDate: formatDateForDisplay(a.achievement_date),
-          awardedBy: a.awarded_by || ""
-        })));
-      }
-
-      setEmergencyContactName(initialData.emergency_contact_name || "");
-      setEmergencyContactPhone(initialData.emergency_contact_phone || "");
-
-      setSpecialization(initialData.specialization || "");
-      setQualification(initialData.qualification || "");
-      setYearsOfExperience(initialData.years_of_experience?.toString() || "");
-      setInstructorSince(formatDateForDisplay(initialData.instructor_since));
-
-      if (u?.profile_photo) setProfilePicturePreview(getImageUrl(u.profile_photo));
-      if (u?.signature) setSignaturePreview(getImageUrl(u.signature));
+      populateForm(initialData);
     }
-  }, [initialData]);
+  }, [initialData, populateForm]);
 
-  const handleSearchBdNumber = () => {
-    console.log("Searching BD Number:", bdNumberSearch);
-    setUserFound(true);
+  const handleSearchBdNumber = async () => {
+    if (!bdNumberSearch) return;
+
+    // Clear the form first before searching
+    resetForm();
+
+    setSearchStatus({ type: 'loading', message: 'Searching...' });
+    setError("");
+
+    try {
+      // 1. Check if already an instructor
+      const existingInstructor = await instructorService.findInstructorByServiceNumber(bdNumberSearch);
+      if (existingInstructor) {
+        populateForm(existingInstructor);
+        setLocalIsEdit(true);
+        setIsExistingUser(true);
+        setSearchStatus({
+          type: 'found',
+          message: `Instructor found with BD No ${bdNumberSearch}. Switched to edit mode.`
+        });
+        return;
+      }
+
+      // 2. Search in users table
+      const user = await userService.findUserByServiceNumber(bdNumberSearch);
+      if (user) {
+        // Auto-fill basic user data
+        setName(user.name || "");
+        setEmail(user.email || "");
+        setMobile(user.phone || "");
+        if (user.date_of_birth) setDateOfBirth(formatDateForDisplay(user.date_of_birth.toString()));
+        if (user.blood_group) setBloodGroup(user.blood_group);
+        if (user.profile_photo) setProfilePicturePreview(getImageUrl(user.profile_photo));
+        if (user.signature) setSignaturePreview(getImageUrl(user.signature));
+
+        setLocalIsEdit(false);
+        setInstructorId(null);
+        setIsExistingUser(true);
+        setSearchStatus({
+          type: 'found',
+          message: `User ${user.name} found and basic data auto-filled.`
+        });
+      } else {
+        setLocalIsEdit(false);
+        setInstructorId(null);
+        setIsExistingUser(false);
+        setSearchStatus({
+          type: 'not_found',
+          message: `No user found with BD No ${bdNumberSearch}. You can fill the form manually.`
+        });
+      }
+    } catch (err: any) {
+      setSearchStatus({ type: 'idle', message: '' });
+      setError("Search failed: " + (err.message || "Unknown error"));
+    }
   };
 
   const convertToBase64 = (file: File): Promise<string> => {
@@ -386,6 +536,8 @@ export default function InstructorForm({ initialData, onSubmit, onCancel, loadin
 
     try {
       const formData = {
+        id: instructorId,
+        isEdit: localIsEdit,
         serviceNumber: bdNumberSearch,
         profilePicture,
         signature,
@@ -407,7 +559,7 @@ export default function InstructorForm({ initialData, onSubmit, onCancel, loadin
         otherInformation,
         nationalId,
         mobile,
-        password,
+        password: (isExistingUser && !changePassword) ? "" : password,
         imo,
         email,
         whatsapp,
@@ -469,19 +621,54 @@ export default function InstructorForm({ initialData, onSubmit, onCancel, loadin
         <div className="text-center mb-8">
           <div className="flex justify-center mb-4"><FullLogo /></div>
           <h1 className="text-xl font-bold text-gray-900 uppercase">Bangladesh Air Force Academy</h1>
-          <h2 className="text-md font-semibold text-gray-700 mt-2 uppercase">{isEdit ? "Edit Instructor" : "Add New Instructor"}</h2>
+          <h2 className="text-md font-semibold text-gray-700 mt-2 uppercase">{localIsEdit ? "Edit Instructor" : "Add New Instructor"}</h2>
         </div>
 
         {error && <div className="p-4 mb-6 bg-red-50 border border-red-200 rounded-lg text-red-600">{error}</div>}
 
-        {!isEdit && (
-          <div className="mb-8 p-4 bg-gray-50 rounded-lg border border-gray-200">
-            <Label className="mb-2">Instructor BD No (Enter to auto-fill form)</Label>
-            <div className="flex gap-2">
-              <Input value={bdNumberSearch} onChange={(e) => setBdNumberSearch(e.target.value)} placeholder="fgn" className="flex-1" />
-              <button type="button" onClick={handleSearchBdNumber} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"><Icon icon="hugeicons:search-01" className="w-5 h-5" /></button>
+        {!propIsEdit && (
+          <div className="mb-8">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+              <div>
+                <Label className="mb-2">BD/service Number</Label>
+                <div className="flex gap-2">
+                  <div className="flex-1">
+                    <Input
+                      value={bdNumberSearch}
+                      onChange={(e) => setBdNumberSearch(e.target.value)}
+                      placeholder="Enter BD Number"
+                      className="w-full"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleSearchBdNumber}
+                    disabled={searchStatus.type === 'loading'}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex-shrink-0 h-[42px] flex items-center justify-center min-w-[42px]"
+                  >
+                    {searchStatus.type === 'loading' ? (
+                      <Icon icon="hugeicons:loading-03" className="w-5 h-5 animate-spin" />
+                    ) : (
+                      <Icon icon="hugeicons:search-01" className="w-5 h-5" />
+                    )}
+                  </button>
+                </div>
+              </div>
+              <div className="col-span-3">
+                {searchStatus.type !== 'idle' && (
+                  <div className={`p-2.5 text-sm flex items-center gap-2 ${searchStatus.type === 'found' ? 'text-green-700' :
+                      searchStatus.type === 'not_found' ? 'text-blue-700' :
+                        searchStatus.type === 'already_instructor' ? 'text-red-700' :
+                          'text-gray-700'
+                    }`}>
+                    {searchStatus.type === 'found' && <Icon icon="hugeicons:checkmark-circle-01" className="w-5 h-5" />}
+                    {searchStatus.type === 'not_found' && <Icon icon="hugeicons:information-circle" className="w-5 h-5" />}
+                    {searchStatus.type === 'already_instructor' && <Icon icon="hugeicons:alert-circle" className="w-5 h-5" />}
+                    <span>{searchStatus.message}</span>
+                  </div>
+                )}
+              </div>
             </div>
-            {userFound && <div className="mt-2 p-2 bg-green-50 border border-green-200 rounded text-green-700 text-sm"><Icon icon="hugeicons:checkmark-circle-01" className="w-4 h-4 inline mr-2" />No instructor found with this BD Number</div>}
           </div>
         )}
 
@@ -540,7 +727,46 @@ export default function InstructorForm({ initialData, onSubmit, onCancel, loadin
           <h2 className="text-lg font-bold text-gray-900 mb-4 pb-2 border-b border-dashed border-gray-300">2. Contact Information</h2>
           <div className="grid grid-cols-4 gap-4">
             <div><Label>Email <span className="text-red-500">*</span></Label><Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email address" required /></div>
-            {!isEdit && <div><Label>Password <span className="text-red-500">*</span></Label><Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Password" required /></div>}
+
+            <div className="col-span-1">
+              {!isExistingUser ? (
+                <>
+                  <Label>Password <span className="text-red-500">*</span></Label>
+                  <Input
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="Enter password"
+                    required
+                  />
+                </>
+              ) : (
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center gap-2 mt-7">
+                    <input
+                      type="checkbox"
+                      id="changePassword"
+                      checked={changePassword}
+                      onChange={(e) => setChangePassword(e.target.checked)}
+                      className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
+                    />
+                    <label htmlFor="changePassword" className="text-sm font-medium text-gray-700 cursor-pointer">
+                      Do you change password?
+                    </label>
+                  </div>
+                  {changePassword && (
+                    <Input
+                      type="password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="Enter new password"
+                      required
+                    />
+                  )}
+                </div>
+              )}
+            </div>
+
             <div><Label>Mobile No <span className="text-red-500">*</span></Label><Input value={mobile} onChange={(e) => setMobile(e.target.value)} placeholder="Mobile number" required /></div>
             <div><Label>National ID Number</Label><Input value={nationalId} onChange={(e) => setNationalId(e.target.value)} placeholder="National ID Number" /></div>
           </div>
@@ -707,7 +933,7 @@ export default function InstructorForm({ initialData, onSubmit, onCancel, loadin
 
         <div className="flex items-center justify-end gap-4 pt-4 border-t border-gray-300">
           <button type="button" onClick={onCancel} disabled={isFormLoading} className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 disabled:opacity-50">Cancel</button>
-          <button type="submit" disabled={isFormLoading} className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2">{isFormLoading ? <><Icon icon="hugeicons:loading-03" className="w-5 h-5 animate-spin" />Saving...</> : isEdit ? "Update Instructor" : "Save Instructor"}</button>
+          <button type="submit" disabled={isFormLoading} className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2">{isFormLoading ? <><Icon icon="hugeicons:loading-03" className="w-5 h-5 animate-spin" />Saving...</> : localIsEdit ? "Update Instructor" : "Save Instructor"}</button>
         </div>
       </form>
     </div>

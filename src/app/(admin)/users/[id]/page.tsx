@@ -8,6 +8,7 @@ import { userService } from "@/libs/services/userService";
 import FullLogo from "@/components/ui/fulllogo";
 import { formatDate, getImageUrl } from "@/libs/utils/formatter";
 import type { User } from "@/libs/types/user";
+import { useCan, usePageContext } from "@/context/PagePermissionsContext";
 
 export default function ViewUserPage() {
     const router = useRouter();
@@ -15,6 +16,12 @@ export default function ViewUserPage() {
     const userId = params.id as string;
     const [user, setUser] = useState<User | null>(null);
     const [loading, setLoading] = useState(true);
+    const { menu, permissions } = usePageContext();
+    const can = useCan();
+
+    useEffect(() => {
+        console.log("Page permissions:", permissions);
+    }, [menu, permissions]);
 
     useEffect(() => {
         const loadUser = async () => {
@@ -37,11 +44,6 @@ export default function ViewUserPage() {
     const handleBack = () => {
         router.push('/users');
     };
-
-    const handleEdit = () => {
-        router.push(`/users/${userId}/edit`);
-    };
-
     const handlePrint = () => {
         window.print();
     };
@@ -85,13 +87,6 @@ export default function ViewUserPage() {
                         <Icon icon="hugeicons:printer" className="w-4 h-4" />
                         Print Biodata
                     </button>
-                    <button
-                        onClick={handleEdit}
-                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2"
-                    >
-                        <Icon icon="hugeicons:pencil-edit-01" className="w-4 h-4" />
-                        Edit User
-                    </button>
                 </div>
             </div>
 
@@ -115,7 +110,7 @@ export default function ViewUserPage() {
                             {user.profile_photo ? (
                                 <div className="relative w-32 h-40 border-2 border-black">
                                     <Image
-                                        src={getImageUrl(user.profile_photo)}
+                                        src={user.profile_photo}
                                         alt={user.name || "Profile"}
                                         fill
                                         className="object-cover"
@@ -285,7 +280,7 @@ export default function ViewUserPage() {
                         <div className="text-center w-48">
                             <div className="relative w-full h-16 mb-2">
                                 <Image
-                                    src={getImageUrl(user.signature)}
+                                    src={user.signature}
                                     alt="Signature"
                                     fill
                                     className="object-contain"

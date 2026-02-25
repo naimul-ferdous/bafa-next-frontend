@@ -33,6 +33,7 @@ export default function MenuForm({ initialData, onSubmit, onCancel, loading, isE
   const [permissions, setPermissions] = useState<Permission[]>([]);
   const [selectedPermissions, setSelectedPermissions] = useState<number[]>([]);
   const [permissionsLoading, setPermissionsLoading] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
 
   useEffect(() => {
     loadMenus();
@@ -66,7 +67,7 @@ export default function MenuForm({ initialData, onSubmit, onCancel, loading, isE
   const loadPermissions = async () => {
     try {
       setPermissionsLoading(true);
-      const response = await permissionService.getAllPermissions({ per_page: 1000 });
+      const response = await permissionService.getPermissions({ per_page: 1000 });
       setPermissions(response.data.filter((p: Permission) => p.is_active));
     } catch (error) {
       console.error("Failed to load permissions:", error);
@@ -92,7 +93,8 @@ export default function MenuForm({ initialData, onSubmit, onCancel, loading, isE
   };
 
   const handleSelectAllModule = (module: string, checked: boolean) => {
-    const modulePermissionIds = permissions.filter(p => p.module === module).map(p => p.id);
+    const visiblePermissionsInModule = filteredGroupedPermissions[module] || [];
+    const modulePermissionIds = visiblePermissionsInModule.map(p => p.id);
     if (checked) {
       setSelectedPermissions(prev => [...new Set([...prev, ...modulePermissionIds])]);
     } else {
@@ -132,13 +134,28 @@ export default function MenuForm({ initialData, onSubmit, onCancel, loading, isE
     return acc;
   }, {} as Record<string, Permission[]>);
 
+  const filteredGroupedPermissions = Object.entries(groupedPermissions).reduce((acc, [module, modulePermissions]) => {
+    const matchesModule = module.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchingPermissions = modulePermissions.filter(p => 
+      p.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+      (p.description && p.description.toLowerCase().includes(searchTerm.toLowerCase()))
+    );
+
+    if (matchesModule) {
+      acc[module] = modulePermissions;
+    } else if (matchingPermissions.length > 0) {
+      acc[module] = matchingPermissions;
+    }
+    return acc;
+  }, {} as Record<string, Permission[]>);
+
   const isModuleFullySelected = (moduleName: string) => {
-    const modulePermissions = groupedPermissions[moduleName] || [];
+    const modulePermissions = filteredGroupedPermissions[moduleName] || [];
     return modulePermissions.length > 0 && modulePermissions.every(p => selectedPermissions.includes(p.id));
   };
 
   const isModulePartiallySelected = (module: string) => {
-    const modulePermissions = groupedPermissions[module] || [];
+    const modulePermissions = filteredGroupedPermissions[module] || [];
     const selectedCount = modulePermissions.filter(p => selectedPermissions.includes(p.id)).length;
     return selectedCount > 0 && selectedCount < modulePermissions.length;
   };
@@ -151,7 +168,7 @@ export default function MenuForm({ initialData, onSubmit, onCancel, loading, isE
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
         <div>
           <Label>Menu Name <span className="text-red-500">*</span></Label>
           <Input
@@ -170,9 +187,6 @@ export default function MenuForm({ initialData, onSubmit, onCancel, loading, isE
             required
           />
         </div>
-      </div>
-
-      <div className="grid grid-cols-2 gap-4">
         <div>
           <Label>Icon</Label>
           <Input
@@ -195,9 +209,6 @@ export default function MenuForm({ initialData, onSubmit, onCancel, loading, isE
             placeholder="/dashboard"
           />
         </div>
-      </div>
-
-      <div className="grid grid-cols-2 gap-4">
         <div>
           <Label>Parent Menu</Label>
           <select
@@ -253,10 +264,23 @@ export default function MenuForm({ initialData, onSubmit, onCancel, loading, isE
 
       {/* Permissions Section */}
       <div className="border-t pt-4">
-        <Label className="mb-1 text-base font-semibold">
-          Required Permissions
-          <span className="ml-2 text-sm font-normal text-gray-500">({selectedPermissions.length} selected)</span>
-        </Label>
+        <div className="flex items-center justify-between mb-3">
+          <Label className="mb-0 text-base font-semibold">
+            Required Permissions
+            <span className="ml-2 text-sm font-normal text-gray-500">({selectedPermissions.length} selected)</span>
+          </Label>
+          
+          <div className="relative w-64">
+            <Icon icon="hugeicons:search-01" className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input 
+              type="text" 
+              placeholder="Search permissions..." 
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-9 pr-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+        </div>
         <p className="text-sm text-gray-500 mb-3">Users need at least one of these permissions to see this menu</p>
 
         {permissionsLoading ? (
@@ -264,41 +288,47 @@ export default function MenuForm({ initialData, onSubmit, onCancel, loading, isE
         ) : permissions.length === 0 ? (
           <div className="text-center py-4 text-gray-500 text-sm">No permissions available</div>
         ) : (
-          <div className="max-h-64 overflow-y-auto border border-gray-200 rounded-lg p-4 space-y-4">
-            {Object.entries(groupedPermissions).map(([module, modulePermissions]) => (
-              <div key={module} className="space-y-2">
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={isModuleFullySelected(module)}
-                    ref={(el) => { if (el) el.indeterminate = isModulePartiallySelected(module); }}
-                    onChange={(e) => handleSelectAllModule(module, e.target.checked)}
-                    className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                  />
-                  <span className="font-medium text-gray-900 capitalize">{module.replace(/_/g, " ")}</span>
-                  <span className="text-xs text-gray-500">
-                    ({modulePermissions.filter(p => selectedPermissions.includes(p.id)).length}/{modulePermissions.length})
-                  </span>
-                </label>
-                <div className="ml-6 grid grid-cols-2 md:grid-cols-3 gap-2">
-                  {modulePermissions.map((permission) => (
-                    <label
-                      key={permission.id}
-                      className="flex items-center gap-2 cursor-pointer text-sm"
-                      title={permission.description || permission.name}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={selectedPermissions.includes(permission.id)}
-                        onChange={() => handlePermissionToggle(permission.id)}
-                        className="w-3.5 h-3.5 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                      />
-                      <span className="text-gray-700 truncate">{permission.name}</span>
-                    </label>
-                  ))}
+          <div className="border border-gray-200 rounded-lg p-4 space-y-4">
+            {Object.entries(filteredGroupedPermissions).length > 0 ? (
+              Object.entries(filteredGroupedPermissions).map(([module, modulePermissions]) => (
+                <div key={module} className="space-y-2">
+                  <label className="flex items-center gap-2 cursor-pointer bg-gray-50 p-2 rounded-lg hover:bg-gray-100 transition-colors">
+                    <input
+                      type="checkbox"
+                      checked={isModuleFullySelected(module)}
+                      ref={(el) => { if (el) el.indeterminate = isModulePartiallySelected(module); }}
+                      onChange={(e) => handleSelectAllModule(module, e.target.checked)}
+                      className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                    />
+                    <span className="font-medium text-gray-900 capitalize">{module.replace(/_/g, " ")}</span>
+                    <span className="text-xs text-gray-500">
+                      ({modulePermissions.filter(p => selectedPermissions.includes(p.id)).length}/{modulePermissions.length})
+                    </span>
+                  </label>
+                  <div className="ml-6 grid grid-cols-2 md:grid-cols-3 gap-2">
+                    {modulePermissions.map((permission) => (
+                      <label
+                        key={permission.id}
+                        className="flex items-center gap-2 cursor-pointer text-sm"
+                        title={permission.description || permission.name}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedPermissions.includes(permission.id)}
+                          onChange={() => handlePermissionToggle(permission.id)}
+                          className="w-3.5 h-3.5 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                        />
+                        <span className="text-gray-700 truncate">{permission.name}</span>
+                      </label>
+                    ))}
+                  </div>
                 </div>
+              ))
+            ) : (
+              <div className="text-center py-8 text-gray-500">
+                <p>No permissions found matching "{searchTerm}"</p>
               </div>
-            ))}
+            )}
           </div>
         )}
       </div>

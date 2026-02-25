@@ -1,5 +1,5 @@
 "use client";
-import React, { useEffect, useRef, useState, useCallback } from "react";
+import React, { useState, useCallback, useMemo } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
@@ -55,6 +55,8 @@ const buildMenuTree = (menus: Menu[]): Menu[] => {
   return sortMenus(rootMenus);
 };
 
+const normalizeRoute = (path: string) => path.replace(/\/+$/, "");
+
 const AppSidebar: React.FC = () => {
   const { isExpanded, isMobileOpen, isHovered, setIsHovered } = useSidebar();
   const { user, menus } = useAuth();
@@ -63,7 +65,7 @@ const AppSidebar: React.FC = () => {
   const [openSubmenus, setOpenSubmenus] = useState<Record<string, boolean>>({});
 
   const isActive = useCallback(
-    (path: string) => path === pathname,
+    (path: string) => normalizeRoute(path) === normalizeRoute(pathname),
     [pathname]
   );
 
@@ -74,24 +76,44 @@ const AppSidebar: React.FC = () => {
     }));
   };
 
+  // Compute which menus should be auto-opened based on current pathname (synchronous, no flash)
+  const autoOpenKeys = useMemo(() => {
+    const result: Record<string, boolean> = {};
+    const normalizedPathname = normalizeRoute(pathname);
+    const traverse = (menu: Menu, ancestors: string[]): boolean => {
+      const key = `menu-${menu.id}`;
+      let active = !!(menu.route && normalizeRoute(menu.route) === normalizedPathname);
+      if (menu.children && menu.children.length > 0) {
+        const childActive = menu.children.some((child: Menu) => traverse(child, [...ancestors, key]));
+        if (childActive) active = true;
+      }
+      if (active) {
+        result[key] = true;
+        ancestors.forEach((a) => { result[a] = true; });
+      }
+      return active;
+    };
+    menus.forEach((menu) => traverse(menu, []));
+    return result;
+  }, [menus, pathname]);
+
   // Recursive function to check if any child is active
   const hasActiveChild = useCallback((menu: Menu): boolean => {
-    if (menu.route && isActive(menu.route)) {
+    if (menu.route && normalizeRoute(menu.route) === normalizeRoute(pathname)) {
       return true;
     }
     if (menu.children && menu.children.length > 0) {
-      return menu.children.some(child => hasActiveChild(child));
+      return menu.children.some((child: Menu) => hasActiveChild(child));
     }
     return false;
-  }, [isActive]);
+  }, [pathname]);
 
   // Recursive menu item renderer
   const renderMenuItem = (menu: Menu, level: number = 0): React.ReactNode => {
     const hasChildren = menu.children && menu.children.length > 0;
     const menuPath = menu.route || "";
     const menuKey = `menu-${menu.id}`;
-    const isOpen = openSubmenus[menuKey];
-    const isMenuActive = hasActiveChild(menu);
+    const isOpen = openSubmenus[menuKey] ?? autoOpenKeys[menuKey] ?? false;
 
     return (
       <li key={menu.id}>
@@ -99,20 +121,14 @@ const AppSidebar: React.FC = () => {
           <>
             <button
               onClick={() => toggleSubmenu(menuKey)}
-              className={`menu-item group ${
-                isMenuActive ? "menu-item-active" : "menu-item-inactive"
-              } cursor-pointer ${
+              className={`menu-item group menu-item-inactive cursor-pointer ${
                 level === 0 && !isExpanded && !isHovered
                   ? "lg:justify-center"
                   : "lg:justify-start"
               }`}
               style={{ paddingLeft: level > 0 ? `${level * 1.5}rem` : undefined }}
             >
-              <span
-                className={`${
-                  isMenuActive ? "menu-item-icon-active" : "menu-item-icon-inactive"
-                }`}
-              >
+              <span className="menu-item-icon-inactive">
                 <Icon icon={getIconName(menu.icon)} className="w-5 h-5" />
               </span>
               {(isExpanded || isHovered || isMobileOpen) && (
@@ -129,7 +145,7 @@ const AppSidebar: React.FC = () => {
             </button>
             {(isExpanded || isHovered || isMobileOpen) && isOpen && (
               <ul className="space-y-1">
-                {menu.children!.map((subItem) => renderMenuItem(subItem, level + 1))}
+                {menu.children!.map((subItem: Menu) => renderMenuItem(subItem, level + 1))}
               </ul>
             )}
           </>
@@ -178,30 +194,6 @@ const AppSidebar: React.FC = () => {
       {menuItems.map((menu) => renderMenuItem(menu, 0))}
     </ul>
   );
-
-  // Auto-expand menus that contain the active route
-  useEffect(() => {
-    const expandParents = (menu: Menu, parentKeys: string[] = []): void => {
-      const menuKey = `menu-${menu.id}`;
-      const currentKeys = [...parentKeys, menuKey];
-
-      if (menu.route && isActive(menu.route)) {
-        // Open all parent menus
-        const newOpenSubmenus: Record<string, boolean> = {};
-        parentKeys.forEach(key => {
-          newOpenSubmenus[key] = true;
-        });
-        setOpenSubmenus(prev => ({ ...prev, ...newOpenSubmenus }));
-        return;
-      }
-
-      if (menu.children && menu.children.length > 0) {
-        menu.children.forEach(child => expandParents(child, currentKeys));
-      }
-    };
-
-    menus.forEach(menu => expandParents(menu));
-  }, [pathname, menus, isActive]);
 
   return (
     <aside

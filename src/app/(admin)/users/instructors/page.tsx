@@ -24,11 +24,12 @@ import InstructorViewAssignedModulesModal from "@/components/instructors/Instruc
 import UserAssignRankModal from "@/components/users/UserAssignRankModal";
 import UserSignatureModal from "@/components/users/UserSignatureModal";
 import { useAuth } from "@/context/AuthContext";
-import { getImageUrl } from "@/libs/utils/formatter";
+import { usePageContext, useCan } from "@/context/PagePermissionsContext";
 
 function InstructorsPageContent() {
   const router = useRouter();
   const { user, userIsSystemAdmin } = useAuth();
+  const can = useCan();
   const [instructors, setInstructors] = useState<InstructorBiodata[]>([]);
   const [loading, setLoading] = useState(true);
   
@@ -286,7 +287,7 @@ function InstructorsPageContent() {
           <div className="flex justify-center">
             <div className="relative w-10 h-10 overflow-hidden rounded-full border border-gray-200">
               <Image
-                src={getImageUrl(instructor.user.profile_photo)}
+                src={instructor.user.profile_photo}
                 alt={instructor.user?.name || "Profile"}
                 fill
                 className="object-cover"
@@ -306,27 +307,24 @@ function InstructorsPageContent() {
       key: "signature", header: "Signature", className: "text-center", render: (instructor) => (
         instructor.user?.signature ? (
           <div className="flex justify-center">
-            <div 
-              className="relative w-20 h-10 bg-gray-50 rounded border border-gray-100 overflow-hidden cursor-pointer hover:bg-gray-100"
-              onClick={(e) => { e.stopPropagation(); handleUpdateSignature(instructor); }}
-              title="Update Signature"
+            <div
+              className={`relative w-20 h-10 bg-gray-50 rounded border border-gray-100 overflow-hidden ${can('edit') ? 'cursor-pointer hover:bg-gray-100' : ''}`}
+              onClick={can('edit') ? (e) => { e.stopPropagation(); handleUpdateSignature(instructor); } : undefined}
+              title={can('edit') ? "Update Signature" : undefined}
             >
-              <Image
-                src={getImageUrl(instructor.user.signature)}
-                alt="Signature"
-                fill
-                className="object-contain"
-              />
+              <Image src={instructor.user.signature} alt="Signature" fill className="object-contain" />
             </div>
           </div>
         ) : (
-          <button 
-            onClick={(e) => { e.stopPropagation(); handleUpdateSignature(instructor); }}
-            className="p-1 text-blue-600 hover:bg-blue-50 rounded-full border border-blue-100"
-            title="Add Signature"
-          >
-            <Icon icon="hugeicons:plus-sign" className="w-4 h-4" />
-          </button>
+          can('edit') ? (
+            <button
+              onClick={(e) => { e.stopPropagation(); handleUpdateSignature(instructor); }}
+              className="p-1 text-blue-600 hover:bg-blue-50 rounded-full border border-blue-100"
+              title="Add Signature"
+            >
+              <Icon icon="hugeicons:plus-sign" className="w-4 h-4" />
+            </button>
+          ) : <span className="text-gray-400 text-xs">—</span>
         )
       )
     },
@@ -335,23 +333,27 @@ function InstructorsPageContent() {
         {instructor.user?.rank ? (
           <>
             <span className="flex-1">{instructor.user.rank.name}</span>
-            <button 
-              onClick={(e) => { e.stopPropagation(); handleAssignRank(instructor); }}
-              className="p-0.5 text-blue-600 hover:bg-blue-50 rounded border border-blue-100"
-              title="Update Rank"
-            >
-              <Icon icon="hugeicons:pencil-edit-01" className="w-3.5 h-3.5" />
-            </button>
+            {can('edit') && (
+              <button
+                onClick={(e) => { e.stopPropagation(); handleAssignRank(instructor); }}
+                className="p-0.5 text-blue-600 hover:bg-blue-50 rounded border border-blue-100"
+                title="Update Rank"
+              >
+                <Icon icon="hugeicons:pencil-edit-01" className="w-3.5 h-3.5" />
+              </button>
+            )}
           </>
         ) : (
-          <button 
-            onClick={(e) => { e.stopPropagation(); handleAssignRank(instructor); }}
-            className="p-1 text-blue-600 hover:bg-blue-50 rounded border border-blue-100 flex items-center gap-1"
-            title="Assign Rank"
-          >
-            <Icon icon="hugeicons:plus-sign" className="w-3.5 h-3.5" />
-            <span className="text-xs font-medium">Add Rank</span>
-          </button>
+          can('edit') ? (
+            <button
+              onClick={(e) => { e.stopPropagation(); handleAssignRank(instructor); }}
+              className="p-1 text-blue-600 hover:bg-blue-50 rounded border border-blue-100 flex items-center gap-1"
+              title="Assign Rank"
+            >
+              <Icon icon="hugeicons:plus-sign" className="w-3.5 h-3.5" />
+              <span className="text-xs font-medium">Add Rank</span>
+            </button>
+          ) : <span className="text-gray-400 text-xs">—</span>
         )}
       </div>
     )},
@@ -372,13 +374,15 @@ function InstructorsPageContent() {
             ) : (
               <span className="text-gray-400 text-xs">No wings</span>
             )}
-            <button 
-              onClick={(e) => { e.stopPropagation(); handleAssignWing(instructor); }}
-              className="ml-1 p-0.5 text-blue-600 hover:bg-blue-50 rounded border border-blue-100"
-              title="Add / Manage Wings"
-            >
-              <Icon icon="hugeicons:plus-sign-circle" className="w-3.5 h-3.5" />
-            </button>
+            {can('edit') && (
+              <button
+                onClick={(e) => { e.stopPropagation(); handleAssignWing(instructor); }}
+                className="ml-1 p-0.5 text-blue-600 hover:bg-blue-50 rounded border border-blue-100"
+                title="Add / Manage Wings"
+              >
+                <Icon icon="hugeicons:plus-sign-circle" className="w-3.5 h-3.5" />
+              </button>
+            )}
           </div>
         );
       }
@@ -482,13 +486,12 @@ function InstructorsPageContent() {
         const isApprovedForUserWing = hasApprovedWingForUser(instructor);
         return (
           <div className="flex items-center justify-center gap-1" onClick={(e) => e.stopPropagation()}>
-            {/* <button onClick={() => handleViewInstructor(instructor)} className="p-1 text-blue-600 hover:bg-blue-50 rounded" title="View"><Icon icon="hugeicons:view" className="w-4 h-4" /></button> */}
-            {showSystemView && (
+            {can('edit') && (
               <button onClick={() => handleEditInstructor(instructor)} className="p-1 text-yellow-600 hover:bg-yellow-50 rounded" title="Edit"><Icon icon="hugeicons:pencil-edit-01" className="w-4 h-4" /></button>
             )}
             {pendingAssignment ? (
-              <button onClick={() => handleApproveWing(pendingAssignment.id, instructor)} className="p-1 text-green-600 hover:bg-green-50 rounded" title="Approve Wing"><Icon icon="hugeicons:checkmark-circle-02" className="w-4 h-4" /></button>
-            ) : isApprovedForUserWing && !showSystemView && (
+              can('edit') && <button onClick={() => handleApproveWing(pendingAssignment.id, instructor)} className="p-1 text-green-600 hover:bg-green-50 rounded" title="Approve Wing"><Icon icon="hugeicons:checkmark-circle-02" className="w-4 h-4" /></button>
+            ) : isApprovedForUserWing && can('edit') && (
               <div className="flex gap-1">
                 {isItATWingUser && (
                   <>
@@ -504,7 +507,7 @@ function InstructorsPageContent() {
                 )}
               </div>
             )}
-            {showSystemView && (
+            {can('delete') && (
               instructor.user?.is_active ? (
                 <button onClick={() => handleBlockUser(instructor)} className="p-1 text-red-600 hover:bg-red-50 rounded" title="Block / Deactivate"><Icon icon="hugeicons:unavailable" className="w-4 h-4" /></button>
               ) : (
@@ -537,17 +540,16 @@ function InstructorsPageContent() {
           >
             <Icon icon="hugeicons:filter" className="w-4 h-4" />
             Filters
-            {hasActiveFilters && <span className="w-2 h-2 bg-blue-500 rounded-full"></span>}
           </button>
-          {hasActiveFilters && (
+          {hasActiveFilters ? (
             <button onClick={handleClearFilters} className="px-3 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg border border-red-200 flex items-center gap-1">
               <Icon icon="hugeicons:cancel-01" className="w-4 h-4" />
               Clear
             </button>
-          )}
+          ) : null}
         </div>
         <div className="flex items-center gap-3">
-          {showSystemView && !isInstructor && (
+          {can('add') && (
             <button onClick={handleAddInstructor} className="px-4 py-2 rounded-lg text-white flex items-center gap-1 bg-blue-600 hover:bg-blue-700">
               <Icon icon="hugeicons:add-circle" className="w-4 h-4 mr-2" />
               Add Instructor
@@ -604,7 +606,7 @@ function InstructorsPageContent() {
         </div>
       )}
 
-      {loading ? <TableLoading /> : <DataTable columns={columns} data={instructors} keyExtractor={(instructor) => instructor.id.toString()} emptyMessage="No instructors found" onRowClick={handleViewInstructor} />}
+      {loading ? <TableLoading /> : <DataTable columns={columns} data={instructors} keyExtractor={(instructor) => instructor.id.toString()} emptyMessage="No instructors found" onRowClick={can('view') ? handleViewInstructor : undefined} />}
 
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
