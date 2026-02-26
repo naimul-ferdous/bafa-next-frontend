@@ -11,7 +11,9 @@ interface QueryParams {
   page?: number;
   per_page?: number;
   search?: string;
-  flying_phase_type_id?: number;
+  course_id?: number;
+  semester_id?: number;
+  flying_type_id?: number;
   is_active?: boolean;
 }
 
@@ -58,7 +60,9 @@ export const ftw12sqnFlyingSyllabusService = {
       if (params?.page) query.append('page', params.page.toString());
       if (params?.per_page) query.append('per_page', params.per_page.toString());
       if (params?.search) query.append('search', params.search);
-      if (params?.flying_phase_type_id) query.append('flying_phase_type_id', params.flying_phase_type_id.toString());
+      if (params?.course_id) query.append('course_id', params.course_id.toString());
+      if (params?.semester_id) query.append('semester_id', params.semester_id.toString());
+      if (params?.flying_type_id) query.append('flying_type_id', params.flying_type_id.toString());
       if (params?.is_active !== undefined) query.append('is_active', params.is_active.toString());
 
       const endpoint = `/ftw-12sqn-flying-syllabus${query.toString() ? `?${query.toString()}` : ''}`;
@@ -79,61 +83,61 @@ export const ftw12sqnFlyingSyllabusService = {
         to: result.pagination?.to || 0,
       };
     } catch (error) {
-      console.error('Failed to fetch flying syllabus:', error);
+      console.error('Failed to fetch 12sqn flying syllabus:', error);
       return { data: [], current_page: 1, per_page: 10, total: 0, last_page: 1, from: 0, to: 0 };
     }
   },
 
-  async getList(params?: { flying_phase_type_id?: number }): Promise<Ftw12sqnFlyingSyllabus[]> {
+  async getList(params?: { flying_type_id?: number; course_id?: number; semester_id?: number }): Promise<Ftw12sqnFlyingSyllabus[]> {
     try {
       const query = new URLSearchParams();
-      if (params?.flying_phase_type_id) query.append('flying_phase_type_id', params.flying_phase_type_id.toString());
+      if (params?.flying_type_id) query.append('flying_type_id', params.flying_type_id.toString());
+      if (params?.course_id) query.append('course_id', params.course_id.toString());
+      if (params?.semester_id) query.append('semester_id', params.semester_id.toString());
 
       const endpoint = `/ftw-12sqn-flying-syllabus/list${query.toString() ? `?${query.toString()}` : ''}`;
       const token = getToken();
       const result = await apiClient.get<{ success: boolean; data: Ftw12sqnFlyingSyllabus[] }>(endpoint, token);
       return result?.data || [];
     } catch (error) {
-      console.error('Failed to fetch flying syllabus list:', error);
+      console.error('Failed to fetch 12sqn flying syllabus list:', error);
       return [];
     }
   },
 
-  async get(id: number): Promise<Ftw12sqnFlyingSyllabus | null> {
+  async get(id: number, params?: { include_inactive?: boolean }): Promise<Ftw12sqnFlyingSyllabus | null> {
     try {
+      const query = new URLSearchParams();
+      if (params?.include_inactive) query.append('include_inactive', '1');
+      
+      const endpoint = `/ftw-12sqn-flying-syllabus/${id}${query.toString() ? `?${query.toString()}` : ''}`;
       const token = getToken();
-      const result = await apiClient.get<SingleApiResponse>(`/ftw-12sqn-flying-syllabus/${id}`, token);
+      const result = await apiClient.get<SingleApiResponse>(endpoint, token);
       return result?.data || null;
     } catch (error) {
-      console.error(`Failed to fetch flying syllabus ${id}:`, error);
+      console.error(`Failed to fetch 12sqn flying syllabus ${id}:`, error);
       return null;
     }
   },
 
-  // Single API call to create syllabus with all nested data (syllabus_types and exercises)
   async create(data: Ftw12sqnFlyingSyllabusCreateData): Promise<Ftw12sqnFlyingSyllabus | null> {
     try {
       const token = getToken();
-      if (!token) throw new Error('Authentication token not found.');
       const result = await apiClient.post<ActionApiResponse>('/ftw-12sqn-flying-syllabus', data, token);
-      if (!result || !result.success) throw new Error(result?.message || 'Failed to create flying syllabus');
-      return result.data || null;
+      return result?.data || null;
     } catch (error) {
-      console.error('Failed to create flying syllabus:', error);
+      console.error('Failed to create 12sqn flying syllabus:', error);
       throw error;
     }
   },
 
-  // Single API call to update syllabus with all nested data
   async update(id: number, data: Partial<Ftw12sqnFlyingSyllabusCreateData>): Promise<Ftw12sqnFlyingSyllabus | null> {
     try {
       const token = getToken();
-      if (!token) throw new Error('Authentication token not found.');
       const result = await apiClient.put<ActionApiResponse>(`/ftw-12sqn-flying-syllabus/${id}`, data, token);
-      if (!result || !result.success) throw new Error(result?.message || 'Failed to update flying syllabus');
-      return result.data || null;
+      return result?.data || null;
     } catch (error) {
-      console.error(`Failed to update flying syllabus ${id}:`, error);
+      console.error(`Failed to update 12sqn flying syllabus ${id}:`, error);
       throw error;
     }
   },
@@ -144,8 +148,40 @@ export const ftw12sqnFlyingSyllabusService = {
       const result = await apiClient.delete<ActionApiResponse>(`/ftw-12sqn-flying-syllabus/${id}`, token);
       return result?.success || false;
     } catch (error) {
-      console.error(`Failed to delete flying syllabus ${id}:`, error);
+      console.error(`Failed to delete 12sqn flying syllabus ${id}:`, error);
       return false;
+    }
+  },
+
+  async getCourseGrouped(params?: { course_id?: number; include_inactive?: boolean }): Promise<any[]> {
+    try {
+      const query = new URLSearchParams();
+      if (params?.course_id) query.append('course_id', params.course_id.toString());
+      if (params?.include_inactive) query.append('include_inactive', '1');
+
+      const endpoint = `/ftw-12sqn-flying-syllabus/grouped/course${query.toString() ? `?${query.toString()}` : ''}`;
+      const token = getToken();
+      const result = await apiClient.get<{ success: boolean; data: any[] }>(endpoint, token);
+      return result?.data || [];
+    } catch (error) {
+      console.error('Failed to fetch course grouped 12sqn flying syllabus:', error);
+      return [];
+    }
+  },
+
+  async getSemesterGrouped(params?: { semester_id?: number; include_inactive?: boolean }): Promise<any[]> {
+    try {
+      const query = new URLSearchParams();
+      if (params?.semester_id) query.append('semester_id', params.semester_id.toString());
+      if (params?.include_inactive) query.append('include_inactive', '1');
+
+      const endpoint = `/ftw-12sqn-flying-syllabus/grouped/semester${query.toString() ? `?${query.toString()}` : ''}`;
+      const token = getToken();
+      const result = await apiClient.get<{ success: boolean; data: any[] }>(endpoint, token);
+      return result?.data || [];
+    } catch (error) {
+      console.error('Failed to fetch semester grouped 12sqn flying syllabus:', error);
+      return [];
     }
   },
 };

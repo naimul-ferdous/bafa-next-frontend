@@ -741,20 +741,85 @@ span.flatpickr-weekday,
 
 /* Print Styles */
 @media print {
-  .no-print {
+  /* Reset margins and paddings for all layout containers */
+  body, 
+  html,
+  .min-h-screen,
+  .flex-1,
+  .p-4,
+  .md\:p-6,
+  .mx-auto {
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    max-width: none !important;
+    min-width: 0 !important;
+    border: none !important;
+    box-shadow: none !important;
+    background: transparent !important;
+  }
+
+  /* Force main content area to take full width and remove sidebar margin */
+  .lg\:ml-\[290px\],
+  .lg\:ml-\[90px\],
+  .ml-0 {
+    margin-left: 0 !important;
+  }
+
+  /* Use display none for non-essential elements */
+  .no-print,
+  nav,
+  aside,
+  header,
+  .AppHeader,
+  .AppSidebar,
+  .Backdrop,
+  footer:not(.cv-content footer),
+  button {
     display: none !important;
   }
+
+  /* Specific fix for cv-content to fill the page */
   .cv-content {
-    padding: 0px;
-  }
-  .print-no-border{
+    display: block !important;
+    width: 100% !important;
+    max-width: none !important;
+    padding: 10mm !important; /* Proper margin for printing */
+    margin: 0 !important;
     border: none !important;
   }
-  .cv-profile{
-    right:0
+
+  .overflow-x-auto {
+    overflow: visible !important;
   }
+
+  table {
+    width: 100% !important;
+    table-layout: auto !important;
+  }
+
+  .print-no-border {
+    border: none !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+  }
+
   body {
+    background-color: white !important;
+    color: black !important;
     print-color-adjust: exact;
     -webkit-print-color-adjust: exact;
+  }
+
+  /* Force background colors to print */
+  * {
+    print-color-adjust: exact !important;
+    -webkit-print-color-adjust: exact !important;
+  }
+
+  /* Set page margins */
+  @page {
+    size: auto;
+    margin: 5mm;
   }
 }

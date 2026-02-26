@@ -22,7 +22,7 @@ export default function EditGroundSyllabusPage() {
     const loadSyllabus = async () => {
       try {
         setLoadingData(true);
-        const data = await ftw11sqnGroundSyllabusService.get(id);
+        const data = await ftw11sqnGroundSyllabusService.get(id, { include_inactive: true });
         setSyllabus(data);
       } catch (error) {
         console.error("Failed to load syllabus:", error);
@@ -54,9 +54,10 @@ export default function EditGroundSyllabusPage() {
 
   if (loadingData) {
     return (
-      <div className="bg-white p-6 rounded-lg border border-gray-200">
-        <div className="flex items-center justify-center py-12">
-          <Icon icon="hugeicons:fan-01" className="w-10 h-10 animate-spin text-blue-500" />
+      <div className="bg-white p-12 rounded-xl border border-gray-200 flex items-center justify-center">
+        <div className="text-center">
+          <Icon icon="hugeicons:fan-01" className="w-12 h-12 animate-spin text-blue-500 mx-auto mb-4" />
+          <p className="text-gray-500 font-bold uppercase tracking-widest text-xs">Loading Syllabus...</p>
         </div>
       </div>
     );
@@ -64,28 +65,29 @@ export default function EditGroundSyllabusPage() {
 
   if (!syllabus) {
     return (
-      <div className="bg-white p-6 rounded-lg border border-gray-200">
-        <div className="text-center py-12">
-          <Icon icon="hugeicons:alert-02" className="w-12 h-12 mx-auto text-red-500 mb-4" />
-          <h2 className="text-lg font-semibold text-gray-900">Ground Syllabus Not Found</h2>
-          <p className="text-gray-500 mt-2">The ground syllabus you are looking for does not exist.</p>
-          <button
-            onClick={() => router.push("/ftw/11sqn/results/ground/syllabus")}
-            className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-          >
-            Back to List
-          </button>
-        </div>
+      <div className="bg-white p-12 rounded-xl border border-gray-200 text-center">
+        <Icon icon="hugeicons:alert-02" className="w-16 h-16 mx-auto text-red-500 mb-4" />
+        <h2 className="text-2xl font-black text-gray-900 uppercase">Ground Syllabus Not Found</h2>
+        <p className="text-gray-500 mt-2 font-medium">The ground syllabus you are looking for does not exist or has been removed.</p>
+        <button
+          onClick={() => router.push("/ftw/11sqn/results/ground/syllabus")}
+          className="mt-8 px-8 py-3 bg-blue-600 text-white rounded-xl font-black hover:bg-blue-700 transition-all shadow-lg shadow-blue-100 uppercase tracking-widest text-xs"
+        >
+          Return to Summary
+        </button>
       </div>
     );
   }
 
   return (
-    <div className="bg-white p-6 rounded-lg border border-gray-200">
-      <div className="text-center mb-8">
+    <div className="bg-white p-8 rounded-xl border border-gray-200 shadow-sm">
+      <div className="text-center mb-10">
         <div className="flex justify-center mb-4"><FullLogo /></div>
-        <h1 className="text-xl font-bold text-gray-900 uppercase">Bangladesh Air Force Academy</h1>
-        <h2 className="text-md font-semibold text-gray-700 mt-2 uppercase">Edit Ground Syllabus</h2>
+        <h1 className="text-2xl font-black text-gray-900 uppercase tracking-tight">Bangladesh Air Force Academy</h1>
+        <h2 className="text-lg font-bold text-blue-800 mt-2 uppercase tracking-widest">Edit Ground Syllabus</h2>
+        <p className="text-gray-500 text-sm mt-1 uppercase font-semibold">
+          {syllabus.ground_full_name} ({syllabus.ground_shortname})
+        </p>
       </div>
 
       <GroundSyllabusForm

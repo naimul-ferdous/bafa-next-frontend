@@ -99,10 +99,14 @@ export const ftw11sqnFlyingSyllabusService = {
     }
   },
 
-  async get(id: number): Promise<Ftw11sqnFlyingSyllabus | null> {
+  async get(id: number, params?: { include_inactive?: boolean }): Promise<Ftw11sqnFlyingSyllabus | null> {
     try {
+      const query = new URLSearchParams();
+      if (params?.include_inactive) query.append('include_inactive', '1');
+      
+      const endpoint = `/ftw-11sqn-flying-syllabus/${id}${query.toString() ? `?${query.toString()}` : ''}`;
       const token = getToken();
-      const result = await apiClient.get<SingleApiResponse>(`/ftw-11sqn-flying-syllabus/${id}`, token);
+      const result = await apiClient.get<SingleApiResponse>(endpoint, token);
       return result?.data || null;
     } catch (error) {
       console.error(`Failed to fetch flying syllabus ${id}:`, error);
@@ -146,6 +150,36 @@ export const ftw11sqnFlyingSyllabusService = {
     } catch (error) {
       console.error(`Failed to delete flying syllabus ${id}:`, error);
       return false;
+    }
+  },
+
+  async getCourseGrouped(params?: { course_id?: number }): Promise<any[]> {
+    try {
+      const query = new URLSearchParams();
+      if (params?.course_id) query.append('course_id', params.course_id.toString());
+
+      const endpoint = `/ftw-11sqn-flying-syllabus/grouped/course${query.toString() ? `?${query.toString()}` : ''}`;
+      const token = getToken();
+      const result = await apiClient.get<{ success: boolean; data: any[] }>(endpoint, token);
+      return result?.data || [];
+    } catch (error) {
+      console.error('Failed to fetch course grouped flying syllabus:', error);
+      return [];
+    }
+  },
+
+  async getSemesterGrouped(params?: { semester_id?: number }): Promise<any[]> {
+    try {
+      const query = new URLSearchParams();
+      if (params?.semester_id) query.append('semester_id', params.semester_id.toString());
+
+      const endpoint = `/ftw-11sqn-flying-syllabus/grouped/semester${query.toString() ? `?${query.toString()}` : ''}`;
+      const token = getToken();
+      const result = await apiClient.get<{ success: boolean; data: any[] }>(endpoint, token);
+      return result?.data || [];
+    } catch (error) {
+      console.error('Failed to fetch semester grouped flying syllabus:', error);
+      return [];
     }
   },
 };

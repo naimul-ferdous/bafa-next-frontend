@@ -56,6 +56,8 @@ export interface Ftw12sqnFlyingExaminationMark {
     name: string;
     bdno?: string;
     bd_no?: string;
+    cadet_number?: string;
+    rank?: { id: number; name: string };
   };
   examType?: SystemExam;
   phaseType?: {
@@ -140,6 +142,8 @@ export interface Ftw12sqnGroundExaminationMark {
     name: string;
     bdno?: string;
     bd_no?: string;
+    cadet_number?: string;
+    rank?: { id: number; name: string };
   };
   examType?: SystemExam;
 }

@@ -5,6 +5,9 @@ import React, { useState, useEffect, useMemo } from "react";
 import { Icon } from "@iconify/react";
 import { useAuth } from "@/libs/hooks/useAuth";
 import { commonService } from "@/libs/services/commonService";
+import { ftw11sqnGroundSyllabusService } from "@/libs/services/ftw11sqnGroundSyllabusService";
+import { cadetService } from "@/libs/services/cadetService";
+import instructorService from "@/libs/services/instructorService";
 import type { SystemCourse, SystemSemester, SystemExam } from "@/libs/types/system";
 import type { User, CadetProfile } from "@/libs/types/user";
 import DatePicker from "@/components/form/input/DatePicker";
@@ -13,7 +16,9 @@ import { Ftw11sqnGroundSyllabus, Ftw11sqnGroundSyllabusExercise } from "@/libs/t
 interface CadetRow {
   cadet_id: number;
   cadet_bd_no: string;
+  cadet_rank: string;
   cadet_name: string;
+  cadet_branch: string;
   is_active: boolean;
   exercise_id: number;
   date: string;
@@ -33,6 +38,10 @@ interface BulkFormProps {
 
 export default function Ftw11sqnGroundExaminationMarkForm({ onSubmit, onCancel, loading, isEdit = false, initialData }: BulkFormProps) {
   const { user, userIsSuperAdmin, userIsSystemAdmin } = useAuth();
+  
+  const isInstructor = !!user?.instructor_biodata;
+  const defaultInstructorId = isInstructor && user ? user.id : 0;
+
   const [formData, setFormData] = useState({
     course_id: isEdit ? (initialData?.course_id || 0) : 0,
     semester_id: isEdit ? (initialData?.semester_id || 0) : 0,
@@ -43,7 +52,7 @@ export default function Ftw11sqnGroundExaminationMarkForm({ onSubmit, onCancel, 
   // Single record edit state
   const [editData, setEditData] = useState({
     ftw_11sqn_ground_syllabus_exercise_id: initialData?.ftw_11sqn_ground_syllabus_exercise_id || 0,
-    instructor_id: initialData?.instructor_id || 0,
+    instructor_id: initialData?.instructor_id || defaultInstructorId,
     achieved_mark: initialData?.achieved_mark || "",
     achieved_time: initialData?.achieved_time || "",
     participate_date: initialData?.participate_date || "",
@@ -55,6 +64,52 @@ export default function Ftw11sqnGroundExaminationMarkForm({ onSubmit, onCancel, 
 
   const [cadetRows, setCadetRows] = useState<CadetRow[]>([]);
   const [error, setError] = useState("");
+  const [timeInputs, setTimeInputs] = useState<{ [key: string]: string }>({});
+
+  // Time conversion helpers
+  const parseTimeToMinutes = (timeStr: string): number => {
+    if (!timeStr || timeStr.trim() === "") return 0;
+    const cleanStr = timeStr.replace(".", ":");
+    if (cleanStr.includes(":")) {
+      const parts = cleanStr.split(":");
+      const hours = parseInt(parts[0]) || 0;
+      const minutes = parseInt(parts[1]) || 0;
+      return hours * 60 + minutes;
+    }
+    const num = parseFloat(timeStr);
+    if (!isNaN(num)) return Math.round(num * 60);
+    return 0;
+  };
+
+  const minutesToTimeString = (totalMinutes: number): string => {
+    if (totalMinutes <= 0) return "0:00";
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    return `${hours}:${minutes.toString().padStart(2, "0")}`;
+  };
+
+  const handleTimeInputChange = (key: string, value: string) => {
+    setTimeInputs(prev => ({ ...prev, [key]: value }));
+  };
+
+  const handleTimeInputBlur = (key: string, index?: number, isEditMode: boolean = false) => {
+    const inputValue = timeInputs[key] || "";
+    const totalMinutes = parseTimeToMinutes(inputValue);
+    const timeStr = minutesToTimeString(totalMinutes);
+    
+    if (isEditMode) {
+      setEditData(prev => ({ ...prev, achieved_time: timeStr }));
+    } else if (index !== undefined) {
+      handleCadetChange(index, "time", timeStr);
+    }
+    
+    setTimeInputs(prev => ({ ...prev, [key]: timeStr }));
+  };
+
+  const getTimeInputValue = (key: string, defaultValue: string): string => {
+    if (timeInputs[key] !== undefined) return timeInputs[key];
+    return defaultValue || "0:00";
+  };
 
   // Dropdown data
   const [courses, setCourses] = useState<SystemCourse[]>([]);
@@ -72,16 +127,73 @@ export default function Ftw11sqnGroundExaminationMarkForm({ onSubmit, onCancel, 
     const loadInitialData = async () => {
       try {
         setLoadingInitial(true);
-        const options = await commonService.getResultOptions();
+        
+        // Fetch options and instructors in parallel
+        const [options, instructorsRes] = await Promise.all([
+          commonService.getResultOptions(),
+          instructorService.getAllInstructors({ per_page: 500 })
+        ]);
 
         if (options) {
           setCourses(options.courses.filter(c => c.is_active));
-          setSemesters(options.semesters.filter(s => s.is_active && s.is_academic));
+          setSemesters(options.semesters.filter(s => s.is_active && s.is_flying));
           setExams(options.exams.filter(e => e.is_active));
-          setInstructors(options.instructors);
           setSyllabuses(options.ftw11sqn_ground_syllabuses);
-          setAllCadets(options.cadets);
         }
+
+        // Process instructors from instructorService
+        const instructorsData = (instructorsRes as any)?.data?.data || (instructorsRes as any)?.data || [];
+        const mappedInstructors = instructorsData.map((inst: any) => ({
+          ...inst,
+          id: inst.user_id || inst.id,
+          name: inst.user?.name || inst.short_name || inst.name_bangla || `Instructor #${inst.id}`,
+          assigned_wings: inst.assign_wings || [] 
+        }));
+
+        if (isInstructor && user) {
+          setInstructors(mappedInstructors.filter((inst: any) => inst.id === user.id));
+        } else if (user) {
+          // Get current user's wing/subwing IDs from all sources
+          const userRoleWings = user?.roleAssignments?.map(ra => ra.wing_id).filter(id => id != null) || [];
+          const userRoleSubWings = user?.roleAssignments?.map(ra => ra.sub_wing_id).filter(id => id != null) || [];
+          const userAssignWings = (user as any)?.assign_wings?.map((aw: any) => aw.wing_id).filter((id: any) => id != null) || [];
+          const userAssignSubWings = (user as any)?.assign_wings?.map((aw: any) => aw.subwing_id).filter((id: any) => id != null) || [];
+
+          const userWingIds = [...new Set([...userRoleWings, ...userAssignWings])];
+          const userSubWingIds = [...new Set([...userRoleSubWings, ...userAssignSubWings])];
+
+          const isRestricted = !userIsSuperAdmin && !userIsSystemAdmin;
+
+          if (isRestricted && userWingIds.length > 0) {
+            const filteredInstructors = mappedInstructors.filter((inst: any) => {
+              const instWings = inst.assigned_wings;
+              if (instWings.length === 0) return false; 
+
+              // Instructor must have at least one assignment matching the user's scope
+              return instWings.some((aw: any) => {
+                // ONLY consider approved and active assignments
+                const isApproved = aw.status === 'approved' && aw.is_active;
+                if (!isApproved) return false;
+
+                const matchesWing = userWingIds.includes(aw.wing_id);
+                const instSubWingId = aw.subwing_id || aw.sub_wing_id;
+                
+                if (userSubWingIds.length > 0) {
+                  // User is restricted to a squadron: Match wing AND specific subwing
+                  return matchesWing && instSubWingId && userSubWingIds.includes(instSubWingId);
+                }
+                // User is Wing level: Match wing (Parent sees all subwings of that wing)
+                return matchesWing;
+              });
+            });
+            setInstructors(filteredInstructors);
+          } else {
+            setInstructors(mappedInstructors);
+          }
+        } else {
+          setInstructors(mappedInstructors);
+        }
+
       } catch (err) {
         console.error("Failed to load initial data:", err);
         setError("Failed to load required data. Please refresh the page.");
@@ -91,35 +203,70 @@ export default function Ftw11sqnGroundExaminationMarkForm({ onSubmit, onCancel, 
     };
 
     loadInitialData();
-  }, []);
+  }, [isInstructor, user, userIsSuperAdmin, userIsSystemAdmin]);
+
+  useEffect(() => {
+    const fetchCadets = async () => {
+      if (!formData.course_id || !formData.semester_id) {
+        setAllCadets([]);
+        return;
+      }
+      try {
+        const response = await cadetService.getAllCadets({
+          course_id: formData.course_id,
+          semester_id: formData.semester_id,
+          per_page: 200,
+        });
+        
+        // Handle paginated response, fallback to array cast if format differs unexpectedly
+        const responseData = response as any;
+        const data = Array.isArray(responseData) ? responseData : (responseData?.data?.data || responseData?.data || []);
+        setAllCadets(Array.isArray(data) ? data : []);
+      } catch (err) {
+        console.error("Failed to fetch cadets:", err);
+      }
+    };
+
+    fetchCadets();
+  }, [formData.course_id, formData.semester_id]);
 
   // Filtered cadets based on course, semester, and user's wing/subwing assignments
   const filteredCadets = useMemo(() => {
     if (!formData.course_id || !formData.semester_id) return [];
-    
-    // Get user's assigned wings and subwings
-    const userWingIds = user?.roleAssignments?.map(ra => ra.wing_id).filter(id => id != null) || [];
-    const userSubWingIds = user?.roleAssignments?.map(ra => ra.sub_wing_id).filter(id => id != null) || [];
+
+    // The backend API already handles course/semester filtering correctly for the list of cadets
     const isRestricted = !userIsSuperAdmin && !userIsSystemAdmin;
 
+    if (!isRestricted) {
+      return allCadets;
+    }
+
+    // Get user's assigned wings and subwings from both roleAssignments and assign_wings
+    const userRoleWings = user?.roleAssignments?.map(ra => ra.wing_id).filter(id => id != null) || [];
+    const userRoleSubWings = user?.roleAssignments?.map(ra => ra.sub_wing_id).filter(id => id != null) || [];
+    
+    const userAssignWings = (user as any)?.assign_wings?.map((aw: any) => aw.wing_id).filter((id: any) => id != null) || [];
+    const userAssignSubWings = (user as any)?.assign_wings?.map((aw: any) => aw.subwing_id).filter((id: any) => id != null) || [];
+
+    const userWingIds = [...new Set([...userRoleWings, ...userAssignWings])];
+    const userSubWingIds = [...new Set([...userRoleSubWings, ...userAssignSubWings])];
+
+    if (userWingIds.length === 0) return allCadets; // fallback: return all if no wing data attached to user
+
     return allCadets.filter(cadet => {
-      // Basic Course/Semester filtering
-      const hasCourse = cadet.assigned_courses?.some(ac => ac.course_id === formData.course_id);
-      const hasSemester = cadet.assigned_semesters?.some(as => as.semester_id === formData.semester_id);
+      // If the cadet has no wings assigned somehow, they wouldn't match. But let's allow if no wing data.
+      if (!cadet.assigned_wings || cadet.assigned_wings.length === 0) return true;
+
+      // Wing restriction
+      const matchesWing = cadet.assigned_wings.some(aw => userWingIds.includes(aw.wing_id));
       
-      if (!hasCourse || !hasSemester) return false;
-
-      // Wing/Subwing restriction
-      if (isRestricted) {
-        const matchesWing = cadet.assigned_wings?.some(aw => userWingIds.includes(aw.wing_id));
-        const matchesSubWing = userSubWingIds.length > 0 
-          ? cadet.assigned_sub_wings?.some(asw => userSubWingIds.includes(asw.sub_wing_id))
-          : true;
-
-        return matchesWing && matchesSubWing;
+      // SubWing restriction
+      let matchesSubWing = true;
+      if (userSubWingIds.length > 0 && cadet.assigned_sub_wings && cadet.assigned_sub_wings.length > 0) {
+        matchesSubWing = cadet.assigned_sub_wings.some(asw => userSubWingIds.includes(asw.sub_wing_id));
       }
 
-      return true;
+      return matchesWing && matchesSubWing;
     });
   }, [allCadets, formData.course_id, formData.semester_id, user, userIsSuperAdmin, userIsSystemAdmin]);
 
@@ -130,18 +277,20 @@ export default function Ftw11sqnGroundExaminationMarkForm({ onSubmit, onCancel, 
     const rows: CadetRow[] = filteredCadets.map(cadet => ({
       cadet_id: cadet.id,
       cadet_bd_no: cadet.bd_no || cadet.cadet_number || "",
+      cadet_rank: cadet.assigned_ranks?.[0]?.rank?.name || "",
       cadet_name: cadet.name,
-      is_active: true,
+      cadet_branch: cadet.assigned_branchs?.[0]?.branch?.code || cadet.assigned_branchs?.[0]?.branch?.name || "",
+      is_active: false,
       exercise_id: 0,
       date: "",
-      instructor_id: 0,
+      instructor_id: defaultInstructorId,
       mark: "",
       time: "",
       remark: "",
     }));
 
     setCadetRows(rows);
-  }, [filteredCadets, isEdit]);
+  }, [filteredCadets, isEdit, defaultInstructorId]);
 
   // Load exercises when syllabus is selected
   useEffect(() => {
@@ -153,25 +302,17 @@ export default function Ftw11sqnGroundExaminationMarkForm({ onSubmit, onCancel, 
 
       try {
         setLoadingExercises(true);
-        // Find the selected syllabus
-        const selectedSyllabus = syllabuses.find(s => s.id === formData.syllabus_id);
+        // Fetch full syllabus details to get exercises
+        const fullSyllabus = await ftw11sqnGroundSyllabusService.get(formData.syllabus_id);
 
-        if (!selectedSyllabus) {
+        if (!fullSyllabus || !fullSyllabus.exercises) {
           setExercises([]);
           setLoadingExercises(false);
           return;
         }
 
-        // Extract ALL exercises from the selected syllabus
-        const allExercises: Ftw11sqnGroundSyllabusExercise[] = [];
-        if (selectedSyllabus.exercises && Array.isArray(selectedSyllabus.exercises)) {
-          selectedSyllabus.exercises.forEach(exercise => {
-            if (exercise.is_active) {
-              allExercises.push(exercise);
-            }
-          });
-        }
-
+        // Extract ALL active exercises
+        const allExercises = fullSyllabus.exercises.filter((ex: any) => ex.is_active);
         setExercises(allExercises);
       } catch (err) {
         console.error("Failed to load exercises:", err);
@@ -182,7 +323,7 @@ export default function Ftw11sqnGroundExaminationMarkForm({ onSubmit, onCancel, 
     };
 
     loadExercises();
-  }, [formData.syllabus_id, syllabuses]);
+  }, [formData.syllabus_id]);
 
   const handleChange = (field: string, value: any) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -227,13 +368,13 @@ export default function Ftw11sqnGroundExaminationMarkForm({ onSubmit, onCancel, 
     try {
       if (isEdit) {
         // Edit mode - submit single record
-        if (!editData.ftw_11sqn_ground_syllabus_exercise_id) { 
-          setError("Please select an exercise"); 
-          return; 
+        if (!editData.ftw_11sqn_ground_syllabus_exercise_id) {
+          setError("Please select an exercise");
+          return;
         }
-        if (!editData.instructor_id) { 
-          setError("Please select an instructor"); 
-          return; 
+        if (!editData.instructor_id) {
+          setError("Please select an instructor");
+          return;
         }
 
         const submitData = {
@@ -297,6 +438,8 @@ export default function Ftw11sqnGroundExaminationMarkForm({ onSubmit, onCancel, 
     );
   }
 
+  console.log("cadetRows", cadetRows);
+
   return (
     <form onSubmit={handleSubmit}>
       {error && (
@@ -316,7 +459,7 @@ export default function Ftw11sqnGroundExaminationMarkForm({ onSubmit, onCancel, 
 
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block font-medium text-gray-700 mb-2">
                 Course <span className="text-red-500">*</span>
               </label>
               <select
@@ -334,7 +477,7 @@ export default function Ftw11sqnGroundExaminationMarkForm({ onSubmit, onCancel, 
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block font-medium text-gray-700 mb-2">
                 Semester <span className="text-red-500">*</span>
               </label>
               <select
@@ -352,7 +495,7 @@ export default function Ftw11sqnGroundExaminationMarkForm({ onSubmit, onCancel, 
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block font-medium text-gray-700 mb-2">
                 Syllabus <span className="text-red-500">*</span>
               </label>
               <select
@@ -369,7 +512,7 @@ export default function Ftw11sqnGroundExaminationMarkForm({ onSubmit, onCancel, 
                 ))}
               </select>
               {loadingExercises && formData.syllabus_id > 0 && (
-                <p className="mt-1 text-xs text-blue-500 flex items-center gap-1">
+                <p className="mt-1 text-blue-500 flex items-center gap-1">
                   <Icon icon="hugeicons:fan-01" className="w-3 h-3 animate-spin" />
                   Loading exercises...
                 </p>
@@ -377,7 +520,7 @@ export default function Ftw11sqnGroundExaminationMarkForm({ onSubmit, onCancel, 
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block font-medium text-gray-700 mb-2">
                 Exam Type <span className="text-red-500">*</span>
               </label>
               <select
@@ -406,15 +549,15 @@ export default function Ftw11sqnGroundExaminationMarkForm({ onSubmit, onCancel, 
               </h3>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Cadet</label>
+                  <label className="block font-medium text-gray-700 mb-1">Cadet</label>
                   <p className="text-gray-900">{initialData?.cadet?.name || `Cadet #${initialData?.cadet_id}`}</p>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Course</label>
+                  <label className="block font-medium text-gray-700 mb-1">Course</label>
                   <p className="text-gray-900">{initialData?.course?.name || `Course #${initialData?.course_id}`}</p>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Semester</label>
+                  <label className="block font-medium text-gray-700 mb-1">Semester</label>
                   <p className="text-gray-900">{initialData?.semester?.name || `Semester #${initialData?.semester_id}`}</p>
                 </div>
               </div>
@@ -429,7 +572,7 @@ export default function Ftw11sqnGroundExaminationMarkForm({ onSubmit, onCancel, 
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block font-medium text-gray-700 mb-2">
                     Exercise <span className="text-red-500">*</span>
                   </label>
                   <select
@@ -449,7 +592,7 @@ export default function Ftw11sqnGroundExaminationMarkForm({ onSubmit, onCancel, 
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block font-medium text-gray-700 mb-2">
                     Instructor <span className="text-red-500">*</span>
                   </label>
                   <select
@@ -468,7 +611,7 @@ export default function Ftw11sqnGroundExaminationMarkForm({ onSubmit, onCancel, 
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Date</label>
+                  <label className="block font-medium text-gray-700 mb-2">Date</label>
                   <DatePicker
                     value={editData.participate_date}
                     onChange={(e) => handleEditChange("participate_date", e.target.value)}
@@ -488,7 +631,7 @@ export default function Ftw11sqnGroundExaminationMarkForm({ onSubmit, onCancel, 
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Achieved Mark</label>
+                  <label className="block font-medium text-gray-700 mb-2">Achieved Mark</label>
                   <input
                     type="text"
                     value={editData.achieved_mark}
@@ -499,18 +642,19 @@ export default function Ftw11sqnGroundExaminationMarkForm({ onSubmit, onCancel, 
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Time (Hours)</label>
+                  <label className="block font-medium text-gray-700 mb-2">Time (H:MM)</label>
                   <input
                     type="text"
-                    value={editData.achieved_time}
-                    onChange={(e) => handleEditChange("achieved_time", e.target.value)}
+                    value={getTimeInputValue("edit-time", editData.achieved_time)}
+                    onChange={(e) => handleTimeInputChange("edit-time", e.target.value)}
+                    onBlur={() => handleTimeInputBlur("edit-time", undefined, true)}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500"
-                    placeholder="0.00"
+                    placeholder="0:00"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Present</label>
+                  <label className="block font-medium text-gray-700 mb-2">Present</label>
                   <select
                     value={editData.is_present ? "true" : "false"}
                     onChange={(e) => handleEditChange("is_present", e.target.value === "true")}
@@ -523,7 +667,7 @@ export default function Ftw11sqnGroundExaminationMarkForm({ onSubmit, onCancel, 
 
                 {!editData.is_present && (
                   <div className="md:col-span-3">
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Absent Reason</label>
+                    <label className="block font-medium text-gray-700 mb-2">Absent Reason</label>
                     <input
                       type="text"
                       value={editData.absent_reason}
@@ -535,7 +679,7 @@ export default function Ftw11sqnGroundExaminationMarkForm({ onSubmit, onCancel, 
                 )}
 
                 <div className="md:col-span-3">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Remark</label>
+                  <label className="block font-medium text-gray-700 mb-2">Remark</label>
                   <textarea
                     value={editData.remark}
                     onChange={(e) => handleEditChange("remark", e.target.value)}
@@ -546,7 +690,7 @@ export default function Ftw11sqnGroundExaminationMarkForm({ onSubmit, onCancel, 
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Status</label>
+                  <label className="block font-medium text-gray-700 mb-2">Status</label>
                   <select
                     value={editData.is_active ? "true" : "false"}
                     onChange={(e) => handleEditChange("is_active", e.target.value === "true")}
@@ -574,50 +718,57 @@ export default function Ftw11sqnGroundExaminationMarkForm({ onSubmit, onCancel, 
               </div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full border-collapse border border-gray-300">
-                  <thead className="bg-gray-50">
+                <table className="w-full border-collapse border border-black">
+                  <thead>
                     <tr>
-                      <th className="border border-gray-300 px-3 py-2 text-center uppercase text-xs">CADET</th>
-                      <th className="border border-gray-300 px-3 py-2 text-center uppercase text-xs">
-                        EXERCISE<span className="text-red-500">*</span>
+                      <th className="border border-black px-3 py-2 text-center">Sl</th>
+                      <th className="border border-black px-3 py-2 text-center">BD/No</th>
+                      <th className="border border-black px-3 py-2 text-center">Rank</th>
+                      <th className="border border-black px-3 py-2 text-center">Name</th>
+                      <th className="border border-black px-3 py-2 text-center">Branch</th>
+                      <th className="border border-black px-3 py-2 text-center">
+                        Exercise<span className="text-red-500">*</span>
                       </th>
-                      <th className="border border-gray-300 px-3 py-2 text-center uppercase text-xs">
-                        DATE<span className="text-red-500">*</span>
+                      <th className="border border-black px-3 py-2 text-center">
+                        Date<span className="text-red-500">*</span>
                       </th>
-                      <th className="border border-gray-300 px-3 py-2 text-center uppercase text-xs">
-                        INSTRUCTOR<span className="text-red-500">*</span>
+                      <th className="border border-black px-3 py-2 text-center">
+                        Instructor<span className="text-red-500">*</span>
                       </th>
-                      <th className="border border-gray-300 px-3 py-2 text-center uppercase text-xs">MARK</th>
-                      <th className="border border-gray-300 px-3 py-2 text-center uppercase text-xs">TIME</th>
-                      <th className="border border-gray-300 px-3 py-2 text-center uppercase text-xs">REMARK</th>
+                      <th className="border border-black px-3 py-2 text-center">Mark</th>
+                      <th className="border border-black px-3 py-2 text-center">Time</th>
+                      <th className="border border-black px-3 py-2 text-center">Remark</th>
                     </tr>
                   </thead>
                   <tbody>
                     {cadetRows.map((cadet, index) => (
                       <tr key={cadet.cadet_id} className={!cadet.is_active ? "bg-gray-100 opacity-50" : ""}>
-                        <td className="border border-gray-300 px-3 py-2 whitespace-nowrap">
-                          <div className="flex items-center gap-2">
-                            <button
-                              type="button"
-                              onClick={() => toggleCadetActive(index)}
-                              className={`w-5 h-5 rounded-full flex items-center justify-center ${
-                                cadet.is_active ? "bg-green-500" : "bg-gray-300"
-                              }`}
-                            >
-                              {cadet.is_active && <Icon icon="hugeicons:tick-02" className="w-3 h-3 text-white" />}
-                            </button>
-                            <div>
-                              <div className="text-sm font-medium text-gray-900">{cadet.cadet_name}</div>
-                              <div className="text-xs text-gray-500">{cadet.cadet_bd_no}</div>
-                            </div>
-                          </div>
+                        <td className="border border-black px-3 py-2 whitespace-nowrap text-center">
+                          <input
+                            type="checkbox"
+                            checked={cadet.is_active}
+                            onChange={() => toggleCadetActive(index)}
+                            className="w-4 h-4 text-blue-600 border-black rounded focus:ring-blue-500 cursor-pointer mx-auto block"
+                          />
                         </td>
-                        <td className="border border-gray-300 px-2 py-1">
+                        <td className="border border-black px-3 py-2 whitespace-nowrap text-gray-900 text-center">
+                          {cadet.cadet_bd_no}
+                        </td>
+                        <td className="border border-black px-3 py-2 whitespace-nowrap text-gray-900 text-center">
+                          {cadet.cadet_rank}
+                        </td>
+                        <td className="border border-black px-3 py-2 whitespace-nowrap font-medium text-gray-900">
+                          {cadet.cadet_name}
+                        </td>
+                        <td className="border border-black px-3 py-2 whitespace-nowrap text-gray-900 text-center">
+                          {cadet.cadet_branch}
+                        </td>
+                        <td className="border border-black px-2 py-1">
                           <select
                             value={cadet.exercise_id}
                             onChange={(e) => handleCadetChange(index, "exercise_id", parseInt(e.target.value))}
                             disabled={!cadet.is_active || !formData.syllabus_id}
-                            className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
+                            className="w-full px-2 py-1 border border-black rounded focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
                           >
                             <option value={0}>
                               {!formData.syllabus_id ? "Select Syllabus first" : "Select Exercise"}
@@ -629,21 +780,21 @@ export default function Ftw11sqnGroundExaminationMarkForm({ onSubmit, onCancel, 
                             ))}
                           </select>
                         </td>
-                        <td className="border border-gray-300 px-2 py-1">
+                        <td className="border border-black px-2 py-1">
                           <DatePicker
                             value={cadet.date}
                             onChange={(e) => handleCadetChange(index, "date", e.target.value)}
                             disabled={!cadet.is_active}
                             placeholder="dd/mm/yyyy"
-                            className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
+                            className="w-full px-2 py-1 border border-black rounded focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
                           />
                         </td>
-                        <td className="border border-gray-300 px-2 py-1">
+                        <td className="border border-black px-2 py-1">
                           <select
                             value={cadet.instructor_id}
                             onChange={(e) => handleCadetChange(index, "instructor_id", parseInt(e.target.value))}
                             disabled={!cadet.is_active}
-                            className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
+                            className="w-full px-2 py-1 border border-black rounded focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
                           >
                             <option value={0}>Select</option>
                             {instructors.map(instructor => (
@@ -653,33 +804,34 @@ export default function Ftw11sqnGroundExaminationMarkForm({ onSubmit, onCancel, 
                             ))}
                           </select>
                         </td>
-                        <td className="border border-gray-300 px-2 py-1">
+                        <td className="border border-black px-2 py-1">
                           <input
                             type="text"
                             value={cadet.mark}
                             onChange={(e) => handleCadetChange(index, "mark", e.target.value)}
                             disabled={!cadet.is_active}
                             placeholder="0"
-                            className="w-24 px-2 py-1 border border-gray-300 rounded text-sm text-center focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
+                            className="w-24 px-2 py-1 border border-black rounded text-center focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
                           />
                         </td>
-                        <td className="border border-gray-300 px-2 py-1">
+                        <td className="border border-black px-2 py-1">
                           <input
                             type="text"
-                            value={cadet.time}
-                            onChange={(e) => handleCadetChange(index, "time", e.target.value)}
+                            value={getTimeInputValue(`cadet-time-${index}`, cadet.time)}
+                            onChange={(e) => handleTimeInputChange(`cadet-time-${index}`, e.target.value)}
+                            onBlur={() => handleTimeInputBlur(`cadet-time-${index}`, index)}
                             disabled={!cadet.is_active}
-                            placeholder="0.00"
-                            className="w-20 px-2 py-1 border border-gray-300 rounded text-sm text-center focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
+                            placeholder="0:00"
+                            className="w-20 px-2 py-1 border border-black rounded text-center focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
                           />
                         </td>
-                        <td className="border border-gray-300 px-2 py-1">
+                        <td className="border border-black px-2 py-1">
                           <input
                             type="text"
                             value={cadet.remark}
                             onChange={(e) => handleCadetChange(index, "remark", e.target.value)}
                             disabled={!cadet.is_active}
-                            className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
+                            className="w-full px-2 py-1 border border-black rounded focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
                           />
                         </td>
                       </tr>

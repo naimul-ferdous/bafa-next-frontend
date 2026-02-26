@@ -23,13 +23,39 @@ export default function ExerciseFormModal() {
     exercise_name: "",
     exercise_shortname: "",
     exercise_content: "",
-    take_time_hours: "" as string | number,
+    take_time_hours: 0 as number,
     remarks: "",
     exercise_sort: 0,
     is_active: true,
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [timeInput, setTimeInput] = useState("");
+
+  // Time conversion helpers
+  const parseTimeToMinutes = (timeStr: string): number => {
+    if (!timeStr || timeStr.trim() === "") return 0;
+    const cleanStr = timeStr.replace(".", ":");
+    if (cleanStr.includes(":")) {
+      const parts = cleanStr.split(":");
+      const hours = parseInt(parts[0]) || 0;
+      const minutes = parseInt(parts[1]) || 0;
+      return hours * 60 + minutes;
+    }
+    const num = parseFloat(timeStr);
+    if (!isNaN(num)) return Math.round(num * 60);
+    return 0;
+  };
+
+  const minutesToTimeString = (totalMinutes: number): string => {
+    if (totalMinutes <= 0) return "0:00";
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    return `${hours}:${minutes.toString().padStart(2, "0")}`;
+  };
+
+  const decimalHoursToMinutes = (decimalHours: number): number => Math.round(decimalHours * 60);
+  const minutesToDecimalHours = (totalMinutes: number): number => Math.round((totalMinutes / 60) * 100) / 100;
 
   // Fetch all phase types once on mount
   useEffect(() => {
@@ -43,33 +69,43 @@ export default function ExerciseFormModal() {
   // Populate form whenever modal opens
   useEffect(() => {
     if (editingExercise) {
+      const decimalHours = parseFloat(String(editingExercise.take_time_hours || 0));
       setFormData({
         phaseTypeId: initialPhaseTypeId,
         exercise_name: editingExercise.exercise_name,
         exercise_shortname: editingExercise.exercise_shortname,
         exercise_content: editingExercise.exercise_content || "",
-        take_time_hours: editingExercise.take_time_hours,
+        take_time_hours: decimalHours,
         remarks: editingExercise.remarks || "",
         exercise_sort: editingExercise.exercise_sort,
         is_active: editingExercise.is_active !== false,
       });
+      setTimeInput(minutesToTimeString(decimalHoursToMinutes(decimalHours)));
     } else {
       setFormData({
         phaseTypeId: initialPhaseTypeId,
         exercise_name: "",
         exercise_shortname: "",
         exercise_content: "",
-        take_time_hours: "",
+        take_time_hours: 0,
         remarks: "",
         exercise_sort: 0,
         is_active: true,
       });
+      setTimeInput("0:00");
     }
     setError("");
   }, [editingExercise, isOpen, initialPhaseTypeId]);
 
   const handleChange = (field: string, value: any) => {
     setFormData(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleTimeInputBlur = () => {
+    const totalMinutes = parseTimeToMinutes(timeInput);
+    const decimalHours = minutesToDecimalHours(totalMinutes);
+    setFormData(prev => ({ ...prev, take_time_hours: decimalHours }));
+    setTimeInput(minutesToTimeString(totalMinutes));
   };
 
   /** Recalculate sorties (active count) and total hours for a type's exercise list */
@@ -110,7 +146,7 @@ export default function ExerciseFormModal() {
         exercise_name: formData.exercise_name,
         exercise_shortname: formData.exercise_shortname,
         exercise_content: formData.exercise_content || null,
-        take_time_hours: parseFloat(String(formData.take_time_hours || 0)),
+        take_time_hours: formData.take_time_hours,
         remarks: formData.remarks || null,
         exercise_sort: formData.exercise_sort,
         is_active: formData.is_active,
@@ -326,13 +362,12 @@ export default function ExerciseFormModal() {
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <Label>Time (Hours) <span className="text-red-500">*</span></Label>
+              <Label>Time (H:MM) <span className="text-red-500">*</span></Label>
               <Input
-                type="number"
-                step={0.01}
-                value={formData.take_time_hours}
-                onChange={(e) => handleChange("take_time_hours", e.target.value)}
-                placeholder="e.g. 1.5"
+                value={timeInput}
+                onChange={(e) => setTimeInput(e.target.value)}
+                onBlur={handleTimeInputBlur}
+                placeholder="0:00"
                 required
               />
             </div>

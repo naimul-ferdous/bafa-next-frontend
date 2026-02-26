@@ -12,6 +12,8 @@ interface QueryParams {
   per_page?: number;
   search?: string;
   is_active?: boolean;
+  course_id?: number;
+  semester_id?: number;
 }
 
 interface PaginatedResponse {
@@ -57,6 +59,8 @@ export const ftw11sqnGroundSyllabusService = {
       if (params?.page) query.append('page', params.page.toString());
       if (params?.per_page) query.append('per_page', params.per_page.toString());
       if (params?.search) query.append('search', params.search);
+      if (params?.course_id) query.append('course_id', params.course_id.toString());
+      if (params?.semester_id) query.append('semester_id', params.semester_id.toString());
       if (params?.is_active !== undefined) query.append('is_active', params.is_active.toString());
 
       const endpoint = `/ftw-11sqn-ground-syllabus${query.toString() ? `?${query.toString()}` : ''}`;
@@ -82,9 +86,13 @@ export const ftw11sqnGroundSyllabusService = {
     }
   },
 
-  async getList(): Promise<Ftw11sqnGroundSyllabus[]> {
+  async getList(params?: { course_id?: number; semester_id?: number }): Promise<Ftw11sqnGroundSyllabus[]> {
     try {
-      const endpoint = `/ftw-11sqn-ground-syllabus/list`;
+      const query = new URLSearchParams();
+      if (params?.course_id) query.append('course_id', params.course_id.toString());
+      if (params?.semester_id) query.append('semester_id', params.semester_id.toString());
+
+      const endpoint = `/ftw-11sqn-ground-syllabus/list${query.toString() ? `?${query.toString()}` : ''}`;
       const token = getToken();
       const result = await apiClient.get<{ success: boolean; data: Ftw11sqnGroundSyllabus[] }>(endpoint, token);
       return result?.data || [];
@@ -94,10 +102,14 @@ export const ftw11sqnGroundSyllabusService = {
     }
   },
 
-  async get(id: number): Promise<Ftw11sqnGroundSyllabus | null> {
+  async get(id: number, params?: { include_inactive?: boolean }): Promise<Ftw11sqnGroundSyllabus | null> {
     try {
+      const query = new URLSearchParams();
+      if (params?.include_inactive) query.append('include_inactive', '1');
+      
+      const endpoint = `/ftw-11sqn-ground-syllabus/${id}${query.toString() ? `?${query.toString()}` : ''}`;
       const token = getToken();
-      const result = await apiClient.get<SingleApiResponse>(`/ftw-11sqn-ground-syllabus/${id}`, token);
+      const result = await apiClient.get<SingleApiResponse>(endpoint, token);
       return result?.data || null;
     } catch (error) {
       console.error(`Failed to fetch ground syllabus ${id}:`, error);
@@ -139,6 +151,38 @@ export const ftw11sqnGroundSyllabusService = {
     } catch (error) {
       console.error(`Failed to delete ground syllabus ${id}:`, error);
       return false;
+    }
+  },
+
+  async getCourseGrouped(params?: { course_id?: number; include_inactive?: boolean }): Promise<any[]> {
+    try {
+      const query = new URLSearchParams();
+      if (params?.course_id) query.append('course_id', params.course_id.toString());
+      if (params?.include_inactive) query.append('include_inactive', '1');
+
+      const endpoint = `/ftw-11sqn-ground-syllabus/grouped/course${query.toString() ? `?${query.toString()}` : ''}`;
+      const token = getToken();
+      const result = await apiClient.get<{ success: boolean; data: any[] }>(endpoint, token);
+      return result?.data || [];
+    } catch (error) {
+      console.error('Failed to fetch course grouped ground syllabus:', error);
+      return [];
+    }
+  },
+
+  async getSemesterGrouped(params?: { semester_id?: number; include_inactive?: boolean }): Promise<any[]> {
+    try {
+      const query = new URLSearchParams();
+      if (params?.semester_id) query.append('semester_id', params.semester_id.toString());
+      if (params?.include_inactive) query.append('include_inactive', '1');
+
+      const endpoint = `/ftw-11sqn-ground-syllabus/grouped/semester${query.toString() ? `?${query.toString()}` : ''}`;
+      const token = getToken();
+      const result = await apiClient.get<{ success: boolean; data: any[] }>(endpoint, token);
+      return result?.data || [];
+    } catch (error) {
+      console.error('Failed to fetch semester grouped ground syllabus:', error);
+      return [];
     }
   },
 };

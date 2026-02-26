@@ -36,14 +36,10 @@ export default function EditFlyingSyllabusPage() {
     }
   }, [id]);
 
-  const handleSubmit = async (dataArray: Ftw12sqnFlyingSyllabusCreateData[]) => {
+  const handleSubmit = async (data: Ftw12sqnFlyingSyllabusCreateData) => {
     setLoading(true);
     try {
-      // When editing, we update the existing record with the first item
-      // (edit mode only works with single syllabus)
-      if (dataArray.length > 0) {
-        await ftw12sqnFlyingSyllabusService.update(id, dataArray[0]);
-      }
+      await ftw12sqnFlyingSyllabusService.update(id, data);
       router.push("/ftw/12sqn/results/flying/syllabus");
     } catch (err: any) {
       throw err;

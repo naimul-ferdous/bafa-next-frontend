@@ -6,6 +6,8 @@ import { Icon } from "@iconify/react";
 import { useAuth } from "@/libs/hooks/useAuth";
 import { commonService } from "@/libs/services/commonService";
 import { ftw12sqnFlyingExaminationMarkService } from "@/libs/services/ftw12sqnFlyingExaminationMarkService";
+import { cadetService } from "@/libs/services/cadetService";
+import instructorService from "@/libs/services/instructorService";
 import type { SystemCourse, SystemSemester, SystemExam, SystemProgram, SystemBranch, SystemGroup } from "@/libs/types/system";
 import type { User, CadetProfile } from "@/libs/types/user";
 import type { Ftw12sqnFlyingPhaseType, Ftw12sqnFlyingSyllabus, Ftw12sqnFlyingSyllabusExercise } from "@/libs/types/ftw12sqnFlying";
@@ -20,7 +22,9 @@ interface ExerciseWithPhaseType extends Ftw12sqnFlyingSyllabusExercise {
 interface CadetRow {
   cadet_id: number;
   cadet_bd_no: string;
+  cadet_rank: string;
   cadet_name: string;
+  cadet_branch: string;
   is_active: boolean;
   is_present: boolean;
   mission_id: number;
@@ -47,6 +51,10 @@ interface BulkFormProps {
 
 export default function Ftw12sqnFlyingExaminationMarkForm({ onSubmit, onCancel, loading, isEdit = false, initialData }: BulkFormProps) {
   const { user, userIsSuperAdmin, userIsSystemAdmin } = useAuth();
+  
+  const isInstructor = !!user?.instructor_biodata;
+  const defaultInstructorId = isInstructor && user ? user.id : 0;
+
   const [formData, setFormData] = useState({
     course_id: isEdit ? (initialData?.course_id || 0) : 0,
     semester_id: isEdit ? (initialData?.semester_id || 0) : 0,
@@ -60,7 +68,7 @@ export default function Ftw12sqnFlyingExaminationMarkForm({ onSubmit, onCancel, 
   // Single record edit state
   const [editData, setEditData] = useState({
     ftw_12sqn_flying_syllabus_exercise_id: initialData?.ftw_12sqn_flying_syllabus_exercise_id || 0,
-    instructor_id: initialData?.instructor_id || 0,
+    instructor_id: initialData?.instructor_id || defaultInstructorId,
     phase_type_id: initialData?.phase_type_id || 0,
     achieved_mark: initialData?.achieved_mark || "",
     achieved_time: initialData?.achieved_time || "",
@@ -73,6 +81,58 @@ export default function Ftw12sqnFlyingExaminationMarkForm({ onSubmit, onCancel, 
 
   const [cadetRows, setCadetRows] = useState<CadetRow[]>([]);
   const [error, setError] = useState("");
+  const [timeInputs, setTimeInputs] = useState<{ [key: string]: string }>({});
+
+  // Time conversion helpers
+  const parseTimeToMinutes = (timeStr: string): number => {
+    if (!timeStr || timeStr.trim() === "") return 0;
+    const cleanStr = timeStr.replace(".", ":");
+    if (cleanStr.includes(":")) {
+      const parts = cleanStr.split(":");
+      const hours = parseInt(parts[0]) || 0;
+      const minutes = parseInt(parts[1]) || 0;
+      return hours * 60 + minutes;
+    }
+    const num = parseFloat(timeStr);
+    if (!isNaN(num)) return Math.round(num * 60);
+    return 0;
+  };
+
+  const minutesToTimeString = (totalMinutes: number): string => {
+    if (totalMinutes <= 0) return "0:00";
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    return `${hours}:${minutes.toString().padStart(2, "0")}`;
+  };
+
+  const handleTimeInputChange = (key: string, value: string) => {
+    setTimeInputs(prev => ({ ...prev, [key]: value }));
+  };
+
+  const handleTimeInputBlur = (key: string, index?: number, field?: "hrs_solo" | "hrs_dual" | "achieved_time", isEditMode: boolean = false) => {
+    const inputValue = timeInputs[key] || "";
+    const totalMinutes = parseTimeToMinutes(inputValue);
+    const timeStr = minutesToTimeString(totalMinutes);
+    
+    if (isEditMode) {
+      if (field === "achieved_time") {
+        setEditData(prev => ({ ...prev, achieved_time: timeStr }));
+      }
+    } else if (index !== undefined) {
+      if (field === "hrs_solo") {
+        handleCadetChange(index, "hrs_solo" as keyof CadetRow, timeStr);
+      } else if (field === "hrs_dual") {
+        handleCadetChange(index, "hrs_dual" as keyof CadetRow, timeStr);
+      }
+    }
+    
+    setTimeInputs(prev => ({ ...prev, [key]: timeStr }));
+  };
+
+  const getTimeInputValue = (key: string, defaultValue: string): string => {
+    if (timeInputs[key] !== undefined) return timeInputs[key];
+    return defaultValue || "0:00";
+  };
 
   // Dropdown data
   const [courses, setCourses] = useState<SystemCourse[]>([]);
@@ -94,7 +154,12 @@ export default function Ftw12sqnFlyingExaminationMarkForm({ onSubmit, onCancel, 
     const loadInitialData = async () => {
       try {
         setLoadingInitial(true);
-        const options = await commonService.getResultOptions();
+        
+        // Fetch options and instructors in parallel
+        const [options, instructorsRes] = await Promise.all([
+          commonService.getResultOptions(),
+          instructorService.getAllInstructors({ per_page: 500 })
+        ]);
 
         if (options) {
           setCourses(options.courses.filter(c => c.is_active));
@@ -103,11 +168,63 @@ export default function Ftw12sqnFlyingExaminationMarkForm({ onSubmit, onCancel, 
           setBranches((options.branches || []).filter(b => b.is_active && !!b.is_flying));
           setGroups(options.groups || []);
           setExams(options.exams.filter(e => e.is_active));
-          setInstructors(options.instructors);
           setPhaseTypes(options.ftw12sqn_phase_types);
           setSyllabuses(options.ftw12sqn_syllabuses);
-          setAllCadets(options.cadets);
         }
+
+        // Process instructors from instructorService
+        const instructorsData = (instructorsRes as any)?.data?.data || (instructorsRes as any)?.data || [];
+        const mappedInstructors = instructorsData.map((inst: any) => ({
+          ...inst,
+          id: inst.user_id || inst.id,
+          name: inst.user?.name || inst.short_name || inst.name_bangla || `Instructor #${inst.id}`,
+          assigned_wings: inst.assign_wings || [] 
+        }));
+
+        if (isInstructor && user) {
+          setInstructors(mappedInstructors.filter((inst: any) => inst.id === user.id));
+        } else if (user) {
+          // Get current user's wing/subwing IDs from all sources
+          const userRoleWings = user?.roleAssignments?.map(ra => ra.wing_id).filter(id => id != null) || [];
+          const userRoleSubWings = user?.roleAssignments?.map(ra => ra.sub_wing_id).filter(id => id != null) || [];
+          const userAssignWings = (user as any)?.assign_wings?.map((aw: any) => aw.wing_id).filter((id: any) => id != null) || [];
+          const userAssignSubWings = (user as any)?.assign_wings?.map((aw: any) => aw.subwing_id).filter((id: any) => id != null) || [];
+
+          const userWingIds = [...new Set([...userRoleWings, ...userAssignWings])];
+          const userSubWingIds = [...new Set([...userRoleSubWings, ...userAssignSubWings])];
+
+          const isRestricted = !userIsSuperAdmin && !userIsSystemAdmin;
+
+          if (isRestricted && userWingIds.length > 0) {
+            const filteredInstructors = mappedInstructors.filter((inst: any) => {
+              const instWings = inst.assigned_wings;
+              if (instWings.length === 0) return false; 
+
+              // Instructor must have at least one assignment matching the user's scope
+              return instWings.some((aw: any) => {
+                // ONLY consider approved and active assignments
+                const isApproved = aw.status === 'approved' && aw.is_active;
+                if (!isApproved) return false;
+
+                const matchesWing = userWingIds.includes(aw.wing_id);
+                const instSubWingId = aw.subwing_id || aw.sub_wing_id;
+                
+                if (userSubWingIds.length > 0) {
+                  // User is restricted to a squadron: Match wing AND specific subwing
+                  return matchesWing && instSubWingId && userSubWingIds.includes(instSubWingId);
+                }
+                // User is Wing level: Match wing (Parent sees all subwings of that wing)
+                return matchesWing;
+              });
+            });
+            setInstructors(filteredInstructors);
+          } else {
+            setInstructors(mappedInstructors);
+          }
+        } else {
+          setInstructors(mappedInstructors);
+        }
+
       } catch (err) {
         console.error("Failed to load initial data:", err);
         setError("Failed to load required data. Please refresh the page.");
@@ -117,40 +234,74 @@ export default function Ftw12sqnFlyingExaminationMarkForm({ onSubmit, onCancel, 
     };
 
     loadInitialData();
-  }, []);
+  }, [isInstructor, user, userIsSuperAdmin, userIsSystemAdmin]);
+
+  useEffect(() => {
+    const fetchCadets = async () => {
+      if (!formData.course_id || !formData.semester_id) {
+        setAllCadets([]);
+        return;
+      }
+      try {
+        const response = await cadetService.getAllCadets({
+          course_id: formData.course_id,
+          semester_id: formData.semester_id,
+          per_page: 200,
+        });
+        
+        const responseData = response as any;
+        const data = Array.isArray(responseData) ? responseData : (responseData?.data?.data || responseData?.data || []);
+        setAllCadets(Array.isArray(data) ? data : []);
+      } catch (err) {
+        console.error("Failed to fetch cadets:", err);
+      }
+    };
+
+    fetchCadets();
+  }, [formData.course_id, formData.semester_id]);
 
   // Filtered cadets based on course, semester, and user's wing/subwing assignments
   const filteredCadets = useMemo(() => {
     if (!formData.course_id || !formData.semester_id) return [];
-    
-    // Get user's assigned wings and subwings
-    const userWingIds = user?.roleAssignments?.map(ra => ra.wing_id).filter(id => id != null) || [];
-    const userSubWingIds = user?.roleAssignments?.map(ra => ra.sub_wing_id).filter(id => id != null) || [];
+
+    // The backend API already handles course/semester filtering correctly for the list of cadets
     const isRestricted = !userIsSuperAdmin && !userIsSystemAdmin;
 
-    return allCadets.filter(cadet => {
-      // Basic Course/Semester filtering
-      const hasCourse = cadet.assigned_courses?.some(ac => ac.course_id === formData.course_id);
-      const hasSemester = cadet.assigned_semesters?.some(as => as.semester_id === formData.semester_id);
-      
-      if (!hasCourse || !hasSemester) return false;
+    if (!isRestricted) {
+      return allCadets;
+    }
 
-      // Local filters
+    // Get user's assigned wings and subwings from both roleAssignments and assign_wings
+    const userRoleWings = user?.roleAssignments?.map(ra => ra.wing_id).filter(id => id != null) || [];
+    const userRoleSubWings = user?.roleAssignments?.map(ra => ra.sub_wing_id).filter(id => id != null) || [];
+    
+    const userAssignWings = (user as any)?.assign_wings?.map((aw: any) => aw.wing_id).filter((id: any) => id != null) || [];
+    const userAssignSubWings = (user as any)?.assign_wings?.map((aw: any) => aw.subwing_id).filter((id: any) => id != null) || [];
+
+    const userWingIds = [...new Set([...userRoleWings, ...userAssignWings])];
+    const userSubWingIds = [...new Set([...userRoleSubWings, ...userAssignSubWings])];
+
+    if (userWingIds.length === 0) return allCadets; // fallback: return all if no wing data attached to user
+
+    return allCadets.filter(cadet => {
+      // Basic local filters
       if (formData.program_id && !cadet.assigned_programs?.some(ap => ap.program_id === formData.program_id)) return false;
       if (formData.branch_id && !cadet.assigned_branchs?.some(ab => ab.branch_id === formData.branch_id)) return false;
       if (formData.group_id && !cadet.assigned_groups?.some(ag => ag.group_id === formData.group_id)) return false;
 
-      // Wing/Subwing restriction
-      if (isRestricted) {
-        const matchesWing = cadet.assigned_wings?.some(aw => userWingIds.includes(aw.wing_id));
-        const matchesSubWing = userSubWingIds.length > 0 
-          ? cadet.assigned_sub_wings?.some(asw => userSubWingIds.includes(asw.sub_wing_id))
-          : true;
+      // If the cadet has no wings assigned somehow, they wouldn't match. But let's allow if no wing data.
+      if (!cadet.assigned_wings || cadet.assigned_wings.length === 0) return true;
 
-        return matchesWing && matchesSubWing;
+      // Wing restriction
+      const matchesWing = cadet.assigned_wings.some(aw => userWingIds.includes(aw.wing_id));
+      
+      // SubWing restriction
+      let matchesSubWing = true;
+      if (userSubWingIds.length > 0 && cadet.assigned_sub_wings && cadet.assigned_sub_wings.length > 0) {
+        matchesSubWing = cadet.assigned_sub_wings.some(asw => userSubWingIds.includes(asw.sub_wing_id));
       }
 
-      return true;
+      return matchesWing && matchesSubWing;
     });
   }, [allCadets, formData.course_id, formData.semester_id, formData.program_id, formData.branch_id, formData.group_id, user, userIsSuperAdmin, userIsSystemAdmin]);
 
@@ -161,22 +312,24 @@ export default function Ftw12sqnFlyingExaminationMarkForm({ onSubmit, onCancel, 
     const rows: CadetRow[] = filteredCadets.map(cadet => ({
       cadet_id: cadet.id,
       cadet_bd_no: cadet.bd_no || cadet.cadet_number || "",
+      cadet_rank: cadet.assigned_ranks?.[0]?.rank?.name || "",
       cadet_name: cadet.name,
-      is_active: true,
+      cadet_branch: cadet.assigned_branchs?.[0]?.branch?.code || cadet.assigned_branchs?.[0]?.branch?.name || "",
+      is_active: false,
       is_present: true,
       mission_id: 0,
       date: "",
-      instructor_id: 0,
+      instructor_id: defaultInstructorId,
       phase_type_id: 0,
-      hrs_solo: "0.00",
-      hrs_dual: "0.00",
+      hrs_solo: "0:00",
+      hrs_dual: "0:00",
       mark: "",
       remark: "",
       existing_mark_info: undefined,
     }));
 
     setCadetRows(rows);
-  }, [filteredCadets, isEdit]);
+  }, [filteredCadets, isEdit, defaultInstructorId]);
 
   // Load exercises when syllabus is selected (all exercises from all phase types)
   useEffect(() => {
@@ -280,14 +433,9 @@ export default function Ftw12sqnFlyingExaminationMarkForm({ onSubmit, onCancel, 
           mission_id: value,
           phase_type_id: exercise?.phase_type_id || 0,
           // Reset the disabled field to default
-          hrs_solo: isDual ? "0.00" : updated[cadetIndex].hrs_solo,
-          hrs_dual: isSolo ? "0.00" : updated[cadetIndex].hrs_dual,
+          hrs_solo: isDual ? "0:00" : updated[cadetIndex].hrs_solo,
+          hrs_dual: isSolo ? "0:00" : updated[cadetIndex].hrs_dual,
           existing_mark_info: undefined, // Reset existing mark info when mission changes
-        };
-      } else if (field === "is_present") {
-        updated[cadetIndex] = {
-          ...updated[cadetIndex],
-          is_present: value,
         };
       } else {
         updated[cadetIndex] = {
@@ -334,6 +482,19 @@ export default function Ftw12sqnFlyingExaminationMarkForm({ onSubmit, onCancel, 
     }
   };
 
+  const toggleCadetActive = (cadetIndex: number) => {
+    setCadetRows(prev => {
+      const updated = [...prev];
+      const newState = !updated[cadetIndex].is_active;
+      updated[cadetIndex] = {
+        ...updated[cadetIndex],
+        is_active: newState,
+        is_present: newState // Selected means present
+      };
+      return updated;
+    });
+  };
+
   const handleEditChange = (field: string, value: any) => {
     setEditData(prev => {
       const updated = { ...prev, [field]: value };
@@ -356,7 +517,6 @@ export default function Ftw12sqnFlyingExaminationMarkForm({ onSubmit, onCancel, 
     if (!formData.course_id) { setError("Please select a course"); return; }
     if (!formData.semester_id) { setError("Please select a semester"); return; }
     if (!formData.syllabus_id) { setError("Please select a phase"); return; }
-    if (!formData.exam_type_id) { setError("Please select an exam type"); return; }
 
     try {
       if (isEdit) {
@@ -374,7 +534,7 @@ export default function Ftw12sqnFlyingExaminationMarkForm({ onSubmit, onCancel, 
           group_id: initialData?.group_id || null,
           instructor_id: editData.instructor_id,
           cadet_id: initialData?.cadet_id,
-          exam_type_id: formData.exam_type_id,
+          exam_type_id: formData.exam_type_id || null,
           phase_type_id: editData.phase_type_id,
           achieved_mark: editData.achieved_mark,
           achieved_time: editData.achieved_time,
@@ -406,12 +566,12 @@ export default function Ftw12sqnFlyingExaminationMarkForm({ onSubmit, onCancel, 
               ftw_12sqn_flying_syllabus_id: formData.syllabus_id,
               ftw_12sqn_flying_syllabus_exercise_id: c.mission_id,
               instructor_id: c.instructor_id,
-              exam_type_id: formData.exam_type_id,
+              exam_type_id: formData.exam_type_id || null,
               phase_type_id: exercisePhaseTypeId,
               achieved_mark: c.mark,
-              achieved_time: c.hrs_solo || c.hrs_dual,
+              achieved_time: c.hrs_solo && c.hrs_solo !== "0:00" ? c.hrs_solo : c.hrs_dual,
               participate_date: c.date,
-              is_present: c.is_present,
+              is_present: true, // Selected means present
               remark: c.remark,
               is_active: true,
             });
@@ -478,7 +638,7 @@ export default function Ftw12sqnFlyingExaminationMarkForm({ onSubmit, onCancel, 
 
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block font-medium text-gray-700 mb-2">
                 Course <span className="text-red-500">*</span>
               </label>
               <select
@@ -495,7 +655,7 @@ export default function Ftw12sqnFlyingExaminationMarkForm({ onSubmit, onCancel, 
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block font-medium text-gray-700 mb-2">
                 Semester <span className="text-red-500">*</span>
               </label>
               <select
@@ -512,31 +672,7 @@ export default function Ftw12sqnFlyingExaminationMarkForm({ onSubmit, onCancel, 
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Program</label>
-              <select
-                value={formData.program_id}
-                onChange={(e) => handleChange("program_id", parseInt(e.target.value))}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500"
-              >
-                <option value={0}>Select Program</option>
-                {programs.map(p => (<option key={p.id} value={p.id}>{p.name}</option>))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Branch</label>
-              <select
-                value={formData.branch_id}
-                onChange={(e) => handleChange("branch_id", parseInt(e.target.value))}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500"
-              >
-                <option value={0}>Select Branch</option>
-                {branches.map(b => (<option key={b.id} value={b.id}>{b.name}</option>))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Group</label>
+              <label className="block font-medium text-gray-700 mb-2">Group</label>
               <select
                 value={formData.group_id}
                 onChange={(e) => handleChange("group_id", parseInt(e.target.value))}
@@ -548,7 +684,7 @@ export default function Ftw12sqnFlyingExaminationMarkForm({ onSubmit, onCancel, 
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block font-medium text-gray-700 mb-2">
                 Phase (Syllabus) <span className="text-red-500">*</span>
               </label>
               <select
@@ -558,35 +694,23 @@ export default function Ftw12sqnFlyingExaminationMarkForm({ onSubmit, onCancel, 
                 required
               >
                 <option value={0}>Select Phase</option>
-                {syllabuses.map(syllabus => (
-                  <option key={syllabus.id} value={syllabus.id}>
-                    {syllabus.phase_full_name} ({syllabus.phase_shortname})
-                  </option>
-                ))}
+                {syllabuses
+                  .filter(s => 
+                    (!formData.course_id || s.course_id === formData.course_id) && 
+                    (!formData.semester_id || s.semester_id === formData.semester_id)
+                  )
+                  .map(syllabus => (
+                    <option key={syllabus.id} value={syllabus.id}>
+                      {syllabus.phase_full_name} ({syllabus.phase_shortname})
+                    </option>
+                  ))}
               </select>
               {loadingExercises && formData.syllabus_id > 0 && (
-                <p className="mt-1 text-xs text-blue-500 flex items-center gap-1">
+                <p className="mt-1 text-blue-500 flex items-center gap-1">
                   <Icon icon="hugeicons:fan-01" className="w-3 h-3 animate-spin" />
                   Loading exercises...
                 </p>
               )}
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Exam Type <span className="text-red-500">*</span>
-              </label>
-              <select
-                value={formData.exam_type_id}
-                onChange={(e) => handleChange("exam_type_id", parseInt(e.target.value))}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500"
-                required
-              >
-                <option value={0}>Select Exam Type</option>
-                {exams.map(exam => (
-                  <option key={exam.id} value={exam.id}>{exam.name} ({exam.code})</option>
-                ))}
-              </select>
             </div>
           </div>
         </div>
@@ -602,15 +726,15 @@ export default function Ftw12sqnFlyingExaminationMarkForm({ onSubmit, onCancel, 
               </h3>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Cadet</label>
+                  <label className="block font-medium text-gray-700 mb-1">Cadet</label>
                   <p className="text-gray-900">{initialData?.cadet?.name || `Cadet #${initialData?.cadet_id}`}</p>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Course</label>
+                  <label className="block font-medium text-gray-700 mb-1">Course</label>
                   <p className="text-gray-900">{initialData?.course?.name || `Course #${initialData?.course_id}`}</p>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Semester</label>
+                  <label className="block font-medium text-gray-700 mb-1">Semester</label>
                   <p className="text-gray-900">{initialData?.semester?.name || `Semester #${initialData?.semester_id}`}</p>
                 </div>
               </div>
@@ -625,7 +749,7 @@ export default function Ftw12sqnFlyingExaminationMarkForm({ onSubmit, onCancel, 
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block font-medium text-gray-700 mb-2">
                     Exercise (Mission) <span className="text-red-500">*</span>
                   </label>
                   <select
@@ -645,7 +769,7 @@ export default function Ftw12sqnFlyingExaminationMarkForm({ onSubmit, onCancel, 
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block font-medium text-gray-700 mb-2">
                     Instructor <span className="text-red-500">*</span>
                   </label>
                   <select
@@ -664,7 +788,7 @@ export default function Ftw12sqnFlyingExaminationMarkForm({ onSubmit, onCancel, 
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block font-medium text-gray-700 mb-2">
                     Phase Type
                   </label>
                   <select
@@ -680,7 +804,7 @@ export default function Ftw12sqnFlyingExaminationMarkForm({ onSubmit, onCancel, 
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Date</label>
+                  <label className="block font-medium text-gray-700 mb-2">Date</label>
                   <DatePicker
                     value={editData.participate_date}
                     onChange={(e) => handleEditChange("participate_date", e.target.value)}
@@ -700,7 +824,7 @@ export default function Ftw12sqnFlyingExaminationMarkForm({ onSubmit, onCancel, 
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Achieved Mark</label>
+                  <label className="block font-medium text-gray-700 mb-2">Achieved Mark</label>
                   <input
                     type="text"
                     value={editData.achieved_mark}
@@ -711,18 +835,19 @@ export default function Ftw12sqnFlyingExaminationMarkForm({ onSubmit, onCancel, 
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Time (Hours)</label>
+                  <label className="block font-medium text-gray-700 mb-2">Time (H:MM)</label>
                   <input
                     type="text"
-                    value={editData.achieved_time}
-                    onChange={(e) => handleEditChange("achieved_time", e.target.value)}
+                    value={getTimeInputValue("edit-time", editData.achieved_time)}
+                    onChange={(e) => handleTimeInputChange("edit-time", e.target.value)}
+                    onBlur={() => handleTimeInputBlur("edit-time", undefined, "achieved_time", true)}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500"
-                    placeholder="0.00"
+                    placeholder="0:00"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Present</label>
+                  <label className="block font-medium text-gray-700 mb-2">Present</label>
                   <select
                     value={editData.is_present ? "true" : "false"}
                     onChange={(e) => handleEditChange("is_present", e.target.value === "true")}
@@ -735,7 +860,7 @@ export default function Ftw12sqnFlyingExaminationMarkForm({ onSubmit, onCancel, 
 
                 {!editData.is_present && (
                   <div className="md:col-span-3">
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Absent Reason</label>
+                    <label className="block font-medium text-gray-700 mb-2">Absent Reason</label>
                     <input
                       type="text"
                       value={editData.absent_reason}
@@ -747,7 +872,7 @@ export default function Ftw12sqnFlyingExaminationMarkForm({ onSubmit, onCancel, 
                 )}
 
                 <div className="md:col-span-3">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Remark</label>
+                  <label className="block font-medium text-gray-700 mb-2">Remark</label>
                   <textarea
                     value={editData.remark}
                     onChange={(e) => handleEditChange("remark", e.target.value)}
@@ -758,7 +883,7 @@ export default function Ftw12sqnFlyingExaminationMarkForm({ onSubmit, onCancel, 
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Status</label>
+                  <label className="block font-medium text-gray-700 mb-2">Status</label>
                   <select
                     value={editData.is_active ? "true" : "false"}
                     onChange={(e) => handleEditChange("is_active", e.target.value === "true")}
@@ -785,158 +910,164 @@ export default function Ftw12sqnFlyingExaminationMarkForm({ onSubmit, onCancel, 
                 <p>No cadets found for the selected filters</p>
               </div>
             ) : (
-              <div className="bg-white rounded-lg border border-black overflow-hidden">
-                <div className="overflow-x-auto">
-                  <table className="w-full border-collapse">
-                    <thead className="border-b border-black">
-                      <tr>
-                        <th className="border-r border-black px-3 py-2 text-center uppercase text-xs" rowSpan={2}>CADET</th>
-                        <th className="border-r border-black px-2 py-2 text-center uppercase text-xs" rowSpan={2}>PRESENT</th>
-                        <th className="border-r border-black px-3 py-2 text-center uppercase text-xs" rowSpan={2}>
-                          MISSION<span className="text-red-500">*</span>
-                        </th>
-                        <th className="border-r border-black px-3 py-2 text-center uppercase text-xs" rowSpan={2}>
-                          DATE<span className="text-red-500">*</span>
-                        </th>
-                        <th className="border-r border-black px-3 py-2 text-center uppercase text-xs" rowSpan={2}>
-                          INSTRUCTOR<span className="text-red-500">*</span>
-                        </th>
-                        <th className="border-r border-black px-3 py-2 text-center uppercase text-xs" rowSpan={2}>SYLLABUS HRS</th>
-                        <th className="border-r border-b border-black px-3 py-2 text-center uppercase text-xs" colSpan={2}>HRS FLOWN</th>
-                        <th className="border-r border-black px-3 py-2 text-center uppercase text-xs" rowSpan={2}>MARK</th>
-                        <th className="px-3 py-2 text-center uppercase text-xs" rowSpan={2}>REMARK</th>
-                      </tr>
-                      <tr>
-                        <th className="border-r border-black px-2 py-2 text-center text-xs">SOLO</th>
-                        <th className="border-r border-black px-2 py-2 text-center text-xs">DUAL</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-black">
-                      {cadetRows.map((cadet, index) => (
-                        <tr key={cadet.cadet_id} className={!cadet.is_present ? "bg-gray-100 opacity-60" : "hover:bg-gray-50"}>
-                          <td className="border-r border-black px-3 py-2 whitespace-nowrap">
-                            <div>
-                              <div className="text-sm font-medium text-gray-900">{cadet.cadet_name}</div>
-                              <div className="text-xs text-gray-500">{cadet.cadet_bd_no}</div>
-                            </div>
-                          </td>
-                          <td className="border-r border-black px-2 py-1 text-center">
-                            <input
-                              type="checkbox"
-                              checked={cadet.is_present}
-                              onChange={(e) => handleCadetChange(index, "is_present", e.target.checked)}
-                              className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 cursor-pointer"
-                            />
-                          </td>
-                          <td className="border-r border-black px-2 py-1">
-                            <select
-                              value={cadet.mission_id}
-                              onChange={(e) => handleCadetChange(index, "mission_id", parseInt(e.target.value))}
-                              disabled={!cadet.is_present || !formData.syllabus_id}
-                              className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
-                            >
-                              <option value={0}>
-                                {!formData.syllabus_id ? "Select Phase first" : "Select Exercise"}
+              <div className="overflow-x-auto">
+                <table className="w-full border-collapse border border-black">
+                  <thead>
+                    <tr>
+                      <th className="border border-black px-3 py-2 text-center" rowSpan={2}>Sl</th>
+                      <th className="border border-black px-3 py-2 text-center" rowSpan={2}>BD/No</th>
+                      <th className="border border-black px-3 py-2 text-center" rowSpan={2}>Name</th>
+                      <th className="border border-black px-3 py-2 text-center" rowSpan={2}>Branch</th>
+                      <th className="border border-black px-3 py-2 text-center" rowSpan={2}>
+                        Mission<span className="text-red-500">*</span>
+                      </th>
+                      <th className="border border-black px-3 py-2 text-center" rowSpan={2}>
+                        Date<span className="text-red-500">*</span>
+                      </th>
+                      <th className="border border-black px-3 py-2 text-center" rowSpan={2}>
+                        Instructor<span className="text-red-500">*</span>
+                      </th>
+                      <th className="border border-black px-3 py-2 text-center" rowSpan={2}>Syl Hrs</th>
+                      <th className="border border-black px-3 py-2 text-center" colSpan={2}>hrs Flown</th>
+                      <th className="border border-black px-3 py-2 text-center" rowSpan={2}>Mark</th>
+                      <th className="border border-black px-3 py-2 text-center" rowSpan={2}>Remark</th>
+                    </tr>
+                    <tr>
+                      <th className="border border-black px-2 py-2 text-center">Solo</th>
+                      <th className="border border-black px-2 py-2 text-center">Dual</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {cadetRows.map((cadet, index) => (
+                      <tr key={cadet.cadet_id} className={!cadet.is_active ? "bg-gray-100 opacity-50" : ""}>
+                        <td className="border border-black px-3 py-2 text-center">
+                          <input
+                            type="checkbox"
+                            checked={cadet.is_active}
+                            onChange={() => toggleCadetActive(index)}
+                            className="w-4 h-4 text-blue-600 border-black rounded focus:ring-blue-500 cursor-pointer mx-auto block"
+                          />
+                        </td>
+                        <td className="border border-black px-3 py-2 whitespace-nowrap text-gray-900 text-center">
+                          {cadet.cadet_bd_no}
+                        </td>
+                        <td className="border border-black px-3 py-2 whitespace-nowrap font-medium text-gray-900">
+                          {cadet.cadet_name}
+                        </td>
+                        <td className="border border-black px-3 py-2 whitespace-nowrap text-gray-900 text-center">
+                          {cadet.cadet_branch}
+                        </td>
+                        <td className="border border-black px-2 py-1">
+                          <select
+                            value={cadet.mission_id}
+                            onChange={(e) => handleCadetChange(index, "mission_id", parseInt(e.target.value))}
+                            disabled={!cadet.is_active || !formData.syllabus_id}
+                            className="w-full px-2 py-1 border border-black rounded focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
+                          >
+                            <option value={0}>
+                              {!formData.syllabus_id ? "Select Phase first" : "Select Exercise"}
+                            </option>
+                            {exercises.map(exercise => (
+                              <option key={exercise.id} value={exercise.id}>
+                                {exercise.exercise_shortname} - ({exercise.phase_type_name})
                               </option>
-                              {exercises.map(exercise => (
-                                <option key={exercise.id} value={exercise.id}>
-                                  {exercise.exercise_shortname} - ({exercise.phase_type_name})
-                                </option>
-                              ))}
-                            </select>
+                            ))}
+                          </select>
+                        </td>
+                        {cadet.existing_mark_info?.exists ? (
+                          <td className="border border-black px-4 py-3 text-center bg-red-50" colSpan={7}>
+                            <span className="text-red-600 font-medium">
+                              Already checked on {cadet.existing_mark_info.date ? new Date(cadet.existing_mark_info.date).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : "N/A"}
+                            </span>
                           </td>
-                          {cadet.existing_mark_info?.exists ? (
-                            <td className="px-4 py-3 text-center bg-red-50" colSpan={7}>
-                              <span className="text-red-600 text-sm font-medium">
-                                Already checked on {cadet.existing_mark_info.date ? new Date(cadet.existing_mark_info.date).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : "N/A"}
-                              </span>
+                        ) : (
+                          <>
+                            <td className="border border-black px-2 py-1">
+                              <DatePicker
+                                value={cadet.date}
+                                onChange={(e) => handleCadetChange(index, "date", e.target.value)}
+                                disabled={!cadet.is_active}
+                                placeholder="dd/mm/yyyy"
+                                className="w-full px-2 py-1 border border-black rounded focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
+                              />
                             </td>
-                          ) : (
-                            <>
-                              <td className="border-r border-black px-2 py-1">
-                                <DatePicker
-                                  value={cadet.date}
-                                  onChange={(e) => handleCadetChange(index, "date", e.target.value)}
-                                  disabled={!cadet.is_present}
-                                  placeholder="dd/mm/yyyy"
-                                  className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
-                                />
-                              </td>
-                              <td className="border-r border-black px-2 py-1">
-                                <select
-                                  value={cadet.instructor_id}
-                                  onChange={(e) => handleCadetChange(index, "instructor_id", parseInt(e.target.value))}
-                                  disabled={!cadet.is_present}
-                                  className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
-                                >
-                                  <option value={0}>Select</option>
-                                  {instructors.map(instructor => (
-                                    <option key={instructor.id} value={instructor.id}>
-                                      {instructor.name || (instructor as any).instructor_biodata?.name || `Instructor #${instructor.id}`}
-                                    </option>
-                                  ))}
-                                </select>
-                              </td>
-                              <td className="border-r border-black px-3 py-2 text-center text-sm">
-                                {cadet.mission_id ? (exercises.find(ex => ex.id === cadet.mission_id)?.take_time_hours || "-") : "-"}
-                              </td>
-                              <td className="border-r border-black px-2 py-1">
-                                {(() => {
-                                  const { isDual } = getExercisePhaseType(cadet.mission_id);
-                                  return (
-                                    <input
-                                      type="text"
-                                      value={cadet.hrs_solo}
-                                      onChange={(e) => handleCadetChange(index, "hrs_solo", e.target.value)}
-                                      disabled={!cadet.is_present || !cadet.mission_id || isDual}
-                                      placeholder="0.00"
-                                      className="w-20 px-2 py-1 border border-gray-300 rounded text-sm text-center focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
-                                    />
-                                  );
-                                })()}
-                              </td>
-                              <td className="border-r border-black px-2 py-1">
-                                {(() => {
-                                  const { isSolo } = getExercisePhaseType(cadet.mission_id);
-                                  return (
-                                    <input
-                                      type="text"
-                                      value={cadet.hrs_dual}
-                                      onChange={(e) => handleCadetChange(index, "hrs_dual", e.target.value)}
-                                      disabled={!cadet.is_present || !cadet.mission_id || isSolo}
-                                      placeholder="0.00"
-                                      className="w-20 px-2 py-1 border border-gray-300 rounded text-sm text-center focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
-                                    />
-                                  );
-                                })()}
-                              </td>
-                              <td className="border-r border-black px-2 py-1">
-                                <input
-                                  type="text"
-                                  value={cadet.mark}
-                                  onChange={(e) => handleCadetChange(index, "mark", e.target.value)}
-                                  disabled={!cadet.is_present}
-                                  className="w-24 px-2 py-1 border border-gray-300 rounded text-sm text-center focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
-                                />
-                              </td>
-                              <td className="px-2 py-1">
-                                <input
-                                  type="text"
-                                  value={cadet.remark}
-                                  onChange={(e) => handleCadetChange(index, "remark", e.target.value)}
-                                  disabled={!cadet.is_present}
-                                  className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
-                                />
-                              </td>
-                            </>
-                          )}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                            <td className="border border-black px-2 py-1">
+                              <select
+                                value={cadet.instructor_id}
+                                onChange={(e) => handleCadetChange(index, "instructor_id", parseInt(e.target.value))}
+                                disabled={!cadet.is_active}
+                                className="w-full px-2 py-1 border border-black rounded focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
+                              >
+                                <option value={0}>Select</option>
+                                {instructors.map(instructor => (
+                                  <option key={instructor.id} value={instructor.id}>
+                                    {instructor.name || (instructor as any).instructor_biodata?.name || `Instructor #${instructor.id}`}
+                                  </option>
+                                ))}
+                              </select>
+                            </td>
+                            <td className="border border-black px-3 py-2 text-center">
+                              {cadet.mission_id ? (exercises.find(ex => ex.id === cadet.mission_id)?.take_time_hours || "-") : "-"}
+                            </td>
+                            <td className="border border-black px-2 py-1">
+                              {(() => {
+                                const { isDual } = getExercisePhaseType(cadet.mission_id);
+                                return (
+                                  <input
+                                    type="text"
+                                    value={getTimeInputValue(`cadet-solo-${index}`, cadet.hrs_solo)}
+                                    onChange={(e) => handleTimeInputChange(`cadet-solo-${index}`, e.target.value)}
+                                    onBlur={() => handleTimeInputBlur(`cadet-solo-${index}`, index, "hrs_solo")}
+                                    disabled={!cadet.is_active || !cadet.mission_id || isDual}
+                                    placeholder="0:00"
+                                    className="w-20 px-2 py-1 border border-black rounded text-center focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
+                                  />
+                                );
+                              })()}
+                            </td>
+                            <td className="border border-black px-2 py-1">
+                              {(() => {
+                                const { isSolo } = getExercisePhaseType(cadet.mission_id);
+                                return (
+                                  <input
+                                    type="text"
+                                    value={getTimeInputValue(`cadet-dual-${index}`, cadet.hrs_dual)}
+                                    onChange={(e) => handleTimeInputChange(`cadet-dual-${index}`, e.target.value)}
+                                    onBlur={() => handleTimeInputBlur(`cadet-dual-${index}`, index, "hrs_dual")}
+                                    disabled={!cadet.is_active || !cadet.mission_id || isSolo}
+                                    placeholder="0:00"
+                                    className="w-20 px-2 py-1 border border-black rounded text-center focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
+                                  />
+                                );
+                              })()}
+                            </td>
+                            <td className="border border-black px-2 py-1">
+                              <input
+                                type="text"
+                                value={cadet.mark}
+                                onChange={(e) => handleCadetChange(index, "mark", e.target.value)}
+                                disabled={!cadet.is_active}
+                                className="w-24 px-2 py-1 border border-black rounded text-center focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
+                              />
+                            </td>
+                            <td className="border border-black px-2 py-1">
+                              <input
+                                type="text"
+                                value={cadet.remark}
+                                onChange={(e) => handleCadetChange(index, "remark", e.target.value)}
+                                disabled={!cadet.is_active}
+                                className="w-full px-2 py-1 border border-black rounded focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
+                              />
+                            </td>
+                          </>
+                        )}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
-            )}
+            )
+}
           </div>
         )}
       </div>

@@ -4,6 +4,7 @@
  */
 
 import type { User } from './user';
+import type { SystemCourse, SystemSemester } from './system';
 
 // Flying Type (Mission/Exam)
 export interface Ftw12sqnFlyingType {
@@ -65,6 +66,8 @@ export interface Ftw12sqnFlyingSyllabusType {
 // Flying Syllabus
 export interface Ftw12sqnFlyingSyllabus {
   id: number;
+  course_id?: number | null;
+  semester_id?: number | null;
   phase_full_name: string;
   phase_shortname: string;
   phase_symbol?: string;
@@ -74,6 +77,8 @@ export interface Ftw12sqnFlyingSyllabus {
   created_by?: number;
   created_at?: string;
   updated_at?: string;
+  course?: SystemCourse | null;
+  semester?: SystemSemester | null;
   flying_phase_type?: Ftw12sqnFlyingPhaseType;
   syllabus_types?: Ftw12sqnFlyingSyllabusType[];
   creator?: User;
@@ -116,6 +121,8 @@ export interface Ftw12sqnFlyingSyllabusTypeCreateData {
 
 // Main Syllabus create data - single API call with all nested data
 export interface Ftw12sqnFlyingSyllabusCreateData {
+  course_id?: number | null;
+  semester_id?: number | null;
   phase_full_name: string;
   phase_shortname: string;
   phase_symbol?: string;
@@ -147,6 +154,8 @@ export interface Ftw12sqnGroundSyllabusExercise {
 // Ground Syllabus
 export interface Ftw12sqnGroundSyllabus {
   id: number;
+  course_id?: number | null;
+  semester_id?: number | null;
   ground_full_name: string;
   ground_shortname: string;
   ground_symbol?: string;
@@ -157,6 +166,8 @@ export interface Ftw12sqnGroundSyllabus {
   created_by?: number;
   created_at?: string;
   updated_at?: string;
+  course?: SystemCourse | null;
+  semester?: SystemSemester | null;
   exercises?: Ftw12sqnGroundSyllabusExercise[];
   creator?: User;
 }
@@ -175,6 +186,8 @@ export interface Ftw12sqnGroundSyllabusExerciseCreateData {
 
 // Ground Syllabus create data
 export interface Ftw12sqnGroundSyllabusCreateData {
+  course_id?: number | null;
+  semester_id?: number | null;
   ground_full_name: string;
   ground_shortname: string;
   ground_symbol?: string;

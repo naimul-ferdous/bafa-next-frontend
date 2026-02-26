@@ -12,6 +12,7 @@ import DataTable, { Column } from "@/components/ui/DataTable";
 import ConfirmationModal from "@/components/ui/modal/ConfirmationModal";
 import Pagination from "@/components/ui/Pagination";
 import MenuPermissionModal from "@/components/menus/MenuPermissionModal";
+import MenuWingModal from "@/components/menus/MenuWingModal";
 
 export default function MenusPage() {
   const router = useRouter();
@@ -25,6 +26,9 @@ export default function MenusPage() {
 
   // Permission assignment modal state
   const [permissionMenu, setPermissionMenu] = useState<Menu | null>(null);
+
+  // Wing assignment modal state
+  const [wingMenu, setWingMenu] = useState<Menu | null>(null);
 
   const [searchTerm, setSearchTerm] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
@@ -160,13 +164,35 @@ export default function MenusPage() {
       key: "wing_id",
       header: "Wing",
       className: "text-gray-700",
-      render: (menu) => menu.wing?.name ?? "All Wings",
+      render: (menu) => (
+        <div className="flex items-center justify-between min-w-[100px]">
+          <span>{menu.wing?.name ?? "All Wings"}</span>
+          <button
+            onClick={(e) => { e.stopPropagation(); setWingMenu(menu); }}
+            className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium rounded bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors ml-2"
+            title="Assign Wing/Sub Wing"
+          >
+            <Icon icon="hugeicons:add-circle" className="w-3 h-3" />
+          </button>
+        </div>
+      ),
     },
     {
       key: "subwing_id",
       header: "Sub Wing",
       className: "text-gray-700",
-      render: (menu) => menu.subwing?.name ?? "All Sub Wings",
+      render: (menu) => (
+        <div className="flex items-center justify-between min-w-[100px]">
+          <span>{menu.subwing?.name ?? "All Sub Wings"}</span>
+          <button
+            onClick={(e) => { e.stopPropagation(); setWingMenu(menu); }}
+            className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium rounded bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors opacity-0 group-hover:opacity-100 ml-2"
+            title="Assign Wing/Sub Wing"
+          >
+            <Icon icon="hugeicons:add-circle" className="w-3 h-3" />
+          </button>
+        </div>
+      ),
     },
     {
       key: "route",
@@ -343,6 +369,13 @@ export default function MenusPage() {
         isOpen={!!permissionMenu}
         menu={permissionMenu}
         onClose={() => setPermissionMenu(null)}
+        onSaved={loadMenus}
+      />
+
+      <MenuWingModal
+        isOpen={!!wingMenu}
+        menu={wingMenu}
+        onClose={() => setWingMenu(null)}
         onSaved={loadMenus}
       />
 

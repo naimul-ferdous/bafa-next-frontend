@@ -107,7 +107,13 @@ export interface CadetWarning {
   warning?: SystemWarningType;
   course?: { id: number; name: string; code?: string };
   semester?: { id: number; name: string; code?: string };
-  creator?: { id: number; name: string };
+  creator?: { 
+    id: number; 
+    name: string; 
+    rank?: string; 
+    role?: string; 
+    signature?: string 
+  };
 }
 
 export interface AtwSubjectMark {

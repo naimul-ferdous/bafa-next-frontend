@@ -13,6 +13,8 @@ import type {
 } from "@/libs/types/ftw11sqnFlying";
 import { ftw11sqnFlyingTypeService } from "@/libs/services/ftw11sqnFlyingTypeService";
 import { ftw11sqnFlyingPhaseTypeService } from "@/libs/services/ftw11sqnFlyingPhaseTypeService";
+import { commonService } from "@/libs/services/commonService";
+import type { SystemCourse, SystemSemester } from "@/libs/types/system";
 
 interface SyllabusFormProps {
   initialData?: Ftw11sqnFlyingSyllabus | null;
@@ -36,6 +38,8 @@ interface ExerciseInput {
 }
 
 export interface SyllabusFormData {
+  course_id: number | null;
+  semester_id: number | null;
   phase_full_name: string;
   phase_shortname: string;
   phase_symbol: string;
@@ -49,6 +53,8 @@ export interface SyllabusFormData {
 
 export default function SyllabusForm({ initialData, onSubmit, onCancel, loading, isEdit = false }: SyllabusFormProps) {
   const [formData, setFormData] = useState<SyllabusFormData>({
+    course_id: null,
+    semester_id: null,
     phase_full_name: "",
     phase_shortname: "",
     phase_symbol: "",
@@ -61,6 +67,8 @@ export default function SyllabusForm({ initialData, onSubmit, onCancel, loading,
   const [errors, setErrors] = useState<Partial<Record<keyof SyllabusFormData, string>>>({});
   const [flyingTypes, setFlyingTypes] = useState<Ftw11sqnFlyingType[]>([]);
   const [phaseTypes, setPhaseTypes] = useState<Ftw11sqnFlyingPhaseType[]>([]);
+  const [courses, setCourses] = useState<SystemCourse[]>([]);
+  const [semesters, setSemesters] = useState<SystemSemester[]>([]);
   const [loadingData, setLoadingData] = useState(true);
   const [exerciseTimeInputs, setExerciseTimeInputs] = useState<{ [key: string]: string }>({});
 
@@ -153,17 +161,22 @@ export default function SyllabusForm({ initialData, onSubmit, onCancel, loading,
     return formData.exercises.reduce((sum, ex) => sum + decimalHoursToMinutes(ex.take_time_hours), 0);
   }, [formData.exercises]);
 
-  // Load flying types and phase types
+  // Load flying types, phase types, courses, and semesters
   useEffect(() => {
     const loadData = async () => {
       try {
         setLoadingData(true);
-        const [flyingTypesRes, phaseTypesRes] = await Promise.all([
+        const [flyingTypesRes, phaseTypesRes, optionsRes] = await Promise.all([
           ftw11sqnFlyingTypeService.getList(),
-          ftw11sqnFlyingPhaseTypeService.getList()
+          ftw11sqnFlyingPhaseTypeService.getList(),
+          commonService.getResultOptions()
         ]);
         setFlyingTypes(flyingTypesRes);
         setPhaseTypes(phaseTypesRes);
+        if (optionsRes) {
+          setCourses(optionsRes.courses || []);
+          setSemesters(optionsRes.semesters.filter(s => s.is_active && s.is_flying));
+        }
       } catch (error) {
         console.error("Failed to load data:", error);
       } finally {
@@ -212,6 +225,8 @@ export default function SyllabusForm({ initialData, onSubmit, onCancel, loading,
       allExercises.sort((a, b) => a.exercise_sort - b.exercise_sort);
 
       setFormData({
+        course_id: initialData.course_id || null,
+        semester_id: initialData.semester_id || null,
         phase_full_name: initialData.phase_full_name,
         phase_shortname: initialData.phase_shortname,
         phase_symbol: initialData.phase_symbol || "",
@@ -324,6 +339,8 @@ export default function SyllabusForm({ initialData, onSubmit, onCancel, loading,
 
       // Build the nested data structure
       const syllabusData: Ftw11sqnFlyingSyllabusCreateData = {
+        course_id: formData.course_id,
+        semester_id: formData.semester_id,
         phase_full_name: formData.phase_full_name,
         phase_shortname: formData.phase_shortname,
         phase_symbol: formData.phase_symbol || undefined,
@@ -363,6 +380,40 @@ export default function SyllabusForm({ initialData, onSubmit, onCancel, loading,
           Basic Information
         </h3>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Course <span className="text-red-500">*</span>
+            </label>
+            <select
+              value={formData.course_id || ""}
+              onChange={(e) => handleChange("course_id", e.target.value ? parseInt(e.target.value) : null)}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              required
+            >
+              <option value="">Select Course</option>
+              {courses.map((c) => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Semester <span className="text-red-500">*</span>
+            </label>
+            <select
+              value={formData.semester_id || ""}
+              onChange={(e) => handleChange("semester_id", e.target.value ? parseInt(e.target.value) : null)}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              required
+            >
+              <option value="">Select Semester</option>
+              {semesters.map((s) => (
+                <option key={s.id} value={s.id}>{s.name}</option>
+              ))}
+            </select>
+          </div>
+
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Phase Full Name <span className="text-red-500">*</span>

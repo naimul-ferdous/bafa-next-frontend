@@ -22,7 +22,7 @@ export default function EditFlyingSyllabusPage() {
     const loadSyllabus = async () => {
       try {
         setLoadingData(true);
-        const data = await ftw11sqnFlyingSyllabusService.get(id);
+        const data = await ftw11sqnFlyingSyllabusService.get(id, { include_inactive: true });
         setSyllabus(data);
       } catch (error) {
         console.error("Failed to load syllabus:", error);
