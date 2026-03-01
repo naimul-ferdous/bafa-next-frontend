@@ -10,7 +10,7 @@ import { atwSubjectService } from "@/libs/services/atwSubjectService";
 import { atwInstructorAssignCadetService } from "@/libs/services/atwInstructorAssignCadetService";
 import { useAuth } from "@/libs/hooks/useAuth";
 import { Icon } from "@iconify/react";
-import type { SystemCourse, SystemSemester, SystemProgram, SystemBranch, SystemGroup, SystemExam, AtwSubjectModuleMark, AtwSubject } from "@/libs/types/system";
+import type { SystemCourse, SystemSemester, SystemProgram, SystemBranch, SystemExam, AtwSubjectsModuleMarksheetMark, AtwSubject } from "@/libs/types/system";
 import type { AtwResult } from "@/libs/types/atwResult";
 
 interface ResultFormProps {
@@ -39,7 +39,7 @@ interface CadetRow {
 // Group marks by type
 interface MarkGroup {
   type: string;
-  marks: AtwSubjectModuleMark[];
+  marks: AtwSubjectsModuleMarksheetMark[];
 }
 
 export default function ResultForm({ initialData, onSubmit, onCancel, loading, isEdit = false }: ResultFormProps) {
@@ -49,7 +49,6 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
     semester_id: 0,
     program_id: 0,
     branch_id: 0,
-    group_id: 0,
     exam_type_id: 0,
     atw_subject_id: 0, // Store the mapping ID
     instructor_id: 0,
@@ -86,7 +85,6 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
             semester_id: formData.semester_id,
             program_id: formData.program_id,
             branch_id: formData.branch_id,
-            group_id: formData.group_id || undefined,
             exam_type_id: formData.exam_type_id,
             atw_subject_id: formData.atw_subject_id,
             instructor_id: formData.instructor_id
@@ -120,7 +118,6 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
     formData.semester_id,
     formData.program_id,
     formData.branch_id,
-    formData.group_id,
     formData.exam_type_id,
     formData.atw_subject_id,
     formData.instructor_id,
@@ -133,11 +130,11 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
   const [semesters, setSemesters] = useState<SystemSemester[]>([]);
   const [programs, setPrograms] = useState<SystemProgram[]>([]);
   const [branches, setBranches] = useState<SystemBranch[]>([]);
-  const [groups, setGroups] = useState<SystemGroup[]>([]);
   const [exams, setExams] = useState<SystemExam[]>([]);
   const [subjectMappings, setSubjectMappings] = useState<AtwSubject[]>([]);
   const [loadingDropdowns, setLoadingDropdowns] = useState(true);
   const [loadingCadets, setLoadingCadets] = useState(false);
+  const [loadingSemesters, setLoadingSemesters] = useState(false);
 
   // Filter branches based on selected program
   const filteredBranches = useMemo(() => {
@@ -170,10 +167,8 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
 
         if (options) {
           setCourses(options.courses);
-          setSemesters(options.semesters);
           setPrograms(options.programs);
           setBranches(options.branches);
-          setGroups(options.groups);
           setExams(options.exams);
         }
       } catch (err) {
@@ -202,7 +197,6 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
           semester_id: formData.semester_id,
           program_id: formData.program_id,
           branch_id: formData.branch_id || undefined,
-          group_id: formData.group_id || undefined,
           per_page: 100
         });
 
@@ -225,7 +219,7 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
     } catch (err) {
       console.error("Failed to load subjects:", err);
     }
-  }, [formData.course_id, formData.semester_id, formData.program_id, formData.branch_id, formData.group_id, userIsSystemAdmin, user?.atw_assigned_subjects]);
+  }, [formData.course_id, formData.semester_id, formData.program_id, formData.branch_id, userIsSystemAdmin, user?.atw_assigned_subjects]);
 
   useEffect(() => {
     loadSubjects();
@@ -236,9 +230,9 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
       const mapping = subjectMappings.find(s => s.id === formData.atw_subject_id);
       setSelectedSubjectMapping(mapping || null);
       
-      if (mapping?.module?.subject_marks) {
-        const groups: { [key: string]: AtwSubjectModuleMark[] } = {};
-        mapping.module.subject_marks.forEach(mark => {
+      if (mapping?.module?.marksheet?.marks) {
+        const groups: { [key: string]: AtwSubjectsModuleMarksheetMark[] } = {};
+        mapping.module.marksheet.marks.forEach(mark => {
           const type = mark.type || "Other";
           if (!groups[type]) groups[type] = [];
           groups[type].push(mark);
@@ -276,7 +270,6 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
             semester_id: formData.semester_id,
             program_id: formData.program_id,
             branch_id: formData.branch_id,
-            group_id: formData.group_id || undefined,
             subject_id: formData.atw_subject_id, // Pass Mapping ID
             instructor_id: user.id,
             is_active: true
@@ -295,7 +288,6 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
             semester_id: formData.semester_id,
             program_id: formData.program_id,
             branch_id: formData.branch_id,
-            group_id: formData.group_id || undefined,
           });
           cadetsList = cadetsRes.data;
         }
@@ -329,7 +321,7 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
     if (!initialData) {
       loadCadets();
     }
-  }, [formData.course_id, formData.semester_id, formData.program_id, formData.branch_id, formData.group_id, formData.atw_subject_id, user, userIsSystemAdmin, initialData]);
+  }, [formData.course_id, formData.semester_id, formData.program_id, formData.branch_id, formData.atw_subject_id, user, userIsSystemAdmin, initialData]);
 
   // Populate form with initial data
   useEffect(() => {
@@ -339,7 +331,6 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
         semester_id: initialData.semester_id,
         program_id: initialData.program_id,
         branch_id: initialData.branch_id || 0,
-        group_id: initialData.group_id || 0,
         exam_type_id: initialData.exam_type_id,
         atw_subject_id: initialData.atw_subject_id || 0,
         instructor_id: initialData.instructor_id || 0,
@@ -350,7 +341,7 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
         const rows: CadetRow[] = initialData.result_getting_cadets.map(c => {
           const marks: { [markId: number]: number } = {};
           c.cadet_marks?.forEach(m => {
-            marks[m.atw_subject_module_mark_id] = Number(m.achieved_mark) || 0;
+            marks[m.atw_subjects_module_marksheet_mark_id] = Number(m.achieved_mark) || 0;
           });
           const currentRank = c.cadet?.assigned_ranks?.find((ar: any) => ar.rank)?.rank;
           return {
@@ -373,8 +364,30 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
     }
   }, [initialData]);
 
+  // Fetch semesters when course changes
+  useEffect(() => {
+    if (!formData.course_id) {
+      setSemesters([]);
+      return;
+    }
+    const fetchSemesters = async () => {
+      setLoadingSemesters(true);
+      const semestersList = await commonService.getSemestersByCourse(formData.course_id);
+      setSemesters(semestersList);
+      if (semestersList.length > 0 && !isEdit) {
+        setFormData(prev => ({ ...prev, semester_id: semestersList[0].id }));
+      }
+      setLoadingSemesters(false);
+    };
+    fetchSemesters();
+  }, [formData.course_id, isEdit]);
+
   const handleChange = (field: string, value: any) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
+    if (field === 'course_id') {
+      setFormData(prev => ({ ...prev, [field]: value, semester_id: 0 }));
+    } else {
+      setFormData(prev => ({ ...prev, [field]: value }));
+    }
   };
 
   const handleMarkChange = (cadetIndex: number, markId: number, value: number | string) => {
@@ -418,7 +431,6 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
     try {
       const submitData = {
         ...formData,
-        group_id: formData.group_id || undefined,
         cadets: cadetRows.filter(c => c.cadet_id > 0).map(c => ({
           cadet_id: c.cadet_id,
           cadet_bd_no: c.cadet_bd_no,
@@ -428,7 +440,7 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
           is_active: c.is_active,
           marks: Object.entries(c.marks).map(([markId, achievedMark]) => ({
             atw_subject_module_id: moduleId,
-            atw_subject_module_mark_id: parseInt(markId),
+            atw_subjects_module_marksheet_mark_id: parseInt(markId),
             achieved_mark: typeof achievedMark === "number" ? achievedMark : (parseFloat(achievedMark as string) || 0),
             is_active: true,
           })),
@@ -479,9 +491,27 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
 
             <div>
               <Label>Semester <span className="text-red-500">*</span></Label>
-              <select value={formData.semester_id} onChange={(e) => handleChange("semester_id", parseInt(e.target.value))} className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500" required>
-                <option value={0}>Select Semester</option>
-                {semesters.map(semester => (<option key={semester.id} value={semester.id}>{semester.name} ({semester.code})</option>))}
+              <select
+                value={formData.semester_id}
+                onChange={(e) => handleChange("semester_id", parseInt(e.target.value))}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500"
+                required
+                disabled={!formData.course_id || loadingSemesters || (!!formData.course_id && !loadingSemesters && semesters.length === 0)}
+              >
+                {loadingSemesters ? (
+                  <option value={0}>Loading semesters...</option>
+                ) : !formData.course_id ? (
+                  <option value={0}>Select Course First</option>
+                ) : semesters.length === 0 ? (
+                  <option value={0}>No semester on this course</option>
+                ) : (
+                  <>
+                    <option value={0}>Select Semester</option>
+                    {semesters.map(semester => (
+                      <option key={semester.id} value={semester.id}>{semester.name} ({semester.code})</option>
+                    ))}
+                  </>
+                )}
               </select>
             </div>
 
@@ -504,14 +534,6 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
               >
                 <option value={0}>{!formData.program_id ? "Select Program First" : "Select Branch"}</option>
                 {filteredBranches.map(branch => (<option key={branch.id} value={branch.id}>{branch.name} ({branch.code})</option>))}
-              </select>
-            </div>
-
-            <div>
-              <Label>Group</Label>
-              <select value={formData.group_id} onChange={(e) => handleChange("group_id", parseInt(e.target.value))} className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500">
-                <option value={0}>Select Group (Optional)</option>
-                {groups.map(group => (<option key={group.id} value={group.id}>{group.name} ({group.code})</option>))}
               </select>
             </div>
 
@@ -613,13 +635,13 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
                         if (Number(mark.estimate_mark) !== Number(mark.percentage)) {
                           return (
                             <React.Fragment key={`sub-${mark.id}`}>
-                              <th className="border border-black px-1 py-1 text-center w-[80px] min-w-[80px]">{Number(mark.estimate_mark).toFixed(0)}</th>
-                              <th className="border border-black px-1 py-1 text-center w-[80px] min-w-[80px]">{Number(mark.percentage).toFixed(0)}</th>
+                              <th className="border border-black px-1 py-1 text-center w-[80px] min-w-[80px] max-w-[80px]">{Number(mark.estimate_mark).toFixed(0)}</th>
+                              <th className="border border-black px-1 py-1 text-center w-[80px] min-w-[80px] max-w-[80px]">{Number(mark.percentage).toFixed(0)}</th>
                             </React.Fragment>
                           );
                         } else {
                           return (
-                            <th key={`sub-${mark.id}`} className="border border-black px-1 py-1 text-center min-w-[100px]">
+                            <th key={`sub-${mark.id}`} className="border border-black px-1 py-1 text-center w-[100px] min-w-[100px] max-w-[100px]">
                               {Number(mark.percentage).toFixed(0)}
                             </th>
                           );
@@ -673,7 +695,7 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
                               const convertedValue = mark.estimate_mark > 0 ? (inputMark / mark.estimate_mark) * mark.percentage : 0;
                               return (
                                 <React.Fragment key={mark.id}>
-                                  <td className={`border border-black px-2 py-1 text-center w-[80px] min-w-[80px] ${!cadet.is_present ? "bg-gray-200" : ""}`}>
+                                  <td className={`border border-black px-2 py-1 text-center w-[80px] min-w-[80px] max-w-[80px] ${!cadet.is_present ? "bg-gray-200" : ""}`}>
                                     <input
                                       type="text"
                                       inputMode="decimal"
@@ -713,14 +735,14 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
                                       placeholder="0"
                                     />
                                   </td>
-                                  <td className={`border border-black px-2 py-1 text-center text-gray-900 w-[80px] min-w-[80px] ${!cadet.is_present ? "bg-gray-200" : ""}`}>
+                                  <td className={`border border-black px-2 py-1 text-center text-gray-900 w-[80px] min-w-[80px] max-w-[80px] ${!cadet.is_present ? "bg-gray-200" : ""}`}>
                                     {convertedValue.toFixed(2)}
                                   </td>
                                 </React.Fragment>
                               );
                             } else {
                               return (
-                                <td key={mark.id} className={`border border-black px-2 py-1 text-center min-w-[100px] ${!cadet.is_present ? "bg-gray-200" : ""}`}>
+                                <td key={mark.id} className={`border border-black px-2 py-1 text-center w-[100px] min-w-[100px] max-w-[100px] ${!cadet.is_present ? "bg-gray-200" : ""}`}>
                                   <input
                                     type="text"
                                     inputMode="decimal"

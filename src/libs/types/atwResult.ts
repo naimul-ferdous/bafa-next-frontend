@@ -10,10 +10,9 @@ import type {
   SystemSemester,
   SystemProgram,
   SystemBranch,
-  SystemGroup,
   SystemExam,
   AtwSubjectModule,
-  AtwSubjectModuleMark
+  AtwSubjectsModuleMarksheetMark
 } from './system';
 
 // ATW Result Cadet Mark
@@ -21,14 +20,14 @@ export interface AtwResultCadetsMark {
   id: number;
   atw_result_getting_cadet_id: number;
   subject_id: number;
-  atw_subject_module_mark_id: number;
+  atw_subjects_module_marksheet_mark_id: number;
   achieved_mark: number;
   is_active: boolean;
   created_by?: number;
   created_at?: string;
   updated_at?: string;
   subject?: AtwSubjectModule;
-  subject_mark?: AtwSubjectModuleMark;
+  subject_mark?: AtwSubjectsModuleMarksheetMark;
 }
 
 // ATW Result Mark Cadet Approval
@@ -92,7 +91,6 @@ export interface AtwResult {
   semester_id: number;
   program_id: number;
   branch_id: number;
-  group_id?: number;
   exam_type_id: number;
   instructor_id: number;
   atw_subject_module_id: number;
@@ -104,7 +102,6 @@ export interface AtwResult {
   semester?: SystemSemester;
   program?: SystemProgram;
   branch?: SystemBranch;
-  group?: SystemGroup;
   exam_type?: SystemExam;
   instructor?: User;
   atw_subject_module?: AtwSubjectModule;
@@ -115,6 +112,7 @@ export interface AtwResult {
     name: string;
     email: string;
   };
+  total_cadets?: number;
   result_getting_cadets?: AtwResultGettingCadet[];
   cadet_approvals?: AtwResultMarkCadetApproval[];
   approval_authorities?: AtwResultApprovalAuthority[];
@@ -137,7 +135,6 @@ export interface AtwResultCreateData {
   semester_id: number;
   program_id: number;
   branch_id: number;
-  group_id?: number;
   exam_type_id: number;
   atw_subject_module_id: number;
   is_active?: boolean;
@@ -156,7 +153,7 @@ export interface AtwResultCadetCreateData {
 
 export interface AtwResultCadetMarkCreateData {
   subject_id: number;
-  atw_subject_module_mark_id: number;
+  atw_subjects_module_marksheet_mark_id: number;
   achieved_mark: number;
   is_active?: boolean;
 }

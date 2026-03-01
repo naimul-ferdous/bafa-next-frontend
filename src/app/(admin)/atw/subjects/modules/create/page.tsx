@@ -32,7 +32,7 @@ export default function CreateSubjectPage() {
       <div className="text-center mb-8">
         <div className="flex justify-center mb-4"><FullLogo /></div>
         <h1 className="text-xl font-bold text-gray-900 uppercase">Bangladesh Air Force Academy</h1>
-        <h2 className="text-md font-semibold text-gray-700 mt-2 uppercase">Add New Subject</h2>
+        <h2 className="text-md font-semibold text-gray-700 mt-2 uppercase">Add New Subject Module</h2>
       </div>
 
       <SubjectModuleForm

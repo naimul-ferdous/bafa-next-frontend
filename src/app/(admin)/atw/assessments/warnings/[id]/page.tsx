@@ -137,7 +137,7 @@ export default function CadetWarningDetailsPage({ params }: { params: Promise<{ 
         <div className="w-full flex justify-between mb-8 text-xs font-bold">
           <div></div>
           <div>
-            <p className="text-center font-medium text-gray-900 uppercase px-4">selectedPrintType?.name</p>
+            <p className="text-center font-medium text-gray-900 uppercase px-4">{selectedPrintType?.name}</p>
           </div>
           <div></div>
         </div>

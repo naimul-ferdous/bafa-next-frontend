@@ -7,6 +7,8 @@ import Label from "@/components/form/Label";
 import { commonService } from "@/libs/services/commonService";
 import { cadetService } from "@/libs/services/cadetService";
 import { atwAssessmentPenpictureGradeService } from "@/libs/services/atwAssessmentPenpictureGradeService";
+import { atwInstructorAssignCadetService } from "@/libs/services/atwInstructorAssignCadetService";
+import { useAuth } from "@/libs/hooks/useAuth";
 import { Icon } from "@iconify/react";
 import type {
   SystemCourse,
@@ -39,6 +41,8 @@ interface WeaknessItem {
 }
 
 export default function ResultForm({ initialData, onSubmit, onCancel, loading, isEdit = false }: ResultFormProps) {
+  const { user } = useAuth();
+  const isInstructor = !!user?.instructor_biodata;
   const [formData, setFormData] = useState({
     course_id: 0,
     semester_id: 0,
@@ -68,30 +72,29 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
   const [branches, setBranches] = useState<SystemBranch[]>([]);
   const [cadets, setCadets] = useState<CadetProfile[]>([]);
   const [instructors, setInstructors] = useState<User[]>([]);
-  const [grades, setGrades] = useState<AtwAssessmentPenpictureGrade[]>([]);
   const [filteredGrades, setFilteredGrades] = useState<AtwAssessmentPenpictureGrade[]>([]);
   const [loadingDropdowns, setLoadingDropdowns] = useState(true);
+  const [loadingSemesters, setLoadingSemesters] = useState(false);
+  const [loadingCadets, setLoadingCadets] = useState(false);
+  const [loadingGrades, setLoadingGrades] = useState(false);
 
   // Load dropdown data
   useEffect(() => {
     const loadDropdownData = async () => {
       try {
         setLoadingDropdowns(true);
-        const [options, cadetsRes, gradesRes] = await Promise.all([
+        const [options, cadetsRes] = await Promise.all([
           commonService.getResultOptions(),
-          cadetService.getAllCadets({ per_page: 200 }),
-          atwAssessmentPenpictureGradeService.getActiveGrades(),
+          isInstructor ? Promise.resolve(null) : cadetService.getAllCadets({ per_page: 200 }),
         ]);
 
         if (options) {
           setCourses(options.courses.filter(c => c.is_active));
-          setSemesters(options.semesters.filter(s => s.is_active));
           setPrograms(options.programs.filter(p => p.is_active));
           setBranches(options.branches.filter(b => b.is_active));
-          setInstructors(options.instructors.map(i => i.user).filter((u): u is User => u !== undefined && u.is_active));
+          setInstructors(options.instructors.filter(u => u.is_active));
         }
-        setCadets(cadetsRes.data.filter(c => c.is_active));
-        setGrades(gradesRes);
+        if (cadetsRes) setCadets(cadetsRes.data.filter(c => c.is_active));
       } catch (err) {
         console.error("Failed to load dropdown data:", err);
         setError("Failed to load required data. Please refresh the page.");
@@ -101,28 +104,85 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
     };
 
     loadDropdownData();
-  }, []);
+  }, [isInstructor]);
 
-  // Filter grades based on selected course and semester
+  // Fetch semesters whenever course changes
   useEffect(() => {
-    if (formData.course_id && formData.semester_id) {
-      const filtered = grades.filter(grade => {
-        // Filter by course
-        const courseMatch = grade.course_id === formData.course_id;
-        // Filter by semester
-        const semesterMatch = grade.semesters?.some(s => s.semester_id === formData.semester_id);
-        return courseMatch && semesterMatch;
+    if (!formData.course_id) {
+      setSemesters([]);
+      return;
+    }
+    const fetchSemesters = async () => {
+      setLoadingSemesters(true);
+      const data = await commonService.getSemestersByCourse(formData.course_id);
+      setSemesters(data);
+      if (data.length > 0 && !isEdit) {
+        setFormData(prev => ({ ...prev, semester_id: data[0].id }));
+      }
+      setLoadingSemesters(false);
+    };
+    fetchSemesters();
+  }, [formData.course_id, isEdit]);
+
+  // Auto-select instructor when user is an instructor
+  useEffect(() => {
+    if (isInstructor && user?.id && !isEdit) {
+      setFormData(prev => ({ ...prev, instructor_id: user.id }));
+    }
+  }, [isInstructor, user?.id, isEdit]);
+
+  // Load assigned cadets for instructor when course+semester are selected
+  useEffect(() => {
+    if (!isInstructor || !user?.id) return;
+    if (!formData.course_id || !formData.semester_id) {
+      setCadets([]);
+      return;
+    }
+    const fetchCadets = async () => {
+      setLoadingCadets(true);
+      const res = await atwInstructorAssignCadetService.getAll({
+        instructor_id: user.id,
+        course_id: formData.course_id,
+        semester_id: formData.semester_id,
+        per_page: 1000,
       });
-      setFilteredGrades(filtered);
-      
-      // Reset selected grade if it's not in the filtered list
-      if (formData.atw_assessment_penpicture_grade_id && !filtered.find(g => g.id === formData.atw_assessment_penpicture_grade_id)) {
+      const mapped = res.data
+        .map((a: any) => ({
+          id: a.cadet?.id,
+          name: a.cadet?.name,
+          cadet_number: a.cadet?.cadet_number,
+          bd_no: a.cadet?.cadet_number,
+          is_active: true,
+        }))
+        .filter((c: any) => c.id);
+      // Deduplicate by cadet id
+      const unique = mapped.filter((c, i, arr) => arr.findIndex(x => x.id === c.id) === i);
+      setCadets(unique as unknown as CadetProfile[]);
+      setLoadingCadets(false);
+    };
+    fetchCadets();
+  }, [isInstructor, user?.id, formData.course_id, formData.semester_id]);
+
+  // Fetch grades from API whenever course+semester changes
+  useEffect(() => {
+    if (!formData.course_id || !formData.semester_id) {
+      setFilteredGrades([]);
+      return;
+    }
+    const fetchGrades = async () => {
+      setLoadingGrades(true);
+      const data = await atwAssessmentPenpictureGradeService.getActiveGrades({
+        course_id: formData.course_id,
+        semester_id: formData.semester_id,
+      });
+      setFilteredGrades(data);
+      if (formData.atw_assessment_penpicture_grade_id && !data.find(g => g.id === formData.atw_assessment_penpicture_grade_id)) {
         setFormData(prev => ({ ...prev, atw_assessment_penpicture_grade_id: 0 }));
       }
-    } else {
-      setFilteredGrades([]);
-    }
-  }, [formData.course_id, formData.semester_id, grades]);
+      setLoadingGrades(false);
+    };
+    fetchGrades();
+  }, [formData.course_id, formData.semester_id]);
 
   // Populate form with initial data
   useEffect(() => {
@@ -160,6 +220,14 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
   }, [initialData]);
 
   const handleChange = (field: string, value: any) => {
+    if (field === "course_id") {
+      setFormData(prev => ({ ...prev, course_id: value, semester_id: 0, cadet_id: 0 }));
+      return;
+    }
+    if (field === "semester_id") {
+      setFormData(prev => ({ ...prev, semester_id: value, cadet_id: 0 }));
+      return;
+    }
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
@@ -286,17 +354,33 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
 
             <div>
               <Label>Semester <span className="text-red-500">*</span></Label>
-              <select
-                value={formData.semester_id}
-                onChange={(e) => handleChange("semester_id", parseInt(e.target.value))}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500"
-                required
-              >
-                <option value={0}>Select Semester</option>
-                {semesters.map(semester => (
-                  <option key={semester.id} value={semester.id}>{semester.name} ({semester.code})</option>
-                ))}
-              </select>
+              <div className="relative">
+                <select
+                  value={formData.semester_id}
+                  onChange={(e) => handleChange("semester_id", parseInt(e.target.value))}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50 disabled:text-gray-400"
+                  required
+                  disabled={!formData.course_id || loadingSemesters || (!loadingSemesters && semesters.length === 0)}
+                >
+                  <option value={0}>
+                    {loadingSemesters
+                      ? "Loading..."
+                      : !formData.course_id
+                        ? "Select course first"
+                        : semesters.length === 0
+                          ? "No semester on this course"
+                          : "Select Semester"}
+                  </option>
+                  {semesters.map(semester => (
+                    <option key={semester.id} value={semester.id}>{semester.name} ({semester.code})</option>
+                  ))}
+                </select>
+                {loadingSemesters && (
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
+                    <Icon icon="hugeicons:fan-01" className="w-4 h-4 animate-spin" />
+                  </div>
+                )}
+              </div>
             </div>
 
             <div>
@@ -330,60 +414,98 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
 
             <div>
               <Label>Instructor <span className="text-red-500">*</span></Label>
-              <select
-                value={formData.instructor_id}
-                onChange={(e) => handleChange("instructor_id", parseInt(e.target.value))}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500"
-                required
-              >
-                <option value={0}>Select Instructor</option>
-                {instructors.map(instructor => (
-                  <option key={instructor.id} value={instructor.id}>
-                    {instructor.name} ({instructor.service_number})
-                  </option>
-                ))}
-              </select>
+              {isInstructor ? (
+                <input
+                  type="text"
+                  value={user?.name ?? ""}
+                  readOnly
+                  className="w-full px-4 py-2 border border-gray-200 rounded-lg bg-gray-50 text-gray-700 cursor-not-allowed"
+                />
+              ) : (
+                <select
+                  value={formData.instructor_id}
+                  onChange={(e) => handleChange("instructor_id", parseInt(e.target.value))}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500"
+                  required
+                >
+                  <option value={0}>Select Instructor</option>
+                  {instructors.map(instructor => (
+                    <option key={instructor.id} value={instructor.id}>
+                      {instructor.name} ({instructor.service_number})
+                    </option>
+                  ))}
+                </select>
+              )}
             </div>
 
             <div>
               <Label>Cadet <span className="text-red-500">*</span></Label>
-              <select
-                value={formData.cadet_id}
-                onChange={(e) => handleChange("cadet_id", parseInt(e.target.value))}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500"
-                required
-              >
-                <option value={0}>Select Cadet</option>
-                {cadets.map(cadet => (
-                  <option key={cadet.id} value={cadet.id}>
-                    {cadet.name} ({cadet.cadet_number || cadet.bd_no})
+              <div className="relative">
+                <select
+                  value={formData.cadet_id}
+                  onChange={(e) => handleChange("cadet_id", parseInt(e.target.value))}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50 disabled:text-gray-400"
+                  required
+                  disabled={isInstructor && (!formData.course_id || !formData.semester_id || loadingCadets)}
+                >
+                  <option value={0}>
+                    {isInstructor && !formData.course_id
+                      ? "Select course first"
+                      : isInstructor && !formData.semester_id
+                        ? "Select semester first"
+                        : loadingCadets
+                          ? "Loading..."
+                          : isInstructor && cadets.length === 0 && formData.course_id && formData.semester_id
+                            ? "No assigned cadets"
+                            : "Select Cadet"}
                   </option>
-                ))}
-              </select>
+                  {cadets.map(cadet => (
+                    <option key={cadet.id} value={cadet.id}>
+                      {cadet.name} ({cadet.cadet_number || cadet.bd_no})
+                    </option>
+                  ))}
+                </select>
+                {loadingCadets && (
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
+                    <Icon icon="hugeicons:fan-01" className="w-4 h-4 animate-spin" />
+                  </div>
+                )}
+              </div>
             </div>
 
             <div>
               <Label>Grade <span className="text-red-500">*</span></Label>
-              <select
-                value={formData.atw_assessment_penpicture_grade_id}
-                onChange={(e) => handleChange("atw_assessment_penpicture_grade_id", parseInt(e.target.value))}
-                className={`w-full px-4 py-2 border rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 ${
-                  !formData.course_id || !formData.semester_id ? "opacity-50 cursor-not-allowed" : ""
-                }`}
-                disabled={!formData.course_id || !formData.semester_id}
-                required
-              >
-                <option value={0}>
-                  {!formData.course_id || !formData.semester_id 
-                    ? "Select Course & Semester first" 
-                    : filteredGrades.length === 0 ? "No grades available for this selection" : "Select Grade"}
-                </option>
-                {filteredGrades.map(grade => (
-                  <option key={grade.id} value={grade.id}>
-                    {grade.grade_name} ({grade.grade_code})
+              <div className="relative">
+                <select
+                  value={formData.atw_assessment_penpicture_grade_id}
+                  onChange={(e) => handleChange("atw_assessment_penpicture_grade_id", parseInt(e.target.value))}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50 disabled:text-gray-400"
+                  disabled={!formData.course_id || !formData.semester_id || loadingGrades}
+                  required
+                >
+                  <option value={0}>
+                    {!formData.course_id
+                      ? "Select course first"
+                      : !formData.semester_id
+                        ? "Select semester first"
+                        : loadingGrades
+                          ? "Loading..."
+                          : filteredGrades.length === 0
+                            ? "No grades for this selection"
+                            : "Select Grade"}
                   </option>
-                ))}
-              </select>
+                  {filteredGrades.map(grade => (
+                    <option key={grade.id} value={grade.id}>
+                      {grade.grade_name} ({grade.grade_code})
+                    </option>
+                  ))}
+                </select>
+                {loadingGrades && (
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
+                    <Icon icon="hugeicons:fan-01" className="w-4 h-4 animate-spin" />
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>

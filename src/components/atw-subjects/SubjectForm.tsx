@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import Label from "@/components/form/Label";
 import { Icon } from "@iconify/react";
 import { commonService } from "@/libs/services/commonService";
@@ -11,7 +11,6 @@ import type {
   SystemSemester,
   SystemProgram,
   SystemBranch,
-  SystemGroup,
   AtwSubjectModule
 } from "@/libs/types/system";
 
@@ -29,7 +28,6 @@ export default function SubjectForm({ initialData, onSubmit, onCancel, loading, 
     semester_id: 0,
     program_id: 0,
     branch_id: null as number | null,
-    group_id: null as number | null,
     atw_subject_module_id: 0,
     is_current: true,
     is_active: true,
@@ -40,20 +38,21 @@ export default function SubjectForm({ initialData, onSubmit, onCancel, loading, 
     semesters: SystemSemester[];
     programs: SystemProgram[];
     branches: SystemBranch[];
-    groups: SystemGroup[];
     subjects: AtwSubjectModule[];
   }>({
     courses: [],
     semesters: [],
     programs: [],
     branches: [],
-    groups: [],
     subjects: [],
   });
 
+  const [loadingSemesters, setLoadingSemesters] = useState(false);
   const [error, setError] = useState("");
+  const [subjectSearch, setSubjectSearch] = useState("");
+  const [subjectDropdownOpen, setSubjectDropdownOpen] = useState(false);
+  const subjectDropdownRef = useRef<HTMLDivElement>(null);
 
-  // Load options
   useEffect(() => {
     const loadOptions = async () => {
       const data = await commonService.getResultOptions();
@@ -63,7 +62,6 @@ export default function SubjectForm({ initialData, onSubmit, onCancel, loading, 
           semesters: data.semesters || [],
           programs: data.programs || [],
           branches: data.branches || [],
-          groups: data.groups || [],
           subjects: data.subjects || [],
         });
       }
@@ -71,7 +69,6 @@ export default function SubjectForm({ initialData, onSubmit, onCancel, loading, 
     loadOptions();
   }, []);
 
-  // Populate form with initial data
   useEffect(() => {
     if (initialData) {
       setFormData({
@@ -79,7 +76,6 @@ export default function SubjectForm({ initialData, onSubmit, onCancel, loading, 
         semester_id: initialData.semester_id,
         program_id: initialData.program_id,
         branch_id: initialData.branch_id || null,
-        group_id: initialData.group_id || null,
         atw_subject_module_id: initialData.atw_subject_module_id,
         is_current: initialData.is_current,
         is_active: initialData.is_active,
@@ -87,9 +83,59 @@ export default function SubjectForm({ initialData, onSubmit, onCancel, loading, 
     }
   }, [initialData]);
 
+  // Fetch semesters whenever course changes
+  useEffect(() => {
+    if (!formData.course_id) {
+      setOptions(prev => ({ ...prev, semesters: [] }));
+      return;
+    }
+    const fetchSemesters = async () => {
+      setLoadingSemesters(true);
+      const semesters = await commonService.getSemestersByCourse(formData.course_id);
+      setOptions(prev => ({ ...prev, semesters }));
+      if (semesters.length > 0) {
+        setFormData(prev => ({ ...prev, semester_id: semesters[0].id }));
+      }
+      setLoadingSemesters(false);
+    };
+    fetchSemesters();
+  }, [formData.course_id]);
+
   const handleChange = (field: string, value: any) => {
+    if (field === 'course_id') {
+      setFormData(prev => ({ ...prev, course_id: value, semester_id: 0 }));
+      return;
+    }
     setFormData(prev => ({ ...prev, [field]: value }));
   };
+
+  const selectedModule = useMemo(() =>
+    options.subjects.find(s => s.id === formData.atw_subject_module_id),
+    [options.subjects, formData.atw_subject_module_id]
+  );
+
+  const previewSamples = useMemo(() => {
+    const marks = selectedModule?.marksheet?.marks || [];
+    return marks.map(m => Math.max(0, (Number(m.estimate_mark) || 0) - 1));
+  }, [selectedModule]);
+
+  const filteredSubjects = useMemo(() => {
+    const q = subjectSearch.toLowerCase();
+    if (!q) return options.subjects;
+    return options.subjects.filter(s =>
+      s.subject_name.toLowerCase().includes(q) || s.subject_code.toLowerCase().includes(q)
+    );
+  }, [options.subjects, subjectSearch]);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (subjectDropdownRef.current && !subjectDropdownRef.current.contains(e.target as Node)) {
+        setSubjectDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -117,7 +163,6 @@ export default function SubjectForm({ initialData, onSubmit, onCancel, loading, 
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {/* Course Selection */}
         <div>
           <Label>Course <span className="text-red-500">*</span></Label>
           <select
@@ -133,23 +178,37 @@ export default function SubjectForm({ initialData, onSubmit, onCancel, loading, 
           </select>
         </div>
 
-        {/* Semester Selection */}
         <div>
           <Label>Semester <span className="text-red-500">*</span></Label>
-          <select
-            value={formData.semester_id}
-            onChange={(e) => handleChange("semester_id", parseInt(e.target.value))}
-            className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-gray-900"
-            required
-          >
-            <option value={0}>Select Semester</option>
-            {options.semesters.map((semester) => (
-              <option key={semester.id} value={semester.id}>{semester.name} ({semester.code})</option>
-            ))}
-          </select>
+          <div className="relative">
+            <select
+              value={formData.semester_id}
+              onChange={(e) => handleChange("semester_id", parseInt(e.target.value))}
+              className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-gray-900 disabled:bg-gray-50 disabled:text-gray-400"
+              required
+              disabled={!formData.course_id || loadingSemesters || (!!formData.course_id && !loadingSemesters && options.semesters.length === 0)}
+            >
+              <option value={0}>
+                {loadingSemesters
+                  ? 'Loading...'
+                  : !formData.course_id
+                    ? 'Select course first'
+                    : options.semesters.length === 0
+                      ? 'No semester on this course'
+                      : 'Select Semester'}
+              </option>
+              {options.semesters.map((semester) => (
+                <option key={semester.id} value={semester.id}>{semester.name} ({semester.code})</option>
+              ))}
+            </select>
+            {loadingSemesters && (
+              <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
+                <Icon icon="hugeicons:fan-01" className="w-4 h-4 animate-spin" />
+              </div>
+            )}
+          </div>
         </div>
 
-        {/* Program Selection */}
         <div>
           <Label>Program <span className="text-red-500">*</span></Label>
           <select
@@ -165,23 +224,57 @@ export default function SubjectForm({ initialData, onSubmit, onCancel, loading, 
           </select>
         </div>
 
-        {/* Subject Module Selection */}
-        <div>
-          <Label>Subject Module <span className="text-red-500">*</span></Label>
-          <select
-            value={formData.atw_subject_module_id}
-            onChange={(e) => handleChange("atw_subject_module_id", parseInt(e.target.value))}
-            className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-gray-900"
-            required
+        <div ref={subjectDropdownRef} className="relative">
+          <Label>Subject <span className="text-red-500">*</span></Label>
+          <div
+            className="w-full px-4 py-2 border border-gray-200 rounded-lg bg-white text-gray-900 cursor-pointer flex items-center justify-between gap-2"
+            onClick={() => setSubjectDropdownOpen(prev => !prev)}
           >
-            <option value={0}>Select Subject Module</option>
-            {options.subjects.map((subject) => (
-              <option key={subject.id} value={subject.id}>{subject.subject_name} ({subject.subject_code})</option>
-            ))}
-          </select>
+            <span className={selectedModule ? "text-gray-900" : "text-gray-400"}>
+              {selectedModule ? `${selectedModule.subject_name} (${selectedModule.subject_code})` : "Select Subject Module"}
+            </span>
+            <Icon icon={subjectDropdownOpen ? "hugeicons:arrow-up-01" : "hugeicons:arrow-down-01"} className="w-4 h-4 text-gray-400 shrink-0" />
+          </div>
+          {subjectDropdownOpen && (
+            <div className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg">
+              <div className="p-2 border-b border-gray-100">
+                <div className="relative">
+                  <Icon icon="hugeicons:search-01" className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <input
+                    type="text"
+                    value={subjectSearch}
+                    onChange={(e) => setSubjectSearch(e.target.value)}
+                    placeholder="Search subject..."
+                    className="w-full pl-9 pr-3 py-1.5 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    autoFocus
+                  />
+                </div>
+              </div>
+              <ul className="max-h-52 overflow-y-auto py-1">
+                <li
+                  className="px-4 py-2 text-sm text-gray-400 cursor-pointer hover:bg-gray-50"
+                  onClick={() => { handleChange("atw_subject_module_id", 0); setSubjectSearch(""); setSubjectDropdownOpen(false); }}
+                >
+                  — Select Subject —
+                </li>
+                {filteredSubjects.length === 0 ? (
+                  <li className="px-4 py-2 text-sm text-gray-400 italic">No results found</li>
+                ) : (
+                  filteredSubjects.map(subject => (
+                    <li
+                      key={subject.id}
+                      className={`px-4 py-2 text-sm cursor-pointer hover:bg-blue-50 hover:text-blue-700 ${formData.atw_subject_module_id === subject.id ? "bg-blue-50 text-blue-700 font-medium" : "text-gray-900"}`}
+                      onClick={() => { handleChange("atw_subject_module_id", subject.id); setSubjectSearch(""); setSubjectDropdownOpen(false); }}
+                    >
+                      {subject.subject_name} <span className="text-gray-400">({subject.subject_code})</span>
+                    </li>
+                  ))
+                )}
+              </ul>
+            </div>
+          )}
         </div>
 
-        {/* Branch Selection (Optional) */}
         <div>
           <Label>Branch (Optional)</Label>
           <select
@@ -195,108 +288,125 @@ export default function SubjectForm({ initialData, onSubmit, onCancel, loading, 
             ))}
           </select>
         </div>
-
-        {/* Group Selection (Optional) */}
-        <div>
-          <Label>Group (Optional)</Label>
-          <select
-            value={formData.group_id || ""}
-            onChange={(e) => handleChange("group_id", e.target.value ? parseInt(e.target.value) : null)}
-            className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-gray-900"
-          >
-            <option value="">Select Group</option>
-            {options.groups.map((group) => (
-              <option key={group.id} value={group.id}>{group.name} ({group.code})</option>
-            ))}
-          </select>
-        </div>
       </div>
 
-      {/* Subject Marks Preview Table */}
-      {formData.atw_subject_module_id > 0 && (() => {
-        const selectedModule = options.subjects.find(s => s.id === formData.atw_subject_module_id);
-        if (!selectedModule || !selectedModule.subject_marks || selectedModule.subject_marks.length === 0) return null;
+      {/* Result Entry Preview */}
+      {selectedModule && (() => {
+        const marks = selectedModule.marksheet?.marks || [];
+        if (marks.length === 0) return null;
 
-        // Group marks by their type
-        const markGroups = (selectedModule.subject_marks || []).reduce((groups: any[], mark) => {
-          const type = mark.type || 'Other';
-          const existingGroup = groups.find(g => g.type === type);
-          if (existingGroup) {
-            existingGroup.marks.push(mark);
-          } else {
-            groups.push({ type, marks: [mark] });
-          }
-          return groups;
-        }, []);
+        const previewGroups = Object.values(
+          marks.reduce((acc, m, idx) => {
+            const key = m.type || `__none_${idx}`;
+            if (!acc[key]) acc[key] = { type: m.type || "", marks: [] as (typeof m & { _idx: number })[] };
+            acc[key].marks.push({ ...m, _idx: idx });
+            return acc;
+          }, {} as Record<string, { type: string; marks: (typeof marks[0] & { _idx: number })[] }>)
+        );
+
+        const previewTotal = previewGroups.reduce((acc, group) =>
+          acc + group.marks.reduce((gacc, m) => {
+            const est = Number(m.estimate_mark) || 0;
+            const pct = Number(m.percentage) || 0;
+            const sample = previewSamples[m._idx] ?? 0;
+            return gacc + (est !== pct && est > 0 ? (sample / est) * pct : sample);
+          }, 0), 0);
 
         return (
-          <div className="overflow-x-auto">
-            <table className="w-full rounded-lg border-collapse border border-black">
-              <thead>
-                <tr>
-                  <th className="border border-black px-3 py-2 text-center font-bold" rowSpan={2}>Module Name</th>
-                  <th className="border border-black px-3 py-2 text-center font-bold" rowSpan={2}>Code</th>
-                  <th className="border border-black px-3 py-2 text-center font-bold" rowSpan={2}>Row Type</th>
-                  {markGroups.map(group => (
-                    <th
-                      key={group.type}
-                      className="border border-black px-3 py-2 text-center font-bold text-gray-900 capitalize"
-                      colSpan={group.marks.length}
-                    >
-                      {group.type.replace(/([A-Z])/g, ' $1').trim()}
-                    </th>
-                  ))}
-                  <th className="border border-black px-3 py-2 text-center font-bold" rowSpan={2}>Total</th>
-                </tr>
-                {/* Second header row - Individual marks */}
-                <tr>
-                  {markGroups.flatMap((group: any) =>
-                    group.marks.map((mark: any) => (
-                      <th key={mark.id} className="border border-black px-2 py-2 text-center min-w-[100px]">
-                        <div className="font-medium">{mark.name}</div>
+          <div className="py-2">
+            <Label>Result Entry Preview</Label>
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse border border-black text-sm">
+                <thead>
+                  <tr>
+                    <th className="border border-black px-3 py-2 text-center" rowSpan={3}>Sl</th>
+                    <th className="border border-black px-3 py-2 text-center" rowSpan={3}>BD/No</th>
+                    <th className="border border-black px-3 py-2 text-center" rowSpan={3}>Rank</th>
+                    <th className="border border-black px-3 py-2 text-left" rowSpan={3}>Name</th>
+                    <th className="border border-black px-3 py-2 text-center" rowSpan={3}>Branch</th>
+                    {previewGroups.map((group, gi) => (
+                      <th
+                        key={gi}
+                        className="border border-black px-3 py-2 text-center font-semibold uppercase"
+                        colSpan={group.marks.reduce((acc, m) => acc + (Number(m.estimate_mark) !== Number(m.percentage) ? 2 : 1), 0)}
+                      >
+                        {group.type || '—'}
                       </th>
-                    ))
-                  )}
-                </tr>
-              </thead>
-              <tbody>
-                {/* Row 1: Estimated Marks */}
-                <tr className="hover:bg-gray-50 transition-colors">
-                  <td className="border border-black px-3 py-2 text-center font-bold text-gray-900 bg-white" rowSpan={2}>{selectedModule.subject_name}</td>
-                  <td className="border border-black px-3 py-2 text-center font-bold bg-white" rowSpan={2}>{selectedModule.subject_code}</td>
-                  <td className="border border-black px-3 py-2 text-center font-bold text-gray-700">Estimated Mark</td>
-                  {markGroups.flatMap((group: any) =>
-                    group.marks.map((mark: any) => (
-                      <td key={`est-${mark.id}`} className="border border-black px-3 py-2 text-center bg-white">
-                        {Number(mark.estimate_mark).toFixed(0)}
-                      </td>
-                    ))
-                  )}
-                  <td className="border border-black px-3 py-2 text-center font-bold">
-                    {selectedModule.subject_marks.reduce((acc, curr) => acc + Number(curr.estimate_mark), 0).toFixed(0)}
-                  </td>
-                </tr>
-                {/* Row 2: Percentages */}
-                <tr className="hover:bg-gray-50 transition-colors">
-                  <td className="border border-black px-3 py-2 text-center font-bold text-gray-700 border-t-0">Percentage</td>
-                  {markGroups.flatMap((group: any) =>
-                    group.marks.map((mark: any) => (
-                      <td key={`per-${mark.id}`} className="border border-black px-3 py-2 text-center">
-                        {Number(mark.percentage).toFixed(0)}
-                      </td>
-                    ))
-                  )}
-                  <td className="border border-black px-3 py-2 text-center font-bold">
-                    {selectedModule.subject_marks.reduce((acc, curr) => acc + Number(curr.percentage), 0).toFixed(0)}
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+                    ))}
+                    <th className="border border-black px-3 py-2 text-center font-bold" rowSpan={3}>Total</th>
+                  </tr>
+                  <tr>
+                    {previewGroups.flatMap((group, gi) =>
+                      group.marks.map((m, mi) => (
+                        <th key={`${gi}-${mi}`}
+                          className="border border-black px-2 py-2 text-center"
+                          colSpan={Number(m.estimate_mark) !== Number(m.percentage) ? 2 : 1}
+                        >
+                          <div className="text-xs font-medium uppercase">{m.name || '—'}</div>
+                        </th>
+                      ))
+                    )}
+                  </tr>
+                  <tr>
+                    {previewGroups.flatMap((group, gi) =>
+                      group.marks.map((m, mi) => {
+                        const est = Number(m.estimate_mark);
+                        const pct = Number(m.percentage);
+                        if (est !== pct) {
+                          return (
+                            <React.Fragment key={`${gi}-${mi}`}>
+                              <th className="border border-black px-1 py-1 text-center w-[80px] min-w-[80px]">{est.toFixed(0)}</th>
+                              <th className="border border-black px-1 py-1 text-center w-[80px] min-w-[80px]">{pct.toFixed(0)}</th>
+                            </React.Fragment>
+                          );
+                        }
+                        return (
+                          <th key={`${gi}-${mi}`} className="border border-black px-1 py-1 text-center min-w-[100px]">
+                            {pct.toFixed(0)}
+                          </th>
+                        );
+                      })
+                    )}
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td className="border border-black px-3 py-2 text-center text-gray-400 italic text-xs">1</td>
+                    <td className="border border-black px-3 py-2 text-center text-gray-400 italic text-xs">BD-001</td>
+                    <td className="border border-black px-3 py-2 text-center text-gray-400 italic text-xs">Flt Cdt</td>
+                    <td className="border border-black px-3 py-2 text-gray-400 italic text-xs">Example Cadet</td>
+                    <td className="border border-black px-3 py-2 text-center text-gray-400 italic text-xs">GD(P)</td>
+                    {previewGroups.flatMap((group, gi) =>
+                      group.marks.map((m, mi) => {
+                        const est = Number(m.estimate_mark) || 0;
+                        const pct = Number(m.percentage) || 0;
+                        const sample = previewSamples[m._idx] ?? 0;
+                        const isSplit = est !== pct;
+                        if (isSplit) {
+                          const converted = est > 0 ? (sample / est) * pct : 0;
+                          return (
+                            <React.Fragment key={`${gi}-${mi}`}>
+                              <td className="border border-black px-2 py-1 text-center text-gray-400 italic text-xs w-[80px] min-w-[80px]">{sample.toFixed(0)}</td>
+                              <td className="border border-black px-2 py-1 text-center text-gray-400 italic text-xs w-[80px] min-w-[80px]">{converted.toFixed(2)}</td>
+                            </React.Fragment>
+                          );
+                        }
+                        return (
+                          <td key={`${gi}-${mi}`} className="border border-black px-2 py-1 text-center text-gray-400 italic text-xs min-w-[100px]">
+                            {sample.toFixed(0)}
+                          </td>
+                        );
+                      })
+                    )}
+                    <td className="border border-black px-3 py-2 text-center font-bold text-gray-500 text-xs">{previewTotal.toFixed(2)}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           </div>
         );
       })()}
 
-      {/* Switches for is_current and is_active */}
       <div className="flex gap-8">
         <label className="flex items-center gap-3 cursor-pointer">
           <input
@@ -322,9 +432,7 @@ export default function SubjectForm({ initialData, onSubmit, onCancel, loading, 
             />
             <div>
               <div className="font-medium text-gray-900 dark:text-white">Active:</div>
-              <div className="text-sm text-gray-500 dark:text-gray-400">
-                This subject will be available for use throughout the system.
-              </div>
+              <div className="text-sm text-gray-500 dark:text-gray-400">This subject will be available for use throughout the system.</div>
             </div>
           </label>
           <label className="flex items-start gap-3 cursor-pointer">
@@ -337,9 +445,7 @@ export default function SubjectForm({ initialData, onSubmit, onCancel, loading, 
             />
             <div>
               <div className="font-medium text-gray-900 dark:text-white">Inactive:</div>
-              <div className="text-sm text-gray-500 dark:text-gray-400">
-                This subject will be hidden from general use.
-              </div>
+              <div className="text-sm text-gray-500 dark:text-gray-400">This subject will be hidden from general use.</div>
             </div>
           </label>
         </div>

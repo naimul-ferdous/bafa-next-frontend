@@ -151,6 +151,20 @@ export const atwSubjectService = {
   },
 
   /**
+   * Bulk disable subject mappings
+   */
+  async bulkDisable(ids: number[]): Promise<boolean> {
+    try {
+      const token = getToken();
+      const result = await apiClient.put<SubjectActionApiResponse>('/atw-subjects/bulk-disable', { ids }, token);
+      return result?.success || false;
+    } catch (error) {
+      console.error('Failed to bulk disable ATW subjects:', error);
+      return false;
+    }
+  },
+
+  /**
    * Delete subject mapping
    */
   async deleteSubject(id: number): Promise<boolean> {

@@ -1,13 +1,14 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
-import React, { useState, useEffect, useCallback, use, useMemo } from "react";
+import React, { useState, useEffect, useCallback, use } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@iconify/react";
 import { atwAssessmentPenpictureResultService } from "@/libs/services/atwAssessmentPenpictureResultService";
 import FullLogo from "@/components/ui/fulllogo";
 import type { AtwAssessmentPenpictureResult } from "@/libs/types/system";
-import DataTable, { Column } from "@/components/ui/DataTable";
+import type { FilePrintType } from "@/libs/types/filePrintType";
+import PrintTypeModal from "@/components/ui/modal/PrintTypeModal";
 import ConfirmationModal from "@/components/ui/modal/ConfirmationModal";
 
 export default function PenpictureCourseSemesterResultPage({ params }: { params: Promise<{ courseId: string; semesterId: string }> }) {
@@ -20,6 +21,9 @@ export default function PenpictureCourseSemesterResultPage({ params }: { params:
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
+  const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
+  const [selectedPrintType, setSelectedPrintType] = useState<FilePrintType | null>(null);
+
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [deletingResult, setDeletingResult] = useState<AtwAssessmentPenpictureResult | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
@@ -28,21 +32,15 @@ export default function PenpictureCourseSemesterResultPage({ params }: { params:
     try {
       setLoading(true);
       setError("");
-      
       const response = await atwAssessmentPenpictureResultService.getAllResults({
         course_id: courseId,
         semester_id: semesterId,
-        per_page: 1000
+        per_page: 1000,
       });
-      
-      if (response.data.length > 0) {
-        setResults(response.data);
-      } else {
-        setError("No results found for this course and semester");
-      }
+      setResults(response.data);
     } catch (err) {
       console.error("Failed to load data:", err);
-      setError("Failed to load report data");
+      setError("Failed to load results");
     } finally {
       setLoading(false);
     }
@@ -52,21 +50,12 @@ export default function PenpictureCourseSemesterResultPage({ params }: { params:
     loadData();
   }, [loadData]);
 
-  const handlePrint = () => {
-    window.print();
-  };
+  const handlePrintClick = () => setIsPrintModalOpen(true);
 
-  const handleEdit = (result: AtwAssessmentPenpictureResult) => {
-    router.push(`/atw/assessments/penpicture/results/${result.id}/edit`);
-  };
-
-  const handleView = (result: AtwAssessmentPenpictureResult) => {
-    router.push(`/atw/assessments/penpicture/results/${result.id}`);
-  };
-
-  const handleDelete = (result: AtwAssessmentPenpictureResult) => {
-    setDeletingResult(result);
-    setDeleteModalOpen(true);
+  const confirmPrint = (type: FilePrintType) => {
+    setSelectedPrintType(type);
+    setIsPrintModalOpen(false);
+    setTimeout(() => window.print(), 100);
   };
 
   const confirmDelete = async () => {
@@ -85,82 +74,7 @@ export default function PenpictureCourseSemesterResultPage({ params }: { params:
     }
   };
 
-  const columns: Column<AtwAssessmentPenpictureResult>[] = [
-    { 
-      key: "id", 
-      header: "SL.", 
-      headerAlign: "center", 
-      className: "text-center", 
-      render: (_, index) => index + 1 
-    },
-    { 
-      key: "bd_no", 
-      header: "BD/No", 
-      className: "font-mono font-bold", 
-      render: (res) => (res.cadet as any)?.cadet_number || (res.cadet as any)?.bd_no || "—" 
-    },
-    { 
-      key: "rank", 
-      header: "Rank", 
-      render: (res) => (res.cadet as any)?.rank?.short_name || "Cdt" 
-    },
-    { 
-      key: "name", 
-      header: "Name", 
-      className: "font-bold text-blue-600", 
-      render: (res) => (res.cadet as any)?.name || "—" 
-    },
-    { 
-      key: "program", 
-      header: "Program", 
-      render: (res) => res.program?.name || "—" 
-    },
-    { 
-      key: "branch", 
-      header: "Branch", 
-      render: (res) => res.branch?.name || "—" 
-    },
-    {
-      key: "assessment",
-      header: "Assessment",
-      render: (res) => (
-        <div className="flex flex-wrap gap-1">
-          {res.pen_picture && (
-            <span className="px-2 py-0.5 bg-purple-50 text-purple-700 border border-purple-100 rounded text-[10px] font-black uppercase" title={res.pen_picture}>Pen Picture</span>
-          )}
-          {res.course_performance && (
-            <span className="px-2 py-0.5 bg-blue-50 text-blue-700 border border-blue-100 rounded text-[10px] font-black uppercase" title={res.course_performance}>Performance</span>
-          )}
-        </div>
-      )
-    },
-    {
-      key: "traits",
-      header: "S/W",
-      render: (res) => (
-        <div className="flex flex-wrap gap-1">
-          {res.strengths && res.strengths.length > 0 && (
-            <span className="px-2 py-0.5 bg-green-50 text-green-700 border border-green-100 rounded text-[10px] font-black uppercase">Strengths ({res.strengths.length})</span>
-          )}
-          {res.weaknesses && res.weaknesses.length > 0 && (
-            <span className="px-2 py-0.5 bg-red-50 text-red-700 border border-red-100 rounded text-[10px] font-black uppercase">Weaknesses ({res.weaknesses.length})</span>
-          )}
-        </div>
-      )
-    },
-    {
-      key: "actions",
-      header: "Actions",
-      headerAlign: "center",
-      className: "text-center no-print",
-      render: (res) => (
-        <div className="flex items-center justify-center gap-1" onClick={(e) => e.stopPropagation()}>
-          <button onClick={() => handleEdit(res)} className="p-1 text-yellow-600 hover:bg-yellow-50 rounded transition-all" title="Edit"><Icon icon="hugeicons:pencil-edit-01" className="w-4 h-4" /></button>
-          <button onClick={() => handleDelete(res)} className="p-1 text-red-600 hover:bg-red-50 rounded transition-all" title="Delete"><Icon icon="hugeicons:delete-02" className="w-4 h-4" /></button>
-        </div>
-      )
-    }
-  ];
+  const meta = results[0] ?? null;
 
   if (loading) {
     return (
@@ -172,12 +86,12 @@ export default function PenpictureCourseSemesterResultPage({ params }: { params:
     );
   }
 
-  if (error || results.length === 0) {
+  if (error) {
     return (
       <div className="bg-white p-6 rounded-lg border border-gray-200">
         <div className="text-center py-12">
           <Icon icon="hugeicons:alert-circle" className="w-10 h-10 mx-auto mb-4 text-red-500" />
-          <p className="text-red-600 font-medium">{error || "Results not found"}</p>
+          <p className="text-red-600 font-medium">{error}</p>
           <button
             onClick={() => router.push("/atw/assessments/penpicture/results")}
             className="mt-4 px-6 py-2 bg-blue-500 text-white rounded-xl hover:bg-blue-600 transition-all font-bold"
@@ -189,117 +103,175 @@ export default function PenpictureCourseSemesterResultPage({ params }: { params:
     );
   }
 
-  const course = results[0]?.course;
-  const semester = results[0]?.semester;
-
   return (
     <div className="print-no-border bg-white rounded-lg border border-gray-200">
-      {/* Action Buttons - Hidden on print */}
+      <style jsx global>{`
+        @media print {
+          @page {
+            size: A3 landscape;
+            margin: 10mm;
+          }
+          .cv-content {
+            width: 100% !important;
+            max-width: none !important;
+          }
+          table {
+            font-size: 11px !important;
+          }
+          .print-div {
+            max-width: 60vh !important;
+            margin: 0 auto !important;
+          }
+        }
+      `}</style>
+
+      {/* Action Bar */}
       <div className="p-4 flex items-center justify-between no-print">
         <button
-          onClick={() => router.push("/atw/assessments/penpicture/results")}
-          className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 flex items-center gap-2 font-medium transition-all"
+          onClick={() => history.back()}
+          className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 flex items-center gap-2"
         >
           <Icon icon="hugeicons:arrow-left-01" className="w-4 h-4" />
           Back to List
         </button>
-        <div className="flex items-center gap-3">
-          <button
-            onClick={handlePrint}
-            className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 flex items-center gap-2 font-medium transition-all"
-          >
-            <Icon icon="hugeicons:printer" className="w-4 h-4" />
-            Print
-          </button>
-        </div>
+        <button
+          onClick={handlePrintClick}
+          className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+        >
+          <Icon icon="hugeicons:printer" className="w-4 h-4" />
+          Print
+        </button>
       </div>
 
-      <div className="p-8 cv-content">
-        {/* Header with Logo */}
-        <div className="mb-8">
+      {/* Content */}
+      <div className="p-4 cv-content">
+        {selectedPrintType && (
+          <div className="flex justify-center mb-6">
+            <p className="font-light uppercase">{selectedPrintType.name}</p>
+          </div>
+        )}
+
+        {/* Header */}
+        <div className="mb-8 text-center">
           <div className="flex justify-center mb-4">
             <FullLogo />
           </div>
-          <h1 className="text-center text-xl font-bold text-gray-900 uppercase tracking-wider">
+          <h1 className="text-xl font-bold text-gray-900 uppercase tracking-wider">
             Bangladesh Air Force Academy
           </h1>
-          <p className="text-center font-medium text-gray-900 uppercase tracking-wider pb-2">
-            ATW Pen Picture Summary Result Sheet
+          <p className="font-medium text-gray-900 uppercase underline tracking-wider mt-1">
+            ATW Pen Picture Assessment Result {selectedPrintType ? `— ${selectedPrintType.name}` : ""}
+          </p>
+          <p className="font-medium text-gray-900 uppercase tracking-wider mt-1">
+            {meta?.course?.name}{meta?.course?.code ? ` (${meta.course.code})` : ""}
+            {" — "}
+            {meta?.semester?.name}{meta?.semester?.code ? ` (${meta.semester.code})` : ""}
           </p>
         </div>
 
-        {/* Batch Information Section */}
-        <div className="mb-6">
-          <h2 className="text-lg font-bold text-gray-900 mb-4 pb-1 border-b border-dashed border-gray-400 uppercase text-base">
-            Batch Information
-          </h2>
-          <div className="grid grid-cols-2 gap-x-12 gap-y-3">
-            <div className="flex">
-              <span className="w-48 text-gray-900 font-medium">Course</span>
-              <span className="mr-4">:</span>
-              <span className="text-gray-900 flex-1 font-bold">{course?.name || "N/A"} ({course?.code || "N/A"})</span>
-            </div>
-            <div className="flex">
-              <span className="w-48 text-gray-900 font-medium">Semester</span>
-              <span className="mr-4">:</span>
-              <span className="text-gray-900 flex-1 font-bold">{semester?.name || "N/A"} ({semester?.code || "N/A"})</span>
-            </div>
-            <div className="flex">
-              <span className="w-48 text-gray-900 font-medium">Total Submissions</span>
-              <span className="mr-4">:</span>
-              <span className="text-gray-900 flex-1 font-bold text-blue-700">{results.length} Cadet(s)</span>
-            </div>
-            <div className="flex">
-              <span className="w-48 text-gray-900 font-medium">Report Type</span>
-              <span className="mr-4">:</span>
-              <span className="text-gray-900 flex-1 font-bold">Consolidated Assessment</span>
-            </div>
-          </div>
+        {/* Meta Row */}
+        <div className="flex items-center justify-between mb-4 text-sm">
+          <p>
+            <span className="font-bold text-gray-900 uppercase mr-2">Program</span>
+            <span className="border-b border-dashed border-black">: {meta?.program?.name || "—"}</span>
+          </p>
+          <p>
+            <span className="font-bold text-gray-900 uppercase mr-2">Total Submissions</span>
+            <span className="border-b border-dashed border-black">: {results.length} Cadet(s)</span>
+          </p>
         </div>
 
-        {/* Pen Picture Matrix Section */}
-        <div className="mb-6">
-          <h2 className="text-lg font-bold text-gray-900 mb-4 pb-1 border-b border-dashed border-gray-400 uppercase text-base">
-            Cadet Assessment Matrix
-          </h2>
-          
-          <DataTable 
-            columns={columns} 
-            data={results} 
-            keyExtractor={(res) => res.id.toString()} 
-            onRowClick={handleView}
-            emptyMessage="No assessment results found"
-          />
-        </div>
-
-        {/* Signature Section for Print */}
-        <div className="mt-12 grid grid-cols-3 gap-8 text-center">
-          <div className="border-t-2 border-black pt-2">
-            <p className="font-bold text-sm uppercase tracking-widest">Instructor</p>
+        {/* Results Table */}
+        {results.length === 0 ? (
+          <div className="text-center py-12 text-gray-400">
+            No results found for this course and semester.
           </div>
-          <div className="border-t-2 border-black pt-2">
-            <p className="font-bold text-sm uppercase tracking-widest">Chief Instructor</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full border-collapse border border-black text-sm">
+              <thead>
+                <tr>
+                  <th className="border border-black px-2 py-2 text-center align-middle">Ser</th>
+                  <th className="border border-black px-2 py-2 text-center align-middle">BD No</th>
+                  <th className="border border-black px-2 py-2 text-center align-middle">Rank</th>
+                  <th className="border border-black px-2 py-2 text-center align-middle">Name</th>
+                  <th className="border border-black px-2 py-2 text-center align-middle">Branch</th>
+                  <th className="border border-black px-2 py-2 text-center align-middle">Instructor</th>
+                  <th className="border border-black px-2 py-2 text-center align-middle">Grade</th>
+                  <th className="border border-black px-2 py-2 text-center align-middle no-print">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {results.map((result, index) => (
+                  <tr
+                    key={result.id}
+                    className="hover:bg-blue-50 cursor-pointer transition-colors"
+                    onClick={() => router.push(`/atw/assessments/penpicture/results/${result.id}`)}
+                  >
+                    <td className="border border-black px-2 py-2 text-center">{index + 1}</td>
+                    <td className="border border-black px-2 py-2 text-center font-mono">
+                      {(result.cadet as any)?.bd_no || (result.cadet as any)?.cadet_number || "—"}
+                    </td>
+                    <td className="border border-black px-2 py-2 text-center whitespace-nowrap">
+                      {(result.cadet as any)?.assigned_ranks?.[0]?.rank?.short_name || "Cdt"}
+                    </td>
+                    <td className="border border-black px-2 py-2 font-medium whitespace-nowrap">
+                      {result.cadet?.name || "N/A"}
+                    </td>
+                    <td className="border border-black px-2 py-2 text-center whitespace-nowrap">
+                      {result.branch?.name || "—"}
+                    </td>
+                    <td className="border border-black px-2 py-2 text-center whitespace-nowrap">
+                      {(result.instructor as any)?.name || "—"}
+                    </td>
+                    <td className="border border-black px-2 py-2 text-center">
+                      <span className="font-bold">{(result.grade as any)?.grade_code || "—"}</span>
+                      {(result.grade as any)?.grade_name && (
+                        <div className="text-xs text-gray-500">{(result.grade as any).grade_name}</div>
+                      )}
+                    </td>
+                    <td className="border border-black px-2 py-2 text-center no-print" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex items-center justify-center gap-1">
+                        <button
+                          onClick={() => router.push(`/atw/assessments/penpicture/results/${result.id}/edit`)}
+                          className="p-1 text-yellow-600 hover:bg-yellow-50 rounded transition-all"
+                          title="Edit"
+                        >
+                          <Icon icon="hugeicons:pencil-edit-01" className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => { setDeletingResult(result); setDeleteModalOpen(true); }}
+                          className="p-1 text-red-600 hover:bg-red-50 rounded transition-all"
+                          title="Delete"
+                        >
+                          <Icon icon="hugeicons:delete-02" className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
-          <div className="border-t-2 border-black pt-2">
-            <p className="font-bold text-sm uppercase tracking-widest">Commandant</p>
-          </div>
-        </div>
-
-        <div className="mt-12 text-center text-[10px] text-gray-500 font-medium italic">
-          <p>Generated on: {new Date().toLocaleString("en-GB", { day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" })}</p>
-        </div>
+        )}
       </div>
 
-      <ConfirmationModal 
-        isOpen={deleteModalOpen} 
-        onClose={() => setDeleteModalOpen(false)} 
-        onConfirm={confirmDelete} 
-        title="Delete Result" 
-        message={`Are you sure you want to delete this assessment result for "${(deletingResult?.cadet as any)?.name}"? This action cannot be undone.`} 
-        confirmText="Delete" 
-        cancelText="Cancel" 
-        loading={deleteLoading} 
-        variant="danger" 
+      <PrintTypeModal
+        isOpen={isPrintModalOpen}
+        onClose={() => setIsPrintModalOpen(false)}
+        onConfirm={confirmPrint}
+      />
+
+      <ConfirmationModal
+        isOpen={deleteModalOpen}
+        onClose={() => setDeleteModalOpen(false)}
+        onConfirm={confirmDelete}
+        title="Delete Result"
+        message={`Are you sure you want to delete this assessment result for "${(deletingResult?.cadet as any)?.name}"? This action cannot be undone.`}
+        confirmText="Delete"
+        cancelText="Cancel"
+        loading={deleteLoading}
+        variant="danger"
       />
     </div>
   );

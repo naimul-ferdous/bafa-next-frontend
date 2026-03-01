@@ -85,6 +85,23 @@ export const commonService = {
   },
 
   /**
+   * Get semesters for cadets assigned to a given course
+   */
+  async getSemestersByCourse(courseId: number): Promise<SystemSemester[]> {
+    try {
+      const token = getToken();
+      const result = await apiClient.get<{ data: SystemSemester[] }>(
+        `/common/semesters-by-course?course_id=${courseId}`,
+        token
+      );
+      return result?.data || [];
+    } catch (error) {
+      console.error('Failed to fetch semesters by course:', error);
+      return [];
+    }
+  },
+
+  /**
    * Get all address-related options (Divisions, Districts, Post Offices)
    */
   async getAddressOptions(): Promise<AddressOptionsResponse['data'] | null> {

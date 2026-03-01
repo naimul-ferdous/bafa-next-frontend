@@ -116,30 +116,43 @@ export interface CadetWarning {
   };
 }
 
-export interface AtwSubjectModuleMark {
+export interface AtwSubjectsModuleMarksheetMark {
   id: number;
-  atw_subject_module_id: number;
+  atw_subjects_module_marksheet_id: number;
   name: string;
   type?: string;
   percentage: number;
   estimate_mark: number;
+  is_active: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface AtwSubjectsModuleMarksheet {
+  id: number;
+  name: string;
+  code: string;
+  is_active: boolean;
+  marks?: AtwSubjectsModuleMarksheetMark[];
   created_at?: string;
   updated_at?: string;
 }
 
 export interface AtwSubjectModule {
   id: number;
+  atw_subjects_module_marksheet_id?: number;
   subject_name: string;
   subject_code: string;
   subject_legend?: string;
   subject_period?: string;
+  subject_type: 'academic' | 'professional';
   subjects_full_mark: number;
   subjects_credit: number;
   is_active: boolean;
   created_by?: number;
   created_at?: string;
   updated_at?: string;
-  subject_marks?: AtwSubjectModuleMark[];
+  marksheet?: AtwSubjectsModuleMarksheet;
 }
 
 export interface AtwSubject {
@@ -148,7 +161,6 @@ export interface AtwSubject {
   semester_id: number;
   program_id: number;
   branch_id?: number;
-  group_id?: number;
   atw_subject_module_id: number;
   is_current: boolean;
   is_active: boolean;
@@ -159,7 +171,6 @@ export interface AtwSubject {
   semester?: SystemSemester;
   program?: SystemProgram;
   branch?: SystemBranch;
-  group?: SystemGroup;
   module?: AtwSubjectModule;
   creator?: User;
 }

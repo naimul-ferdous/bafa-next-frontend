@@ -152,45 +152,63 @@ export default function SubjectDetailsPage() {
           </div>
         </div>
 
-        {/* Marks Distribution Section */}
-        {subject.subject_marks && subject.subject_marks.length > 0 && (
-          <div className="mb-6">
-            <h2 className="text-lg font-bold text-gray-900 mb-4 pb-1 border-b border-dashed border-gray-400">
-              Marks Distribution
-            </h2>
-            <table className="w-full border-collapse border border-gray-900">
-              <thead>
-                <tr className="bg-white">
-                  <th className="border border-gray-900 px-4 py-2 text-left text-gray-900 font-semibold">SL.</th>
-                  <th className="border border-gray-900 px-4 py-2 text-left text-gray-900 font-semibold">Title</th>
-                  <th className="border border-gray-900 px-4 py-2 text-left text-gray-900 font-semibold">Type</th>
-                  <th className="border border-gray-900 px-4 py-2 text-center text-gray-900 font-semibold">Percentage</th>
-                  <th className="border border-gray-900 px-4 py-2 text-center text-gray-900 font-semibold">Estimate Mark</th>
-                </tr>
-              </thead>
-              <tbody>
-                {subject.subject_marks.map((mark, index) => (
-                  <tr key={mark.id}>
-                    <td className="border border-gray-900 px-4 py-2 text-center text-gray-900">{index + 1}</td>
-                    <td className="border border-gray-900 px-4 py-2 text-gray-900 font-medium">{mark.name}</td>
-                    <td className="border border-gray-900 px-4 py-2 text-gray-900 capitalize">{mark.type || "N/A"}</td>
-                    <td className="border border-gray-900 px-4 py-2 text-center text-gray-900">{mark.percentage}%</td>
-                    <td className="border border-gray-900 px-4 py-2 text-center text-gray-900">{mark.estimate_mark}</td>
-                  </tr>
-                ))}
-                <tr className="bg-white font-semibold">
-                  <td colSpan={3} className="border border-gray-900 px-4 py-2 text-right text-gray-900">Total:</td>
-                  <td className="border border-gray-900 px-4 py-2 text-center text-gray-900">
-                    {subject.subject_marks.reduce((sum, mark) => sum + parseFloat(mark.percentage.toString()), 0).toFixed(2)}%
-                  </td>
-                  <td className="border border-gray-900 px-4 py-2 text-center text-gray-900">
-                    {subject.subject_marks.reduce((sum, mark) => sum + parseFloat(mark.estimate_mark.toString()), 0).toFixed(2)}
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        )}
+        {/* Marksheet Structure Section */}
+        <div className="mb-6">
+          <h2 className="text-lg font-bold text-gray-900 mb-4 pb-1 border-b border-dashed border-gray-400">
+            Marksheet Structure
+          </h2>
+          {subject.marksheet ? (
+            <div className="space-y-4">
+              <div className="flex items-center gap-4 bg-gray-50 p-4 rounded-lg border border-gray-100">
+                <div>
+                  <p className="text-[10px] text-gray-500 uppercase font-bold tracking-widest">Name</p>
+                  <p className="font-bold text-gray-900">{subject.marksheet.name}</p>
+                </div>
+                <div className="h-8 w-px bg-gray-200"></div>
+                <div>
+                  <p className="text-[10px] text-gray-500 uppercase font-bold tracking-widest">Code</p>
+                  <p className="font-mono text-gray-700">{subject.marksheet.code}</p>
+                </div>
+              </div>
+
+              {subject.marksheet.marks && subject.marksheet.marks.length > 0 && (
+                <table className="w-full border-collapse border border-gray-900">
+                  <thead>
+                    <tr className="bg-gray-100">
+                      <th className="border border-gray-900 px-4 py-2 text-left text-gray-900 font-semibold text-xs">SL.</th>
+                      <th className="border border-gray-900 px-4 py-2 text-left text-gray-900 font-semibold text-xs">COMPONENT TITLE</th>
+                      <th className="border border-gray-900 px-4 py-2 text-left text-gray-900 font-semibold text-xs">TYPE</th>
+                      <th className="border border-gray-900 px-4 py-2 text-center text-gray-900 font-semibold text-xs">MAX MARK</th>
+                      <th className="border border-gray-900 px-4 py-2 text-center text-gray-900 font-semibold text-xs">WEIGHT (%)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {subject.marksheet.marks.map((mark, index) => (
+                      <tr key={mark.id}>
+                        <td className="border border-gray-900 px-4 py-2 text-center text-gray-900">{index + 1}</td>
+                        <td className="border border-gray-900 px-4 py-2 text-gray-900 font-medium">{mark.name}</td>
+                        <td className="border border-gray-900 px-4 py-2 text-gray-900 capitalize">{mark.type || "N/A"}</td>
+                        <td className="border border-gray-900 px-4 py-2 text-center text-gray-900">{mark.estimate_mark}</td>
+                        <td className="border border-gray-900 px-4 py-2 text-center text-gray-900 font-bold">{mark.percentage}%</td>
+                      </tr>
+                    ))}
+                    <tr className="bg-gray-50 font-bold">
+                      <td colSpan={3} className="border border-gray-900 px-4 py-2 text-right text-gray-900">TOTAL:</td>
+                      <td className="border border-gray-900 px-4 py-2 text-center text-gray-900">
+                        {subject.marksheet.marks.reduce((sum, mark) => sum + (parseFloat(String(mark.estimate_mark)) || 0), 0).toFixed(0)}
+                      </td>
+                      <td className="border border-gray-900 px-4 py-2 text-center text-blue-700">
+                        {subject.marksheet.marks.reduce((sum, mark) => sum + (parseFloat(String(mark.percentage)) || 0), 0).toFixed(0)}%
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              )}
+            </div>
+          ) : (
+            <p className="text-gray-500 italic p-4 bg-gray-50 rounded-lg border border-dashed text-center">No marksheet linked to this subject module.</p>
+          )}
+        </div>
 
         {/* System Information Section */}
         <div className="mb-6">

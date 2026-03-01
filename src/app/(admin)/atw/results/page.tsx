@@ -118,7 +118,7 @@ export default function AtwResultsPage() {
   useEffect(() => {
     atwApprovalService.getAuthorities({ allData: true, is_active: true })
       .then((res) => setApprovalAuthorities(res.data))
-      .catch(() => {});
+      .catch(() => { });
   }, []);
 
   // Group results for Admin View (Non-instructor) - Semester wise
@@ -191,7 +191,6 @@ export default function AtwResultsPage() {
         semester_id: result.semester_id,
         program_id: result.program_id,
         branch_id: result.branch_id,
-        group_id: result.group_id,
         subject_id: result.atw_subject_id,
         instructor_id: result.instructor_id,
         status: "pending",
@@ -226,7 +225,7 @@ export default function AtwResultsPage() {
 
   const RenderChips = ({ items, max = 2, color = "gray" }: { items: string[], max?: number, color?: string }) => {
     if (!items || items.length === 0) return <span className="text-gray-400">N/A</span>;
-    
+
     const colorClasses: Record<string, string> = {
       gray: "bg-gray-50 text-gray-600 border-gray-200",
       blue: "bg-blue-50 text-blue-600 border-blue-100",
@@ -270,7 +269,6 @@ export default function AtwResultsPage() {
       render: (result) => (
         <div>
           <div className="font-medium text-gray-900">{result.course?.name || "N/A"}</div>
-          <div className="text-xs text-gray-500">{result.course?.code || ""}</div>
         </div>
       ),
     },
@@ -280,33 +278,9 @@ export default function AtwResultsPage() {
       render: (result) => {
         const subjectModule = result.subject?.module || result.subject || result.atw_subject_module;
         return (
-          <div>
-            <div className="font-medium text-gray-900">{subjectModule?.subject_name || "N/A"}</div>
-            <div className="text-xs text-gray-500">{subjectModule?.subject_code || ""}</div>
-          </div>
+          <div className="font-medium text-gray-900">{subjectModule?.subject_name || "N/A"} ({subjectModule?.subject_code || ""})</div>
         );
       },
-    },
-    {
-      key: "exam_type",
-      header: "Exam Type",
-      headerAlign: "center",
-      className: "text-center",
-      render: (result) => (
-        <span className="inline-flex items-center px-2.5 py-1 text-xs font-semibold rounded-full bg-purple-100 text-purple-800">
-          {result.exam_type?.name || "N/A"}
-        </span>
-      ),
-    },
-    {
-      key: "instructor",
-      header: "Instructor",
-      render: (result) => (
-        <div>
-          <div className="font-medium text-gray-900">{result.instructor?.name || "N/A"}</div>
-          <div className="text-xs text-gray-500">{result.instructor?.service_number || ""}</div>
-        </div>
-      ),
     },
     {
       key: "semester",
@@ -325,6 +299,22 @@ export default function AtwResultsPage() {
       header: "Branch",
       className: "text-gray-700",
       render: (result) => result.branch?.name || "N/A",
+    },
+    {
+      key: "total_entry",
+      header: "No of Cadets",
+      headerAlign: "center",
+      className: "text-center",
+      render: (result) => {
+        const entry = result.result_getting_cadets?.length ?? 0;
+        const total = result.total_cadets ?? 0;
+        const allEntered = total > 0 && entry >= total;
+        return (
+          <p>
+            {entry}
+          </p>
+        );
+      },
     },
     {
       key: "created_at",
@@ -473,8 +463,8 @@ export default function AtwResultsPage() {
       header: "Subjects",
       render: (res) => {
         const items = res.all_results?.map((r: any) => (
-          r.subject?.module?.subject_name || 
-          r.subject?.subject_name || 
+          r.subject?.module?.subject_name ||
+          r.subject?.subject_name ||
           r.atw_subject_module?.subject_name
         )).filter(Boolean) as string[];
         return <RenderChips items={items} color="indigo" max={3} />;
@@ -503,9 +493,9 @@ export default function AtwResultsPage() {
       render: (res) => (
         <div className="flex items-center justify-center gap-1">
           {can('view') && (
-            <button 
-              onClick={() => handleViewSemesterResults(res.course_id, res.semester_id)} 
-              className="p-1 text-blue-600 hover:bg-blue-50 rounded" 
+            <button
+              onClick={() => handleViewSemesterResults(res.course_id, res.semester_id)}
+              className="p-1 text-blue-600 hover:bg-blue-50 rounded"
               title="View Details"
             >
               <Icon icon="hugeicons:view" className="w-4 h-4" />
@@ -628,11 +618,11 @@ export default function AtwResultsPage() {
             const r = forwardModal.result!;
             const subjectModule = r.subject?.module || r.subject || r.atw_subject_module;
             const rows: [string, string][] = [
-              ["Course",   r.course?.name   || "—"],
+              ["Course", r.course?.name || "—"],
               ["Semester", r.semester?.name || "—"],
-              ["Program",  r.program?.name  || "—"],
-              ["Branch",   r.branch?.name   || "—"],
-              ["Subject",  subjectModule?.subject_name ? `${subjectModule.subject_name} (${subjectModule.subject_code})` : "—"],
+              ["Program", r.program?.name || "—"],
+              ["Branch", r.branch?.name || "—"],
+              ["Subject", subjectModule?.subject_name ? `${subjectModule.subject_name} (${subjectModule.subject_code})` : "—"],
               ["Exam Type", r.exam_type?.name || "—"],
             ];
             return (

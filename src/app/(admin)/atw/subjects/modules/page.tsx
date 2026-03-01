@@ -35,11 +35,57 @@ export default function AtwSubjectModulesPage() {
   const [statusSubject, setStatusSubject] = useState<AtwSubjectModule | null>(null);
   const [statusLoading, setStatusLoading] = useState(false);
 
+  // Bulk selection
+  const [showSelection, setShowSelection] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [bulkDisableModalOpen, setBulkDisableModalOpen] = useState(false);
+  const [bulkDisableLoading, setBulkDisableLoading] = useState(false);
+
   const isInstructor = !!user?.instructor_biodata && !userIsSystemAdmin;
+
+  const allSelected = subjects.length > 0 && subjects.every(s => selectedIds.has(s.id));
+  const someSelected = subjects.some(s => selectedIds.has(s.id));
+
+  const toggleSelectAll = () => {
+    if (allSelected) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(subjects.map(s => s.id)));
+    }
+  };
+
+  const toggleSelectOne = (id: number) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelection = () => {
+    if (showSelection) {
+      setSelectedIds(new Set());
+    }
+    setShowSelection(prev => !prev);
+  };
+
+  const confirmBulkDisable = async () => {
+    try {
+      setBulkDisableLoading(true);
+      await atwSubjectModuleService.bulkDisable([...selectedIds]);
+      await loadSubjects();
+      setBulkDisableModalOpen(false);
+    } catch (error) {
+      console.error("Failed to bulk disable:", error);
+    } finally {
+      setBulkDisableLoading(false);
+    }
+  };
 
   const loadSubjects = useCallback(async () => {
     try {
       setLoading(true);
+      setSelectedIds(new Set());
       const response = await atwSubjectModuleService.getAllSubjects({
         page: currentPage,
         per_page: perPage,
@@ -110,7 +156,33 @@ export default function AtwSubjectModulesPage() {
     </div>
   );
 
+  const checkboxColumn: Column<AtwSubjectModule> = {
+    key: "checkbox",
+    header: (
+      <input
+        type="checkbox"
+        checked={allSelected}
+        ref={el => { if (el) el.indeterminate = someSelected && !allSelected; }}
+        onChange={toggleSelectAll}
+        className="w-4 h-4 text-blue-600 border-gray-300 rounded cursor-pointer"
+        onClick={e => e.stopPropagation()}
+      />
+    ),
+    headerAlign: "center",
+    className: "text-center w-10",
+    render: (subject) => (
+      <input
+        type="checkbox"
+        checked={selectedIds.has(subject.id)}
+        onChange={() => toggleSelectOne(subject.id)}
+        className="w-4 h-4 text-blue-600 border-gray-300 rounded cursor-pointer"
+        onClick={e => e.stopPropagation()}
+      />
+    ),
+  };
+
   const columns: Column<AtwSubjectModule>[] = [
+    ...(showSelection ? [checkboxColumn] : []),
     {
       key: "id",
       header: "SL.",
@@ -120,6 +192,17 @@ export default function AtwSubjectModulesPage() {
     },
     { key: "subject_name", header: "Subject Name", className: "font-medium text-gray-900" },
     { key: "subject_code", header: "Code", className: "text-gray-700 font-mono text-sm" },
+    {
+      key: "subject_type",
+      header: "Type",
+      headerAlign: "center",
+      className: "text-center",
+      render: (subject) => (
+        <span className={`inline-flex items-center px-2.5 py-1 text-[10px] font-bold rounded-full ${subject.subject_type === 'academic' ? 'bg-purple-100 text-purple-800' : 'bg-orange-100 text-orange-800'}`}>
+          {subject.subject_type === 'academic' ? 'ACADEMIC' : 'PROFESSIONAL'}
+        </span>
+      )
+    },
     {
       key: "subject_legend",
       header: "Legend",
@@ -142,35 +225,27 @@ export default function AtwSubjectModulesPage() {
       render: (subject) => subject.subjects_credit
     },
     {
-      key: "subject_marks",
-      header: "Marks Distribution",
-      className: "max-w-xs",
-      render: (subject) => (
-        <div className="flex flex-wrap gap-1.5">
-          {subject.subject_marks && subject.subject_marks.length > 0 ? (
-            subject.subject_marks.map((mark, idx) => {
-              let colorClass = "bg-gray-100 text-gray-700 border-gray-200";
-              const type = mark.type?.toLowerCase() || "";
-              if (type.includes("test")) colorClass = "bg-blue-50 text-blue-700 border-blue-100";
-              else if (type.includes("assignment")) colorClass = "bg-purple-50 text-purple-700 border-purple-100";
-              else if (type.includes("semester")) colorClass = "bg-amber-50 text-amber-700 border-amber-100";
-              else if (type.includes("viva") || type.includes("presentation")) colorClass = "bg-indigo-50 text-indigo-700 border-indigo-100";
-              else if (type.includes("attendance")) colorClass = "bg-emerald-50 text-emerald-700 border-emerald-100";
-              return (
-                <span
-                  key={idx}
-                  className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold border uppercase tracking-wider ${colorClass}`}
-                  title={`${mark.name}: ${mark.percentage}% (${mark.estimate_mark} marks)`}
-                >
-                  {mark.name} : {Number(mark.percentage).toFixed(0)}
-                </span>
-              );
-            })
-          ) : (
-            <span className="text-gray-400 text-xs italic">Not Set</span>
-          )}
-        </div>
-      )
+      key: "marksheet",
+      header: "Marksheet Marks",
+      render: (subject) => {
+        const marks = subject.marksheet?.marks;
+        if (!marks || marks.length === 0) return <span className="text-gray-400 text-xs">—</span>;
+        return (
+          <div className="flex flex-wrap gap-1">
+            {marks.map((m, i) => (
+              <span
+                key={i}
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-blue-50 text-blue-700 border border-blue-200"
+                title={m.type || ""}
+              >
+                {m.name}
+                <span className="text-blue-400 font-normal">·</span>
+                {Number(m.percentage)}
+              </span>
+            ))}
+          </div>
+        );
+      }
     },
     {
       key: "is_active",
@@ -231,15 +306,30 @@ export default function AtwSubjectModulesPage() {
       </div>
 
       <div className="flex items-center justify-between gap-4 mb-6">
-        <div className="relative w-80">
-          <Icon icon="hugeicons:search-01" className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
-          <input
-            type="text"
-            placeholder="Search by subject name, code..."
-            value={searchTerm}
-            onChange={(e) => handleSearchChange(e.target.value)}
-            className="pl-10 pr-4 py-2 border border-gray-200 rounded-lg bg-white text-gray-900 w-full focus:outline-none focus:ring-0"
-          />
+        <div className="flex items-center gap-2">
+          <div className="relative w-72">
+            <Icon icon="hugeicons:search-01" className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Search by subject name, code..."
+              value={searchTerm}
+              onChange={(e) => handleSearchChange(e.target.value)}
+              className="pl-10 pr-4 py-2 border border-gray-200 rounded-lg bg-white text-gray-900 w-full focus:outline-none focus:ring-0"
+            />
+          </div>
+          {can('delete') && (
+            <button
+              onClick={toggleSelection}
+              className={`px-3 py-2 text-sm rounded-lg border flex items-center gap-1.5 transition-colors ${
+                showSelection
+                  ? "bg-blue-600 text-white border-blue-600 hover:bg-blue-700"
+                  : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50"
+              }`}
+            >
+              <Icon icon="hugeicons:task-done-01" className="w-4 h-4" />
+              Select
+            </button>
+          )}
         </div>
         <div className="flex items-center gap-3">
           {!isInstructor && (
@@ -250,6 +340,30 @@ export default function AtwSubjectModulesPage() {
           )}
         </div>
       </div>
+
+      {/* Bulk Action Bar */}
+      {showSelection && selectedIds.size > 0 && (
+        <div className="flex items-center gap-3">
+          <span className="text-sm font-medium text-blue-700">
+            {selectedIds.size} item{selectedIds.size > 1 ? "s" : ""} selected
+          </span>
+          <div className="flex items-center gap-2 ml-auto">
+            <button
+              onClick={() => setBulkDisableModalOpen(true)}
+              className="px-3 py-1.5 text-sm bg-orange-600 text-white rounded-lg hover:bg-orange-700 flex items-center gap-1.5 transition-colors"
+            >
+              <Icon icon="hugeicons:unavailable" className="w-4 h-4" />
+              Disable Selected
+            </button>
+            <button
+              onClick={() => setSelectedIds(new Set())}
+              className="px-3 py-1.5 text-sm border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-100 transition-colors"
+            >
+              Deselect All
+            </button>
+          </div>
+        </div>
+      )}
 
       {loading ? <TableLoading /> : (
         <DataTable
@@ -273,6 +387,18 @@ export default function AtwSubjectModulesPage() {
           setPerPage(val);
           setCurrentPage(1);
         }}
+      />
+
+      <ConfirmationModal
+        isOpen={bulkDisableModalOpen}
+        onClose={() => setBulkDisableModalOpen(false)}
+        onConfirm={confirmBulkDisable}
+        title="Disable Selected"
+        message={`Are you sure you want to disable ${selectedIds.size} selected subject module${selectedIds.size > 1 ? "s" : ""}? They can be re-enabled individually later.`}
+        confirmText="Disable All"
+        cancelText="Cancel"
+        loading={bulkDisableLoading}
+        variant="warning"
       />
 
       <ConfirmationModal

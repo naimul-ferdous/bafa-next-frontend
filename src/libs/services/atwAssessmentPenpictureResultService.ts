@@ -288,22 +288,32 @@ export const atwAssessmentPenpictureResultService = {
   },
 
   /**
-   * Get results grouped by course and semester
+   * Get results grouped by semester with pagination
    */
-  async getGroupedResults(params?: { course_id?: number; semester_id?: number; search?: string }): Promise<any[]> {
+  async getGroupedResults(params?: { instructor_id?: number; page?: number; per_page?: number; search?: string }): Promise<ResultPaginatedResponse & { data: any[] }> {
     try {
       const query = new URLSearchParams();
-      if (params?.course_id) query.append('course_id', params.course_id.toString());
-      if (params?.semester_id) query.append('semester_id', params.semester_id.toString());
+      if (params?.instructor_id) query.append('instructor_id', params.instructor_id.toString());
+      if (params?.page) query.append('page', params.page.toString());
+      if (params?.per_page) query.append('per_page', params.per_page.toString());
       if (params?.search) query.append('search', params.search);
 
       const endpoint = `/atw-assessment-penpicture-results/grouped${query.toString() ? `?${query.toString()}` : ''}`;
       const token = getToken();
       const result = await apiClient.get<any>(endpoint, token);
-      return result?.data || [];
+
+      return {
+        data: result?.data || [],
+        current_page: result?.pagination?.current_page || 1,
+        per_page: result?.pagination?.per_page || 10,
+        total: result?.pagination?.total || 0,
+        last_page: result?.pagination?.last_page || 1,
+        from: result?.pagination?.from || 0,
+        to: result?.pagination?.to || 0,
+      };
     } catch (error) {
       console.error('Failed to fetch grouped results:', error);
-      return [];
+      return { data: [], current_page: 1, per_page: 10, total: 0, last_page: 1, from: 0, to: 0 };
     }
   },
 };

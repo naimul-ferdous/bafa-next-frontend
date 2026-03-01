@@ -5,7 +5,7 @@
 
 import apiClient from '@/libs/auth/api-client';
 import { getToken } from '@/libs/auth/auth-token';
-import type { AtwSubjectModule, AtwSubjectModuleMark } from '@/libs/types/system';
+import type { AtwSubjectModule, AtwSubjectsModuleMarksheetMark } from '@/libs/types/system';
 
 interface SubjectQueryParams {
   page?: number;
@@ -52,10 +52,11 @@ interface SubjectActionApiResponse {
 interface SubjectMarkApiResponse {
   success: boolean;
   message: string;
-  data: AtwSubjectModuleMark[] | AtwSubjectModuleMark;
+  data: AtwSubjectsModuleMarksheetMark[] | AtwSubjectsModuleMarksheetMark;
 }
 
 interface SubjectCreateData {
+  atw_subjects_module_marksheet_id?: number;
   subject_name: string;
   subject_code: string;
   subject_legend?: string;
@@ -63,19 +64,15 @@ interface SubjectCreateData {
   subjects_full_mark?: number;
   subjects_credit?: number;
   is_active?: boolean;
-  subject_marks?: Array<{
-    name: string;
-    type?: string;
-    percentage?: number;
-    estimate_mark?: number;
-  }>;
 }
 
 interface SubjectMarkCreateData {
+  atw_subjects_module_marksheet_id: number;
   name: string;
   type?: string;
   percentage?: number;
   estimate_mark?: number;
+  is_active?: boolean;
 }
 
 export const atwSubjectModuleService = {
@@ -212,6 +209,20 @@ export const atwSubjectModuleService = {
   },
 
   /**
+   * Bulk disable subjects
+   */
+  async bulkDisable(ids: number[]): Promise<boolean> {
+    try {
+      const token = getToken();
+      const result = await apiClient.put<SubjectActionApiResponse>('/atw-subject-modules/bulk-disable', { ids }, token);
+      return result?.success || false;
+    } catch (error) {
+      console.error('Failed to bulk disable subjects:', error);
+      return false;
+    }
+  },
+
+  /**
    * Delete subject
    */
   async deleteSubject(id: number): Promise<boolean> {
@@ -228,7 +239,7 @@ export const atwSubjectModuleService = {
   /**
    * Get subject marks
    */
-  async getSubjectMarks(subjectId: number): Promise<AtwSubjectModuleMark[]> {
+  async getSubjectMarks(subjectId: number): Promise<AtwSubjectsModuleMarksheetMark[]> {
     try {
       const token = getToken();
       const result = await apiClient.get<SubjectMarkApiResponse>(`/atw-subject-modules/${subjectId}/marks`, token);
@@ -241,68 +252,6 @@ export const atwSubjectModuleService = {
     } catch (error) {
       console.error(`Failed to fetch subject marks for ${subjectId}:`, error);
       return [];
-    }
-  },
-
-  /**
-   * Add subject mark
-   */
-  async addSubjectMark(subjectId: number, data: SubjectMarkCreateData): Promise<AtwSubjectModuleMark | null> {
-    try {
-      const token = getToken();
-
-      if (!token) {
-        throw new Error('Authentication token not found. Please login again.');
-      }
-
-      const result = await apiClient.post<SubjectMarkApiResponse>(`/atw-subject-modules/${subjectId}/marks`, data, token);
-
-      if (!result || !result.success) {
-        throw new Error(result?.message || 'Failed to add subject mark');
-      }
-
-      return Array.isArray(result.data) ? null : result.data;
-    } catch (error: unknown) {
-      console.error('Failed to add subject mark:', error);
-      throw error;
-    }
-  },
-
-  /**
-   * Update subject mark
-   */
-  async updateSubjectMark(subjectId: number, markId: number, data: SubjectMarkCreateData): Promise<AtwSubjectModuleMark | null> {
-    try {
-      const token = getToken();
-
-      if (!token) {
-        throw new Error('Authentication token not found. Please login again.');
-      }
-
-      const result = await apiClient.put<SubjectMarkApiResponse>(`/atw-subject-modules/${subjectId}/marks/${markId}`, data, token);
-
-      if (!result || !result.success) {
-        throw new Error(result?.message || 'Failed to update subject mark');
-      }
-
-      return Array.isArray(result.data) ? null : result.data;
-    } catch (error: unknown) {
-      console.error('Failed to update subject mark:', error);
-      throw error;
-    }
-  },
-
-  /**
-   * Delete subject mark
-   */
-  async deleteSubjectMark(subjectId: number, markId: number): Promise<boolean> {
-    try {
-      const token = getToken();
-      const result = await apiClient.delete<SubjectActionApiResponse>(`/atw-subject-modules/${subjectId}/marks/${markId}`, token);
-      return result?.success || false;
-    } catch (error) {
-      console.error(`Failed to delete subject mark ${markId}:`, error);
-      return false;
     }
   },
 };

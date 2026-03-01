@@ -221,7 +221,6 @@ export default function ResultDetailsPage() {
         semester_id: result.semester_id,
         program_id: result.program_id,
         branch_id: result.branch_id,
-        group_id: result.group_id,
         subject_id: result.atw_subject_id,
         instructor_id: result.instructor_id,
         status: "pending",
@@ -249,7 +248,6 @@ export default function ResultDetailsPage() {
         semester_id: result.semester_id,
         program_id: result.program_id,
         branch_id: result.branch_id,
-        group_id: result.group_id,
         subject_id: result.atw_subject_id,
         instructor_id: result.instructor_id,
         status: subjectApprovalModal.status,
@@ -276,7 +274,6 @@ export default function ResultDetailsPage() {
         semester_id: result.semester_id,
         program_id: result.program_id,
         branch_id: result.branch_id,
-        group_id: result.group_id,
         subject_id: result.atw_subject_id,
         cadet_ids: approvalModal.cadetIds,
         authority_id: (myAuthority as any)?.id ?? null,
@@ -322,11 +319,11 @@ export default function ResultDetailsPage() {
   // Group marks by type dynamically
   const getMarkGroups = () => {
     const subjectModule = getSubjectModule();
-    if (!subjectModule?.subject_marks) return {};
-    const groups: { [key: string]: AtwSubjectModuleMark[] } = {};
+    if (!subjectModule?.marksheet?.marks) return {};
+    const groups: { [key: string]: AtwSubjectsModuleMarksheetMark[] } = {};
 
     // Sort marks by ID to maintain consistent order
-    const sortedMarks = [...subjectModule.subject_marks].sort((a, b) => a.id - b.id);
+    const sortedMarks = [...subjectModule.marksheet.marks].sort((a, b) => a.id - b.id);
 
     sortedMarks.forEach(mark => {
       const type = mark.type?.toLowerCase() || "other";
@@ -344,12 +341,12 @@ export default function ResultDetailsPage() {
 
   // Get individual mark value
   const getCadetMark = (cadet: any, markId: number) => {
-    const mark = cadet.cadet_marks?.find((m: any) => m.atw_subject_module_mark_id === markId);
+    const mark = cadet.cadet_marks?.find((m: any) => m.atw_subjects_module_marksheet_mark_id === markId);
     return parseFloat(String(mark?.achieved_mark || 0));
   };
 
   // Get individual weighted mark
-  const getWeightedMark = (cadet: any, mark: AtwSubjectModuleMark) => {
+  const getWeightedMark = (cadet: any, mark: AtwSubjectsModuleMarksheetMark) => {
     const obtained = getCadetMark(cadet, mark.id);
     const estimate = parseFloat(String(mark.estimate_mark || 0));
     const percentage = parseFloat(String(mark.percentage || 0));
@@ -360,14 +357,14 @@ export default function ResultDetailsPage() {
   // Calculate total marks for a cadet (sum of all weighted marks)
   const calculateTotalMarks = (cadet: any) => {
     const subjectModule = getSubjectModule();
-    if (!subjectModule?.subject_marks) return 0;
-    return subjectModule.subject_marks.reduce((sum: number, mark: AtwSubjectModuleMark) => {
+    if (!subjectModule?.marksheet?.marks) return 0;
+    return subjectModule.marksheet.marks.reduce((sum: number, mark: AtwSubjectsModuleMarksheetMark) => {
       return sum + getWeightedMark(cadet, mark);
     }, 0);
   };
 
   // Helper to determine colSpan for dynamic marks group
-  const getGroupColSpan = (marks: AtwSubjectModuleMark[]) => {
+  const getGroupColSpan = (marks: AtwSubjectsModuleMarksheetMark[]) => {
     return marks.reduce((acc: number, m) => {
       const estimate = parseFloat(String(m.estimate_mark || 0));
       const percentage = parseFloat(String(m.percentage || 0));
@@ -1080,7 +1077,7 @@ export default function ResultDetailsPage() {
           </p>
 
           {/* Compact marks table */}
-          {approvalModal.cadetIds.length > 0 && subjectModule?.subject_marks && (
+          {approvalModal.cadetIds.length > 0 && subjectModule?.marksheet?.marks && (
             <div className="mb-4 overflow-x-auto rounded-lg border border-gray-200">
               <table className="w-full border-collapse text-xs">
                 <thead>
@@ -1088,7 +1085,7 @@ export default function ResultDetailsPage() {
                     <th className="border-b border-r border-gray-200 px-2 py-1.5 text-center text-gray-600">Sl.</th>
                     <th className="border-b border-r border-gray-200 px-2 py-1.5 text-left text-gray-600">Name</th>
                     <th className="border-b border-r border-gray-200 px-2 py-1.5 text-center text-gray-600">BD/No</th>
-                    {[...subjectModule.subject_marks].sort((a, b) => a.id - b.id).map((sm) => (
+                    {[...subjectModule.marksheet.marks].sort((a, b) => a.id - b.id).map((sm) => (
                       <th key={sm.id} className="border-b border-r border-gray-200 px-2 py-1.5 text-center whitespace-nowrap text-gray-600">
                         {sm.name}
                         <br />
@@ -1109,7 +1106,7 @@ export default function ResultDetailsPage() {
                         <td className="border-t border-r border-gray-100 px-2 py-1.5 text-center text-gray-500">{index + 1}</td>
                         <td className="border-t border-r border-gray-100 px-2 py-1.5 font-medium text-gray-900">{cadet.cadet?.name || "N/A"}</td>
                         <td className="border-t border-r border-gray-100 px-2 py-1.5 text-center text-gray-600">{cadet.cadet_bd_no}</td>
-                        {[...subjectModule.subject_marks!].sort((a, b) => a.id - b.id).map((sm) => (
+                        {[...subjectModule.marksheet.marks!].sort((a, b) => a.id - b.id).map((sm) => (
                           <td key={sm.id} className="border-t border-r border-gray-100 px-2 py-1.5 text-center">
                             {cadet.is_present ? (
                               <span className="font-medium">{getCadetMark(cadet, sm.id).toFixed(1)}</span>
