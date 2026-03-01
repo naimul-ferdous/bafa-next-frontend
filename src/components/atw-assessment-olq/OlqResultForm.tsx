@@ -32,7 +32,7 @@ interface CadetRow {
   cadet_branch: string;
   is_present: boolean;
   absent_reason: string;
-  marks: { [estimatedMarkId: number]: number };
+  marks: { [estimatedMarkId: number]: number | string };
 }
 
 export default function OlqResultForm({ initialData, onSubmit, onCancel, loading, isEdit = false }: OlqResultFormProps) {
@@ -223,7 +223,7 @@ export default function OlqResultForm({ initialData, onSubmit, onCancel, loading
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
-  const handleMarkChange = (cadetIndex: number, estimatedMarkId: number, value: number) => {
+  const handleMarkChange = (cadetIndex: number, estimatedMarkId: number, value: number | string) => {
     setCadetRows(prev => {
       const updated = [...prev];
       updated[cadetIndex] = {
@@ -246,11 +246,12 @@ export default function OlqResultForm({ initialData, onSubmit, onCancel, loading
     });
   };
 
-  const calculateTotal = (marks: { [key: number]: number }) => {
+  const calculateTotal = (marks: { [key: number]: number | string }) => {
     // Calculate: sum of (estimated_mark * inputed_mark)
     let total = 0;
     estimatedMarks.forEach(em => {
-      const inputedMark = marks[em.id] || 0;
+      const markVal = marks[em.id];
+      const inputedMark = markVal !== undefined && markVal !== "" ? parseFloat(String(markVal)) || 0 : 0;
       const estimatedMark = parseFloat(String(em.estimated_mark || 0));
       total += estimatedMark * inputedMark;
     });
@@ -303,7 +304,7 @@ export default function OlqResultForm({ initialData, onSubmit, onCancel, loading
           absent_reason: c.is_present ? undefined : c.absent_reason,
           marks: Object.entries(c.marks).map(([estimatedMarkId, achievedMark]) => ({
             atw_assessment_olq_type_estimated_mark_id: parseInt(estimatedMarkId),
-            achieved_mark: achievedMark || 0,
+            achieved_mark: typeof achievedMark === "number" ? achievedMark : (parseFloat(achievedMark as string) || 0),
           })),
         })),
       };
@@ -511,15 +512,37 @@ export default function OlqResultForm({ initialData, onSubmit, onCancel, loading
                       {estimatedMarks.map(mark => (
                         <td key={mark.id} className={`border border-black px-1 py-1 text-center ${!cadet.is_present ? "bg-gray-100" : ""}`}>
                           <input
-                            type="number"
-                            min={0}
-                            max={10}
-                            step={0.1}
-                            value={cadet.is_present ? (cadet.marks[mark.id] || 0) : 0}
+                            type="text"
+                            inputMode="decimal"
+                            pattern="[0-9]*\.?[0-9]*"
+                            value={cadet.is_present ? (cadet.marks[mark.id] !== undefined ? cadet.marks[mark.id] : "") : ""}
                             onChange={(e) => {
-                              const inputValue = parseFloat(e.target.value) || 0;
-                              const clampedValue = Math.min(Math.max(0, inputValue), 10);
-                              handleMarkChange(index, mark.id, clampedValue);
+                              const val = e.target.value;
+                              
+                              if (val === "") {
+                                handleMarkChange(index, mark.id, "");
+                                return;
+                              }
+                              
+                              if (/^\d*\.?\d*$/.test(val)) {
+                                const inputValue = parseFloat(val);
+                                if (!isNaN(inputValue) && inputValue > 10) {
+                                  handleMarkChange(index, mark.id, 10);
+                                } else {
+                                  handleMarkChange(index, mark.id, val);
+                                }
+                              }
+                            }}
+                            onBlur={(e) => {
+                              const val = e.target.value;
+                              if (val !== "") {
+                                const parsed = parseFloat(val);
+                                if (!isNaN(parsed)) {
+                                  handleMarkChange(index, mark.id, parsed);
+                                } else {
+                                  handleMarkChange(index, mark.id, "");
+                                }
+                              }
                             }}
                             disabled={!cadet.is_present}
                             className={`w-full px-1 py-1 border rounded text-center text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${!cadet.is_present
@@ -527,6 +550,7 @@ export default function OlqResultForm({ initialData, onSubmit, onCancel, loading
                               : "border-gray-300 bg-white"
                               }`}
                             style={{ minWidth: '45px' }}
+                            placeholder="00"
                           />
                         </td>
                       ))}

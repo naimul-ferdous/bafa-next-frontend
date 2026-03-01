@@ -7,6 +7,8 @@ import { atwAssessmentOlqResultService } from "@/libs/services/atwAssessmentOlqR
 import FullLogo from "@/components/ui/fulllogo";
 import { getOrdinal } from "@/libs/utils/formatter";
 import type { AtwAssessmentOlqResult } from "@/libs/types/atwAssessmentOlq";
+import type { FilePrintType } from "@/libs/types/filePrintType";
+import PrintTypeModal from "@/components/ui/modal/PrintTypeModal";
 
 export default function OlqResultDetailsPage() {
   const router = useRouter();
@@ -16,6 +18,9 @@ export default function OlqResultDetailsPage() {
   const [result, setResult] = useState<AtwAssessmentOlqResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+
+  const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
+  const [selectedPrintType, setSelectedPrintType] = useState<FilePrintType | null>(null);
 
   useEffect(() => {
     const loadResult = async () => {
@@ -40,8 +45,16 @@ export default function OlqResultDetailsPage() {
     }
   }, [resultId]);
 
-  const handlePrint = () => {
-    window.print();
+  const handlePrintClick = () => {
+    setIsPrintModalOpen(true);
+  };
+
+  const confirmPrint = (type: FilePrintType) => {
+    setSelectedPrintType(type);
+    setIsPrintModalOpen(false);
+    setTimeout(() => {
+      window.print();
+    }, 100);
   };
 
   if (loading) {
@@ -124,6 +137,13 @@ export default function OlqResultDetailsPage() {
             width: 100% !important;
             max-width: none !important;
           }
+          table{
+            font-size: 14px !important;
+          }
+          .print-div{
+            max-width: 60vh !important;
+            margin: 0 auto !important;
+          }
         }
       `}</style>
       {/* Action Buttons - Hidden on print */}
@@ -137,7 +157,7 @@ export default function OlqResultDetailsPage() {
         </button>
         <div className="flex items-center gap-3">
           <button
-            onClick={handlePrint}
+            onClick={handlePrintClick}
             className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 flex items-center gap-2"
           >
             <Icon icon="hugeicons:printer" className="w-4 h-4" />
@@ -146,12 +166,13 @@ export default function OlqResultDetailsPage() {
         </div>
       </div>
       <div className="p-8 cv-content">
+
         <div className="w-full flex justify-between mb-6 text-xs font-bold">
           <div className="w-20">
             <p className="text-center font-medium text-gray-900 uppercase tracking-wider"></p>
           </div>
           <div>
-            <p className="text-center font-medium text-gray-900 uppercase tracking-wider">Confidencial</p>
+            <p className="text-center font-medium text-gray-900 uppercase tracking-wider">{selectedPrintType?.name}</p>
           </div>
           <div>
             <p className="text-center font-medium text-gray-900 tracking-wider">BAF - {result.olq_type?.type_name}</p>
@@ -196,7 +217,7 @@ export default function OlqResultDetailsPage() {
                       </th>
                     ))}
                     <th className="border border-black px-3 py-2 text-center font-bold" rowSpan={2}>Total {result.olq_type?.type_code?.toLowerCase() === "for_116b" ? 'x 1.5' : ''}</th>
-                      <th className="border border-black px-3 py-2 text-center" rowSpan={2}>Position</th>
+                    <th className="border border-black px-3 py-2 text-center" rowSpan={2}>Position</th>
                     <th className="border border-black px-3 py-2 text-center font-bold ">Percentile</th>
                   </tr>
                   <tr>
@@ -261,10 +282,17 @@ export default function OlqResultDetailsPage() {
         </div>
 
         {/* System Information Section */}
-        <div className="w-full flex justify-center mt-6 text-xs">
-          <div>
-            <p className="text-center text-gray-900 uppercase tracking-wider">Confidencial</p>
+        <div className="w-full flex justify-center mt-6 text-xs print-div break-inside-avoid">
+          <div className="w-full flex justify-between text-xs font-bold mt-2">
+            <div className="w-32">
+
+            </div>
+            <div>
+              <p className="text-center text-sm text-gray-900 uppercase tracking-wider">{selectedPrintType?.name}</p>
+            </div>
+            <div className="w-32"></div>
           </div>
+
         </div>
 
         {/* Footer with date */}
@@ -272,6 +300,12 @@ export default function OlqResultDetailsPage() {
           <p>Generated on: {new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}</p>
         </div>
       </div>
+
+      <PrintTypeModal
+        isOpen={isPrintModalOpen}
+        onClose={() => setIsPrintModalOpen(false)}
+        onConfirm={confirmPrint}
+      />
     </div>
   );
 }

@@ -6,6 +6,8 @@ import { Icon } from "@iconify/react";
 import { atwCadetWarningService } from "@/libs/services/atwCadetWarningService";
 import type { CadetWarning } from "@/libs/types/system";
 import FullLogo from "@/components/ui/fulllogo";
+import type { FilePrintType } from "@/libs/types/filePrintType";
+import PrintTypeModal from "@/components/ui/modal/PrintTypeModal";
 
 export default function CadetWarningDetailsPage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter();
@@ -15,6 +17,9 @@ export default function CadetWarningDetailsPage({ params }: { params: Promise<{ 
   const [warning, setWarning] = useState<CadetWarning | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+
+  const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
+  const [selectedPrintType, setSelectedPrintType] = useState<FilePrintType | null>(null);
 
   useEffect(() => {
     const loadWarning = async () => {
@@ -39,8 +44,16 @@ export default function CadetWarningDetailsPage({ params }: { params: Promise<{ 
     }
   }, [id]);
 
-  const handlePrint = () => {
-    window.print();
+  const handlePrintClick = () => {
+    setIsPrintModalOpen(true);
+  };
+
+  const confirmPrint = (type: FilePrintType) => {
+    setSelectedPrintType(type);
+    setIsPrintModalOpen(false);
+    setTimeout(() => {
+      window.print();
+    }, 100);
   };
 
   if (loading) {
@@ -82,48 +95,21 @@ export default function CadetWarningDetailsPage({ params }: { params: Promise<{ 
   return (
     <div className="print-no-border bg-white rounded-lg border border-gray-200 min-h-screen">
       <style>{`
-        @media print {
+       @media print {
           @page {
-            size: A3 portrait;
-            margin: 15mm 12mm;
+            size: A3 landscape;
+            margin: 10mm;
           }
-
-          html, body {
-            -webkit-print-color-adjust: exact;
-            print-color-adjust: exact;
+          .cv-content {
+            width: 100% !important;
+            max-width: none !important;
           }
-
-          .no-print {
-            display: none !important;
+          table{
+            font-size: 14px !important;
           }
-
-          .print-no-border {
-            border: none !important;
-          }
-
-          table {
-            border-collapse: collapse !important;
-          }
-
-          table, th, td {
-            border: 1px solid #000 !important;
-            -webkit-print-color-adjust: exact;
-            print-color-adjust: exact;
-          }
-
-          .report-block {
-            page-break-before: always;
-            break-before: page;
-          }
-
-          .report-block:first-child {
-            page-break-before: avoid;
-            break-before: avoid;
-          }
-
-          tr {
-            page-break-inside: avoid;
-            break-inside: avoid;
+          .print-div{
+            max-width: 60vh !important;
+            margin: 0 auto !important;
           }
         }
       `}</style>
@@ -137,7 +123,7 @@ export default function CadetWarningDetailsPage({ params }: { params: Promise<{ 
         </button>
         <div className="flex items-center gap-3">
           <button
-            onClick={handlePrint}
+            onClick={handlePrintClick}
             className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-white flex items-center gap-2 transition-all"
           >
             <Icon icon="hugeicons:printer" className="w-4 h-4" />
@@ -146,15 +132,15 @@ export default function CadetWarningDetailsPage({ params }: { params: Promise<{ 
         </div>
       </div>
 
-     <div className="p-10 cv-content">
+      <div className="p-10 cv-content">
+
         <div className="w-full flex justify-between mb-8 text-xs font-bold">
           <div></div>
           <div>
-            <p className="text-center font-medium text-gray-900 uppercase px-4">Confidential</p>
+            <p className="text-center font-medium text-gray-900 uppercase px-4">selectedPrintType?.name</p>
           </div>
           <div></div>
         </div>
-
         <div className="flex justify-end mb-10">
           <div className="text-left space-y-0.5">
             <FullLogo />
@@ -221,6 +207,12 @@ export default function CadetWarningDetailsPage({ params }: { params: Promise<{ 
           </div>
         </div>
       </div>
+
+      <PrintTypeModal
+        isOpen={isPrintModalOpen}
+        onClose={() => setIsPrintModalOpen(false)}
+        onConfirm={confirmPrint}
+      />
     </div>
   );
 }

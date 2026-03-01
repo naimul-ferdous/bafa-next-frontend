@@ -163,7 +163,7 @@ export default function CptcConsolidatedCoursePage() {
 
     results.forEach(result => {
       // Get the full mark for this subject
-      const subjectFullMark = parseFloat(String(result.atw_subject?.subjects_full_mark || 100));
+      const subjectFullMark = parseFloat(String(result.atw_subject_module?.subjects_full_mark || 100));
 
       result.result_getting_cadets?.forEach((cadetResult: any) => {
         const cadetId = cadetResult.cadet_id;

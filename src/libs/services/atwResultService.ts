@@ -26,6 +26,7 @@ interface ResultQueryParams {
   exam_type_id?: number;
   instructor_id?: number;
   atw_subject_id?: number;
+  atw_subject_module_id?: number;
 }
 
 interface ResultPaginatedResponse {
@@ -107,6 +108,7 @@ export const atwResultService = {
       if (params?.exam_type_id) query.append('exam_type_id', params.exam_type_id.toString());
       if (params?.instructor_id) query.append('instructor_id', params.instructor_id.toString());
       if (params?.atw_subject_id) query.append('atw_subject_id', params.atw_subject_id.toString());
+      else if (params?.atw_subject_module_id) query.append('atw_subject_id', params.atw_subject_module_id.toString()); // Fallback for legacy
 
       const endpoint = `/atw-results${query.toString() ? `?${query.toString()}` : ''}`;
       const token = getToken();
@@ -146,7 +148,9 @@ export const atwResultService = {
       
       if (params.exam_type_id) query.append('exam_type_id', params.exam_type_id.toString());
       if (params.instructor_id) query.append('instructor_id', params.instructor_id.toString());
+      
       if (params.atw_subject_id) query.append('atw_subject_id', params.atw_subject_id.toString());
+      else if (params.atw_subject_module_id) query.append('atw_subject_id', params.atw_subject_module_id.toString());
 
       const token = getToken();
       const result = await apiClient.get<{ success: boolean; data: { exists: boolean } }>(`/atw-results/check-existence?${query.toString()}`, token);

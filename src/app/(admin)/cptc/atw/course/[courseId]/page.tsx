@@ -54,17 +54,17 @@ export default function AtwConsolidatedResultsPage({ params }: { params: Promise
 
         data.semesters_details.forEach((sem) => {
             sem.atw.results?.forEach((res: any) => {
-                if (!subjectFullMarks.has(res.atw_subject_id)) {
-                    const fullMark = Number(res.atw_subject?.subjects_full_mark) || res.atw_subject?.subject_marks?.reduce(
+                if (!subjectFullMarks.has(res.atw_subject_module_id)) {
+                    const fullMark = Number(res.atw_subject_module?.subjects_full_mark) || res.atw_subject_module?.subject_marks?.reduce(
                         (sum: number, sm: any) => sum + Number(sm.percentage || 0), 0
                     ) || 0;
-                    subjectFullMarks.set(res.atw_subject_id, fullMark);
+                    subjectFullMarks.set(res.atw_subject_module_id, fullMark);
                 }
 
                 const isFlyingSubject = isFlyingBranch(res.branch?.category || "");
                 const semSet = isFlyingSubject ? flyingSubjectsPerSem : othersSubjectsPerSem;
                 if (!semSet.has(sem.id)) semSet.set(sem.id, new Set());
-                semSet.get(sem.id)!.add(res.atw_subject_id);
+                semSet.get(sem.id)!.add(res.atw_subject_module_id);
 
                 res.result_getting_cadets?.forEach((rc: any) => {
                     const isFlying = isFlyingBranch(rc.cadet?.branch?.category || "");

@@ -1,15 +1,16 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import Label from "@/components/form/Label";
 import { cadetService } from "@/libs/services/cadetService";
 import { commonService } from "@/libs/services/commonService";
 import { atwResultService } from "@/libs/services/atwResultService";
+import { atwSubjectService } from "@/libs/services/atwSubjectService";
 import { atwInstructorAssignCadetService } from "@/libs/services/atwInstructorAssignCadetService";
 import { useAuth } from "@/libs/hooks/useAuth";
 import { Icon } from "@iconify/react";
-import type { SystemCourse, SystemSemester, SystemProgram, SystemBranch, SystemGroup, SystemExam, AtwSubject, AtwSubjectMark } from "@/libs/types/system";
+import type { SystemCourse, SystemSemester, SystemProgram, SystemBranch, SystemGroup, SystemExam, AtwSubjectModuleMark, AtwSubject } from "@/libs/types/system";
 import type { AtwResult } from "@/libs/types/atwResult";
 
 interface ResultFormProps {
@@ -32,17 +33,17 @@ interface CadetRow {
   is_present: boolean;
   absent_reason: string;
   is_active: boolean;
-  marks: { [markId: number]: number };
+  marks: { [markId: number]: number | string };
 }
 
 // Group marks by type
 interface MarkGroup {
   type: string;
-  marks: AtwSubjectMark[];
+  marks: AtwSubjectModuleMark[];
 }
 
 export default function ResultForm({ initialData, onSubmit, onCancel, loading, isEdit = false }: ResultFormProps) {
-  const { user } = useAuth();
+  const { user, userIsSystemAdmin } = useAuth();
   const [formData, setFormData] = useState({
     course_id: 0,
     semester_id: 0,
@@ -50,7 +51,7 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
     branch_id: 0,
     group_id: 0,
     exam_type_id: 0,
-    atw_subject_id: 0,
+    atw_subject_id: 0, // Store the mapping ID
     instructor_id: 0,
     is_active: true,
   });
@@ -134,12 +135,30 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
   const [branches, setBranches] = useState<SystemBranch[]>([]);
   const [groups, setGroups] = useState<SystemGroup[]>([]);
   const [exams, setExams] = useState<SystemExam[]>([]);
-  const [subjects, setSubjects] = useState<AtwSubject[]>([]);
+  const [subjectMappings, setSubjectMappings] = useState<AtwSubject[]>([]);
   const [loadingDropdowns, setLoadingDropdowns] = useState(true);
   const [loadingCadets, setLoadingCadets] = useState(false);
 
+  // Filter branches based on selected program
+  const filteredBranches = useMemo(() => {
+    if (!formData.program_id) return [];
+    return branches.filter(branch => Number(branch.program_id) === Number(formData.program_id));
+  }, [branches, formData.program_id]);
+
+  // Reset branch if it's not in the filtered list
+  useEffect(() => {
+    if (formData.branch_id && filteredBranches.length > 0) {
+      const isValid = filteredBranches.some(b => b.id === formData.branch_id);
+      if (!isValid) {
+        setFormData(prev => ({ ...prev, branch_id: 0 }));
+      }
+    } else if (!formData.program_id) {
+      setFormData(prev => ({ ...prev, branch_id: 0 }));
+    }
+  }, [formData.program_id, filteredBranches, formData.branch_id]);
+
   // Selected subject for marks
-  const [selectedSubject, setSelectedSubject] = useState<AtwSubject | null>(null);
+  const [selectedSubjectMapping, setSelectedSubjectMapping] = useState<AtwSubject | null>(null);
   const [markGroups, setMarkGroups] = useState<MarkGroup[]>([]);
 
   // Load dropdown data
@@ -168,49 +187,74 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
     loadDropdownData();
   }, []);
 
-  useEffect(() => {
-
-    if (!user?.atw_assigned_subjects || user.atw_assigned_subjects.length === 0) {
-      setSubjects([]);
+  // Logic to load subject mappings based on context
+  const loadSubjects = useCallback(async () => {
+    if (!formData.course_id || !formData.semester_id || !formData.program_id) {
+      setSubjectMappings([]);
       return;
     }
-    const filteredAssignments = user.atw_assigned_subjects.filter((as: any) =>
-      as.course_id === Number(formData.course_id) &&
-      as.semester_id === Number(formData.semester_id) &&
-      as.program_id === Number(formData.program_id) &&
-      as.branch_id === Number(formData.branch_id) &&
-      (!as.group_id || as.group_id === Number(formData.group_id))
-    );
-    const filteredSubjects = filteredAssignments.map((as: any) => ({
-      ...(as.subject || {}),
-      subject_marks: as.subject?.subject_marks || as.subject?.subjectMarks || []
-    })).filter(s => s.id);
-    setSubjects(filteredSubjects);
-    if (formData.atw_subject_id && !filteredSubjects.some(s => s.id === formData.atw_subject_id)) {
-      setFormData(prev => ({ ...prev, atw_subject_id: 0 }));
+
+    try {
+      if (userIsSystemAdmin) {
+        // Admin: Load all mapped subjects for this context
+        const response = await atwSubjectService.getAllSubjects({
+          course_id: formData.course_id,
+          semester_id: formData.semester_id,
+          program_id: formData.program_id,
+          branch_id: formData.branch_id || undefined,
+          group_id: formData.group_id || undefined,
+          per_page: 100
+        });
+
+        setSubjectMappings(response.data);
+      } else if (user?.atw_assigned_subjects) {
+        // Instructor: Filter from assigned subjects
+        const filteredAssignments = user.atw_assigned_subjects.filter((as: any) =>
+          Number(as.course_id) === Number(formData.course_id) &&
+          Number(as.semester_id) === Number(formData.semester_id) &&
+          Number(as.program_id) === Number(formData.program_id) &&
+          (formData.branch_id === 0 || Number(as.branch_id) === Number(formData.branch_id))
+        );
+
+        const mappedSubjects: AtwSubject[] = filteredAssignments
+          .filter((as: any) => as.subject && as.subject.id)
+          .map((as: any) => as.subject);
+
+        setSubjectMappings(mappedSubjects);
+      }
+    } catch (err) {
+      console.error("Failed to load subjects:", err);
     }
-  }, [formData.course_id, formData.semester_id, formData.program_id, formData.branch_id, formData.group_id, formData.atw_subject_id, user?.atw_assigned_subjects]);
+  }, [formData.course_id, formData.semester_id, formData.program_id, formData.branch_id, formData.group_id, userIsSystemAdmin, user?.atw_assigned_subjects]);
+
+  useEffect(() => {
+    loadSubjects();
+  }, [loadSubjects]);
 
   useEffect(() => {
     if (formData.atw_subject_id) {
-      const subject = subjects.find(s => s.id === formData.atw_subject_id);
-      setSelectedSubject(subject || null);
-      if (subject?.subject_marks) {
-        const groups: { [key: string]: AtwSubjectMark[] } = {};
-        subject.subject_marks.forEach(mark => {
+      const mapping = subjectMappings.find(s => s.id === formData.atw_subject_id);
+      setSelectedSubjectMapping(mapping || null);
+      
+      if (mapping?.module?.subject_marks) {
+        const groups: { [key: string]: AtwSubjectModuleMark[] } = {};
+        mapping.module.subject_marks.forEach(mark => {
           const type = mark.type || "Other";
           if (!groups[type]) groups[type] = [];
           groups[type].push(mark);
         });
         setMarkGroups(Object.entries(groups).map(([type, marks]) => ({ type, marks })));
+        setFormData(prev => ({ ...prev, atw_subject_module_id: mapping.atw_subject_module_id }));
       } else {
         setMarkGroups([]);
+        setFormData(prev => ({ ...prev, atw_subject_module_id: 0 }));
       }
     } else {
-      setSelectedSubject(null);
+      setSelectedSubjectMapping(null);
       setMarkGroups([]);
+      setFormData(prev => ({ ...prev, atw_subject_module_id: 0 }));
     }
-  }, [formData.atw_subject_id, subjects]);
+  }, [formData.atw_subject_id, subjectMappings]);
 
   // Auto-load cadets when filters change
   useEffect(() => {
@@ -224,7 +268,8 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
       try {
         setLoadingCadets(true);
         let cadetsList: any[] = [];
-        if (user?.instructor_biodata && formData.atw_subject_id) {
+        if (!userIsSystemAdmin && user?.instructor_biodata && formData.atw_subject_id) {
+          // Use atw_subject_id (mapping) to fetch instructor assigned cadets
           const assignedCadetsRes = await atwInstructorAssignCadetService.getAll({
             per_page: 500,
             course_id: formData.course_id,
@@ -232,7 +277,7 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
             program_id: formData.program_id,
             branch_id: formData.branch_id,
             group_id: formData.group_id || undefined,
-            subject_id: formData.atw_subject_id,
+            subject_id: formData.atw_subject_id, // Pass Mapping ID
             instructor_id: user.id,
             is_active: true
           });
@@ -243,7 +288,7 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
             cadetsList = [];
           }
         } else {
-          // Fallback for admins or if no specific instructor assignment logic needed
+          // Fallback for admins
           const cadetsRes = await cadetService.getAllCadets({
             per_page: 500,
             course_id: formData.course_id,
@@ -257,7 +302,6 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
 
         // Create cadet rows
         const rows: CadetRow[] = cadetsList.filter(c => c).map(cadet => {
-          // Get current rank from assigned_ranks (first active or latest)
           const currentRank = cadet.assigned_ranks?.find((ar: any) => ar.rank)?.rank;
           return {
             cadet_id: cadet.id,
@@ -282,11 +326,10 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
       }
     };
 
-    // Don't reload cadets if we have initial data (edit mode)
     if (!initialData) {
       loadCadets();
     }
-  }, [formData.course_id, formData.semester_id, formData.program_id, formData.branch_id, formData.group_id, formData.atw_subject_id, user, initialData]);
+  }, [formData.course_id, formData.semester_id, formData.program_id, formData.branch_id, formData.group_id, formData.atw_subject_id, user, userIsSystemAdmin, initialData]);
 
   // Populate form with initial data
   useEffect(() => {
@@ -298,20 +341,18 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
         branch_id: initialData.branch_id || 0,
         group_id: initialData.group_id || 0,
         exam_type_id: initialData.exam_type_id,
-        atw_subject_id: initialData.atw_subject_id,
+        atw_subject_id: initialData.atw_subject_id || 0,
         instructor_id: initialData.instructor_id || 0,
         is_active: initialData.is_active,
       });
 
-      // Load cadet rows from initial data
       if (initialData.result_getting_cadets && initialData.result_getting_cadets.length > 0) {
         const rows: CadetRow[] = initialData.result_getting_cadets.map(c => {
           const marks: { [markId: number]: number } = {};
           c.cadet_marks?.forEach(m => {
-            marks[m.atw_subject_mark_id] = Number(m.achieved_mark) || 0;
+            marks[m.atw_subject_module_mark_id] = Number(m.achieved_mark) || 0;
           });
-          // Get rank from cadet's assigned_ranks if available
-          const currentRank = c.cadet?.assigned_ranks?.find(ar => ar.rank)?.rank;
+          const currentRank = c.cadet?.assigned_ranks?.find((ar: any) => ar.rank)?.rank;
           return {
             id: c.id,
             cadet_id: c.cadet_id,
@@ -336,7 +377,7 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
-  const handleMarkChange = (cadetIndex: number, markId: number, value: number) => {
+  const handleMarkChange = (cadetIndex: number, markId: number, value: number | string) => {
     setCadetRows(prev => {
       const updated = [...prev];
       updated[cadetIndex] = {
@@ -353,7 +394,6 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
       updated[cadetIndex] = {
         ...updated[cadetIndex],
         is_present: isPresent,
-        // Clear marks if not present
         marks: isPresent ? updated[cadetIndex].marks : {}
       };
       return updated;
@@ -364,14 +404,16 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
     e.preventDefault();
     setError("");
 
-    // Validation
-    if (!formData.course_id) { setError("Please select a course"); return; }
-    if (!formData.semester_id) { setError("Please select a semester"); return; }
-    if (!formData.program_id) { setError("Please select a program"); return; }
-    if (!formData.branch_id) { setError("Please select a branch"); return; }
-    if (!formData.exam_type_id) { setError("Please select an exam type"); return; }
-    if (!formData.atw_subject_id) { setError("Please select a subject"); return; }
-    if (!formData.instructor_id) { setError("User session error: Instructor ID not found. Please re-login."); return; }
+    if (!formData.course_id || !formData.semester_id || !formData.program_id || !formData.atw_subject_id) {
+      setError("Please fill in all required fields.");
+      return;
+    }
+
+    const moduleId = selectedSubjectMapping?.atw_subject_module_id;
+    if (!moduleId) {
+      setError("Critical Error: Linked module not found for this subject mapping.");
+      return;
+    }
 
     try {
       const submitData = {
@@ -385,9 +427,9 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
           absent_reason: c.is_present ? undefined : c.absent_reason,
           is_active: c.is_active,
           marks: Object.entries(c.marks).map(([markId, achievedMark]) => ({
-            subject_id: formData.atw_subject_id,
-            atw_subject_mark_id: parseInt(markId),
-            achieved_mark: achievedMark || 0,
+            atw_subject_module_id: moduleId,
+            atw_subject_module_mark_id: parseInt(markId),
+            achieved_mark: typeof achievedMark === "number" ? achievedMark : (parseFloat(achievedMark as string) || 0),
             is_active: true,
           })),
         })),
@@ -398,7 +440,6 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
     }
   };
 
-  // Check if all required filters are selected
   const filtersSelected = formData.course_id && formData.semester_id && formData.program_id && formData.branch_id;
   const subjectSelected = formData.atw_subject_id > 0;
 
@@ -454,9 +495,15 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
 
             <div>
               <Label>Branch <span className="text-red-500">*</span></Label>
-              <select value={formData.branch_id} onChange={(e) => handleChange("branch_id", parseInt(e.target.value))} className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500" required>
-                <option value={0}>Select Branch</option>
-                {branches.map(branch => (<option key={branch.id} value={branch.id}>{branch.name} ({branch.code})</option>))}
+              <select
+                value={formData.branch_id}
+                onChange={(e) => handleChange("branch_id", parseInt(e.target.value))}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500"
+                required
+                disabled={!formData.program_id}
+              >
+                <option value={0}>{!formData.program_id ? "Select Program First" : "Select Branch"}</option>
+                {filteredBranches.map(branch => (<option key={branch.id} value={branch.id}>{branch.name} ({branch.code})</option>))}
               </select>
             </div>
 
@@ -478,9 +525,9 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
 
             <div>
               <Label>Subject <span className="text-red-500">*</span></Label>
-              <select value={formData.atw_subject_id} onChange={(e) => handleChange("atw_subject_id", parseInt(e.target.value))} className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500" required>
+              <select value={formData.atw_subject_id} onChange={(e) => handleChange("atw_subject_id", parseInt(e.target.value))} className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 font-semibold" required>
                 <option value={0}>Select Subject</option>
-                {subjects.map(subject => (<option key={subject.id} value={subject.id}>{subject.subject_name} ({subject.subject_code})</option>))}
+                {subjectMappings.map(s => (<option key={s.id} value={s.id}>{s.module?.subject_name} ({s.module?.subject_code})</option>))}
               </select>
             </div>
           </div>
@@ -491,13 +538,10 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
           <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
             <Icon icon="hugeicons:note-edit" className="w-5 h-5 text-blue-500" />
             Result Marks Entry
-            {selectedSubject && (
+            {selectedSubjectMapping?.module && (
               <span className="text-sm font-normal text-gray-500 ml-2">
-                ~ {selectedSubject.subject_name} ({selectedSubject.subject_code})
+                ~ {selectedSubjectMapping.module.subject_name} ({selectedSubjectMapping.module.subject_code})
               </span>
-            )}
-            {loadingCadets && (
-              <Icon icon="hugeicons:fan-01" className="w-10 h-10 animate-spin mx-auto my-10 text-blue-500" />
             )}
           </h3>
 
@@ -514,7 +558,7 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
           ) : alreadyExists ? (
             <div className="text-center py-12 text-red-500 bg-red-50 rounded-lg border border-red-100">
               <Icon icon="hugeicons:alert-circle" className="w-10 h-10 mx-auto mb-2" />
-              <p className="font-semibold text-lg">Already result mark inputed</p>
+              <p className="font-semibold text-lg uppercase tracking-wider">Already Result Map inputed</p>
               <p className="text-sm">A result for these criteria already exists in the system.</p>
             </div>
           ) : loadingCadets ? (
@@ -532,32 +576,55 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
                 <thead>
                   {/* First header row - Mark type groups */}
                   <tr>
-                    <th className="border border-black px-3 py-2 text-center" rowSpan={2}>SL</th>
-                    <th className="border border-black px-3 py-2 text-center" rowSpan={2}>BD NO.</th>
-                    <th className="border border-black px-3 py-2 text-center" rowSpan={2}>RANK</th>
-                    <th className="border border-black px-3 py-2 text-left" rowSpan={2}>NAME</th>
-                    <th className="border border-black px-3 py-2 text-center" rowSpan={2}>BRANCH</th>
-                    <th className="border border-black px-3 py-2 text-center" rowSpan={2}>PRESENT</th>
+                    <th className="border border-black px-3 py-2 text-center" rowSpan={3}>SL</th>
+                    <th className="border border-black px-3 py-2 text-center" rowSpan={3}>BD NO.</th>
+                    <th className="border border-black px-3 py-2 text-center" rowSpan={3}>RANK</th>
+                    <th className="border border-black px-3 py-2 text-left" rowSpan={3}>NAME</th>
+                    <th className="border border-black px-3 py-2 text-center" rowSpan={3}>BRANCH</th>
+                    <th className="border border-black px-3 py-2 text-center" rowSpan={3}>PRESENT</th>
                     {markGroups.map(group => (
                       <th
                         key={group.type}
                         className="border border-black px-3 py-2 text-center font-semibold uppercase"
-                        colSpan={group.marks.length}
+                        colSpan={group.marks.reduce((acc, m) => acc + (Number(m.estimate_mark) !== Number(m.percentage) ? 2 : 1), 0)}
                       >
                         {group.type}
                       </th>
                     ))}
-                    <th className="border border-black px-3 py-2 text-center font-bold" rowSpan={2}>TOTAL</th>
+                    <th className="border border-black px-3 py-2 text-center font-bold" rowSpan={3}>TOTAL</th>
                   </tr>
                   {/* Second header row - Individual marks */}
                   <tr>
                     {markGroups.flatMap(group =>
                       group.marks.map(mark => (
-                        <th key={mark.id} className="border border-black px-2 py-2 text-center min-w-[100px]">
-                          <div className="text-xs font-medium">{mark.name}</div>
-                          <div className="text-xs text-gray-500">({mark.percentage}%)</div>
+                        <th key={mark.id}
+                          className="border border-black px-2 py-2 text-center"
+                          colSpan={Number(mark.estimate_mark) !== Number(mark.percentage) ? 2 : 1}
+                        >
+                          <div className="text-xs font-medium uppercase">{mark.name}</div>
                         </th>
                       ))
+                    )}
+                  </tr>
+                  {/* Third header row - Sub-labels */}
+                  <tr>
+                    {markGroups.flatMap(group =>
+                      group.marks.map(mark => {
+                        if (Number(mark.estimate_mark) !== Number(mark.percentage)) {
+                          return (
+                            <React.Fragment key={`sub-${mark.id}`}>
+                              <th className="border border-black px-1 py-1 text-center w-[80px] min-w-[80px]">{Number(mark.estimate_mark).toFixed(0)}</th>
+                              <th className="border border-black px-1 py-1 text-center w-[80px] min-w-[80px]">{Number(mark.percentage).toFixed(0)}</th>
+                            </React.Fragment>
+                          );
+                        } else {
+                          return (
+                            <th key={`sub-${mark.id}`} className="border border-black px-1 py-1 text-center min-w-[100px]">
+                              {Number(mark.percentage).toFixed(0)}
+                            </th>
+                          );
+                        }
+                      })
                     )}
                   </tr>
                 </thead>
@@ -566,24 +633,25 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
                     // Calculate row total
                     const rowTotal = markGroups.reduce((acc, group) => {
                       return acc + group.marks.reduce((groupAcc, mark) => {
-                        const inputMark = cadet.marks[mark.id] || 0;
+                        const markVal = cadet.marks[mark.id];
+                        const inputMark = markVal !== undefined && markVal !== "" ? parseFloat(String(markVal)) || 0 : 0;
                         let adjustedMark = inputMark;
-                        
+
                         // If estimate_mark and percentage are different, convert input to percentage equivalent
-                        if (mark.estimate_mark !== mark.percentage && mark.estimate_mark > 0) {
+                        if (Number(mark.estimate_mark) !== Number(mark.percentage) && mark.estimate_mark > 0) {
                           adjustedMark = (inputMark / mark.estimate_mark) * mark.percentage;
                         }
-                        
+
                         return groupAcc + adjustedMark;
                       }, 0);
                     }, 0);
 
                     return (
-                      <tr key={cadet.cadet_id}>
+                      <tr key={cadet.cadet_id} className="hover:bg-gray-50 transition-colors">
                         <td className="border border-black px-3 py-2 text-center font-medium">{index + 1}</td>
                         <td className="border border-black px-3 py-2 text-center">{cadet.cadet_bd_no}</td>
                         <td className="border border-black px-3 py-2 text-center">{cadet.cadet_rank}</td>
-                        <td className={`border border-black px-3 py-2 font-medium ${!cadet.is_present ? 'text-red-500' : ''}`}>
+                        <td className={`border border-black px-3 py-2 font-medium ${!cadet.is_present ? 'text-red-500 italic' : ''}`}>
                           {cadet.cadet_name} {cadet.gender === 'female' && <span className="text-pink-600 font-bold ml-1">(F)</span>}
                         </td>
                         <td className="border border-black px-3 py-2 text-center">{cadet.cadet_branch}</td>
@@ -596,30 +664,107 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
                           />
                         </td>
                         {markGroups.flatMap(group =>
-                          group.marks.map(mark => (
-                            <td key={mark.id} className={`border border-black px-2 py-1 text-center ${!cadet.is_present ? "bg-gray-200" : ""}`}>
-                              <input
-                                type="number"
-                                min={0}
-                                max={mark.estimate_mark}
-                                step={0.01}
-                                value={cadet.is_present ? (cadet.marks[mark.id] || 0) : 0}
-                                onChange={(e) => {
-                                  const inputValue = parseFloat(e.target.value) || 0;
-                                  const clampedValue = Math.min(Math.max(0, inputValue), mark.estimate_mark);
-                                  handleMarkChange(index, mark.id, clampedValue);
-                                }}
-                                disabled={!cadet.is_present}
-                                className={`w-full px-2 py-1 border rounded text-center text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${!cadet.is_present
-                                  ? "bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed"
-                                  : "border-gray-300 bg-white"
-                                  }`}
-                                placeholder="0"
-                              />
-                            </td>
-                          ))
+                          group.marks.map(mark => {
+                            const markVal = cadet.marks[mark.id];
+                            const inputMark = markVal !== undefined && markVal !== "" ? parseFloat(String(markVal)) || 0 : 0;
+                            const isSplit = Number(mark.estimate_mark) !== Number(mark.percentage);
+
+                            if (isSplit) {
+                              const convertedValue = mark.estimate_mark > 0 ? (inputMark / mark.estimate_mark) * mark.percentage : 0;
+                              return (
+                                <React.Fragment key={mark.id}>
+                                  <td className={`border border-black px-2 py-1 text-center w-[80px] min-w-[80px] ${!cadet.is_present ? "bg-gray-200" : ""}`}>
+                                    <input
+                                      type="text"
+                                      inputMode="decimal"
+                                      pattern="[0-9]*\.?[0-9]*"
+                                      value={cadet.is_present ? (cadet.marks[mark.id] !== undefined ? cadet.marks[mark.id] : "") : ""}
+                                      onChange={(e) => {
+                                        const val = e.target.value;
+                                        if (val === "") {
+                                          handleMarkChange(index, mark.id, "");
+                                          return;
+                                        }
+                                        if (/^\d*\.?\d*$/.test(val)) {
+                                          const inputValue = parseFloat(val);
+                                          if (!isNaN(inputValue) && inputValue > mark.estimate_mark) {
+                                            handleMarkChange(index, mark.id, mark.estimate_mark);
+                                          } else {
+                                            handleMarkChange(index, mark.id, val);
+                                          }
+                                        }
+                                      }}
+                                      onBlur={(e) => {
+                                        const val = e.target.value;
+                                        if (val !== "") {
+                                          const parsed = parseFloat(val);
+                                          if (!isNaN(parsed)) {
+                                            handleMarkChange(index, mark.id, parsed);
+                                          } else {
+                                            handleMarkChange(index, mark.id, "");
+                                          }
+                                        }
+                                      }}
+                                      disabled={!cadet.is_present}
+                                      className={`w-full px-2 py-1 border rounded text-center text-sm font-bold focus:ring-0 focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${!cadet.is_present
+                                        ? "bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed border-transparent"
+                                        : "border-gray-300 bg-white"
+                                        }`}
+                                      placeholder="0"
+                                    />
+                                  </td>
+                                  <td className={`border border-black px-2 py-1 text-center text-gray-900 w-[80px] min-w-[80px] ${!cadet.is_present ? "bg-gray-200" : ""}`}>
+                                    {convertedValue.toFixed(2)}
+                                  </td>
+                                </React.Fragment>
+                              );
+                            } else {
+                              return (
+                                <td key={mark.id} className={`border border-black px-2 py-1 text-center min-w-[100px] ${!cadet.is_present ? "bg-gray-200" : ""}`}>
+                                  <input
+                                    type="text"
+                                    inputMode="decimal"
+                                    pattern="[0-9]*\.?[0-9]*"
+                                    value={cadet.is_present ? (cadet.marks[mark.id] !== undefined ? cadet.marks[mark.id] : "") : ""}
+                                    onChange={(e) => {
+                                      const val = e.target.value;
+                                      if (val === "") {
+                                        handleMarkChange(index, mark.id, "");
+                                        return;
+                                      }
+                                      if (/^\d*\.?\d*$/.test(val)) {
+                                        const inputValue = parseFloat(val);
+                                        if (!isNaN(inputValue) && inputValue > mark.estimate_mark) {
+                                          handleMarkChange(index, mark.id, mark.estimate_mark);
+                                        } else {
+                                          handleMarkChange(index, mark.id, val);
+                                        }
+                                      }
+                                    }}
+                                    onBlur={(e) => {
+                                      const val = e.target.value;
+                                      if (val !== "") {
+                                        const parsed = parseFloat(val);
+                                        if (!isNaN(parsed)) {
+                                          handleMarkChange(index, mark.id, parsed);
+                                        } else {
+                                          handleMarkChange(index, mark.id, "");
+                                        }
+                                      }
+                                    }}
+                                    disabled={!cadet.is_present}
+                                    className={`w-full px-2 py-1 border rounded text-center text-sm font-bold focus:ring-0 focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${!cadet.is_present
+                                      ? "bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed border-transparent"
+                                      : "border-gray-300 bg-white"
+                                      }`}
+                                    placeholder="0"
+                                  />
+                                </td>
+                              );
+                            }
+                          })
                         )}
-                        <td className="border border-black px-3 py-2 text-center font-bold text-blue-700">
+                        <td className="border border-black px-3 py-2 text-center font-black">
                           {(Number(rowTotal) || 0).toFixed(2)}
                         </td>
                       </tr>
@@ -633,10 +778,10 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
       </div>
 
       <div className="flex items-center justify-end gap-3 mt-8 pt-6 border-t border-gray-200">
-        <button type="button" onClick={onCancel} className="px-6 py-2 border border-gray-300 text-black rounded-xl hover:bg-gray-50" disabled={loading}>
+        <button type="button" onClick={onCancel} className="px-6 py-2 border border-gray-300 text-black rounded-xl hover:bg-gray-100 transition-colors" disabled={loading}>
           Cancel
         </button>
-        <button type="submit" className={`px-6 py-2 text-white rounded-xl flex items-center gap-2 ${alreadyExists ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-500 hover:bg-blue-600'}`} disabled={loading || alreadyExists}>
+        <button type="submit" className={`px-6 py-2 text-white rounded-xl flex items-center gap-2 shadow-md transition-all ${alreadyExists ? 'bg-gray-400 cursor-not-allowed opacity-50' : 'bg-blue-600 hover:bg-blue-700 active:scale-95'}`} disabled={loading || alreadyExists}>
           {loading && <Icon icon="hugeicons:loading-03" className="w-4 h-4 animate-spin" />}
           {loading ? (isEdit ? "Updating..." : "Saving...") : (isEdit ? "Update Result" : "Save Result")}
         </button>

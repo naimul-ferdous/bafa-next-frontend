@@ -10,10 +10,14 @@ import { useAuth } from "@/libs/hooks/useAuth";
 import FullLogo from "@/components/ui/fulllogo";
 import DataTable, { Column } from "@/components/ui/DataTable";
 import ConfirmationModal from "@/components/ui/modal/ConfirmationModal";
+import { usePageContext, useCan } from "@/context/PagePermissionsContext";
 
 export default function AtwAssessmentPenpictureResultsPage() {
   const router = useRouter();
   const { user } = useAuth();
+  const { permissions } = usePageContext();
+  const can = useCan();
+
   const isInstructor = !!user?.instructor_biodata;
 
   const [results, setResults] = useState<AtwAssessmentPenpictureResult[]>([]);
@@ -180,9 +184,15 @@ export default function AtwAssessmentPenpictureResultsPage() {
       className: "text-center no-print",
       render: (result) => (
         <div className="flex items-center justify-center gap-1" onClick={(e) => e.stopPropagation()}>
-          <button onClick={() => handleViewResult(result)} className="p-1 text-blue-600 hover:bg-blue-50 rounded transition-all" title="View"><Icon icon="hugeicons:view" className="w-4 h-4" /></button>
-          <button onClick={() => handleEditResult(result)} className="p-1 text-yellow-600 hover:bg-yellow-50 rounded transition-all" title="Edit"><Icon icon="hugeicons:pencil-edit-01" className="w-4 h-4" /></button>
-          <button onClick={() => handleDeleteResult(result)} className="p-1 text-red-600 hover:bg-red-50 rounded transition-all" title="Delete"><Icon icon="hugeicons:delete-02" className="w-4 h-4" /></button>
+          {can('view') && (
+            <button onClick={() => handleViewResult(result)} className="p-1 text-blue-600 hover:bg-blue-50 rounded transition-all" title="View"><Icon icon="hugeicons:view" className="w-4 h-4" /></button>
+          )}
+          {can('edit') && (
+            <button onClick={() => handleEditResult(result)} className="p-1 text-yellow-600 hover:bg-yellow-50 rounded transition-all" title="Edit"><Icon icon="hugeicons:pencil-edit-01" className="w-4 h-4" /></button>
+          )}
+          {can('delete') && (
+            <button onClick={() => handleDeleteResult(result)} className="p-1 text-red-600 hover:bg-red-50 rounded transition-all" title="Delete"><Icon icon="hugeicons:delete-02" className="w-4 h-4" /></button>
+          )}
         </div>
       ),
     },
@@ -235,9 +245,11 @@ export default function AtwAssessmentPenpictureResultsPage() {
       className: "text-center no-print",
       render: (row) => (
         <div className="flex flex-col items-center gap-1">
-            <button onClick={() => router.push(`/atw/assessments/penpicture/results/course/${row.course_details?.id}/semester/${row.semester_details?.id}`)} className="px-3 py-1 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-lg flex items-center gap-1 text-[10px] font-black uppercase transition-all" title="View Results">
-              <Icon icon="hugeicons:view" className="w-3.5 h-3.5" /> View Results
-            </button>
+            {can('view') && (
+              <button onClick={() => router.push(`/atw/assessments/penpicture/results/course/${row.course_details?.id}/semester/${row.semester_details?.id}`)} className="px-3 py-1 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-lg flex items-center gap-1 text-[10px] font-black uppercase transition-all" title="View Results">
+                <Icon icon="hugeicons:view" className="w-3.5 h-3.5" /> View Results
+              </button>
+            )}
         </div>
       ),
     },
@@ -257,9 +269,9 @@ export default function AtwAssessmentPenpictureResultsPage() {
           <input type="text" placeholder="Search by course, semester, cadet..." value={searchTerm} onChange={(e) => handleSearchChange(e.target.value)} className="pl-10 pr-4 py-2 border border-gray-200 rounded-lg bg-gray-50 text-gray-900 w-full focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all" />
         </div>
         <div className="flex items-center gap-3">
-          {/* {isInstructor && ( */}
+          {can('add') && (
             <button onClick={handleAddResult} className="px-4 py-2 rounded-lg text-white flex items-center gap-1 bg-blue-600 hover:bg-blue-700 transition-all shadow-md active:scale-95"><Icon icon="hugeicons:add-circle" className="w-4 h-4 mr-2" />Add Result</button>
-          {/* )} */}
+          )}
           <button onClick={handleExport} className="px-4 py-2 rounded-lg text-white flex items-center gap-1 bg-green-600 hover:bg-green-700 transition-all shadow-md active:scale-95"><Icon icon="hugeicons:download-04" className="w-4 h-4 mr-2" />Export</button>
         </div>
       </div>

@@ -11,9 +11,13 @@ import ConfirmationModal from "@/components/ui/modal/ConfirmationModal";
 
 import type { SystemCourse } from "@/libs/types/system";
 import { commonService } from "@/libs/services/commonService";
+import { usePageContext, useCan } from "@/context/PagePermissionsContext";
 
 export default function AtwAssessmentOlqTypesPage() {
   const router = useRouter();
+  const { permissions } = usePageContext();
+  const can = useCan();
+
   const [types, setTypes] = useState<AtwAssessmentOlqType[]>([]);
   const [loading, setLoading] = useState(true);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
@@ -172,8 +176,12 @@ export default function AtwAssessmentOlqTypesPage() {
       className: "text-center no-print",
       render: (type) => (
         <div className="flex items-center justify-center gap-1" onClick={(e) => e.stopPropagation()}>
-          <button onClick={() => handleEditType(type)} className="p-1 text-yellow-600 hover:bg-yellow-50 rounded" title="Edit"><Icon icon="hugeicons:pencil-edit-01" className="w-4 h-4" /></button>
-          <button onClick={() => handleDeleteType(type)} className="p-1 text-red-600 hover:bg-red-50 rounded" title="Delete"><Icon icon="hugeicons:delete-02" className="w-4 h-4" /></button>
+          {can('edit') && (
+            <button onClick={() => handleEditType(type)} className="p-1 text-yellow-600 hover:bg-yellow-50 rounded" title="Edit"><Icon icon="hugeicons:pencil-edit-01" className="w-4 h-4" /></button>
+          )}
+          {can('delete') && (
+            <button onClick={() => handleDeleteType(type)} className="p-1 text-red-600 hover:bg-red-50 rounded" title="Delete"><Icon icon="hugeicons:delete-02" className="w-4 h-4" /></button>
+          )}
         </div>
       ),
     },
@@ -210,7 +218,9 @@ export default function AtwAssessmentOlqTypesPage() {
           </select>
         </div>
         <div className="flex items-center gap-3">
-          <button onClick={handleAddType} className="px-4 py-2 rounded-lg text-white flex items-center gap-1 bg-blue-600 hover:bg-blue-700"><Icon icon="hugeicons:add-circle" className="w-4 h-4 mr-2" />Add Type</button>
+          {can('add') && (
+            <button onClick={handleAddType} className="px-4 py-2 rounded-lg text-white flex items-center gap-1 bg-blue-600 hover:bg-blue-700"><Icon icon="hugeicons:add-circle" className="w-4 h-4 mr-2" />Add Type</button>
+          )}
           <button onClick={handleExport} className="px-4 py-2 rounded-lg text-white flex items-center gap-1 bg-green-600 hover:bg-green-700"><Icon icon="hugeicons:download-04" className="w-4 h-4 mr-2" />Export</button>
         </div>
       </div>
@@ -223,7 +233,7 @@ export default function AtwAssessmentOlqTypesPage() {
           data={types}
           keyExtractor={(type) => type.id.toString()}
           emptyMessage="No OLQ types found"
-          onRowClick={handleViewType}
+          onRowClick={can('view') ? handleViewType : undefined}
         />
       )}
 

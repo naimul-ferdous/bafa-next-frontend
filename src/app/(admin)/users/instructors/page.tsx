@@ -437,12 +437,15 @@ function InstructorsPageContent() {
           return (
             <div className="flex flex-wrap gap-1">
               {assignedSubjects.slice(0, 3).map((as) => {
-                // Count cadets assigned to this specific subject for this instructor
-                const cadetCount = assignedCadets.filter(c => c.subject_id === as.subject_id).length;
+                // Count cadets assigned to this specific subject mapping for this instructor
+                const cadetCount = assignedCadets.filter(c => Number(c.subject_id) === Number(as.subject_id)).length;
+
+                // as.subject is now an AtwSubject (mapping) which has a .module relationship
+                const subjectModule = as.subject?.module;
 
                 return (
-                  <span key={as.id} className="px-2 py-0.5 text-xs rounded-full bg-blue-100 text-blue-700 font-medium" title={`${as.subject?.subject_name || 'Subject'} (${as.course?.code || ''} - ${as.semester?.name || ''})`}>
-                    {as.subject?.subject_code || as.subject?.subject_name || 'Sub'}: {cadetCount} Cadets
+                  <span key={as.id} className="px-2 py-0.5 text-xs rounded-full bg-blue-100 text-blue-700 font-medium" title={`${subjectModule?.subject_name || 'Subject'} (${as.course?.code || ''} - ${as.semester?.name || ''})`}>
+                    {subjectModule?.subject_code || subjectModule?.subject_name || 'Sub'}: {cadetCount} Cadets
                   </span>
                 );
               })}

@@ -6,10 +6,14 @@ import { useRouter } from "next/navigation";
 import { AtwResult } from "@/libs/types/atwResult";
 import { Icon } from "@iconify/react";
 import { atwResultService } from "@/libs/services/atwResultService";
+import { atwApprovalService } from "@/libs/services/atwApprovalService";
+import type { AtwResultApprovalAuthority } from "@/libs/types/atwApproval";
 import { useAuth } from "@/libs/hooks/useAuth";
 import FullLogo from "@/components/ui/fulllogo";
 import DataTable, { Column } from "@/components/ui/DataTable";
 import ConfirmationModal from "@/components/ui/modal/ConfirmationModal";
+import { Modal } from "@/components/ui/modal";
+import { usePageContext, useCan } from "@/context/PagePermissionsContext";
 
 interface GroupedResult {
   course_details: {
@@ -30,6 +34,9 @@ interface GroupedResult {
 export default function AtwResultsPage() {
   const router = useRouter();
   const { user } = useAuth();
+  const { permissions } = usePageContext();
+  const can = useCan();
+
   const [results, setResults] = useState<AtwResult[]>([]);
   const [groupedResults, setGroupedResults] = useState<GroupedResult[]>([]);
   const [loading, setLoading] = useState(true);
@@ -48,8 +55,28 @@ export default function AtwResultsPage() {
     to: 0,
   });
 
+  const [approvalAuthorities, setApprovalAuthorities] = useState<AtwResultApprovalAuthority[]>([]);
+  const [forwardModal, setForwardModal] = useState<{
+    open: boolean;
+    result: AtwResult | null;
+    loading: boolean;
+    error: string;
+  }>({ open: false, result: null, loading: false, error: "" });
+
   const isInstructor = !!user?.instructor_biodata;
   const instructorId = isInstructor ? user?.id : undefined;
+
+  // Check if current user can do initial forward (has is_initial_cadet_approve authority)
+  const canInitialForward = useMemo(() => {
+    const userRoleIds = (user as any)?.roles?.map((r: any) => r.id) ?? [];
+    const userId = user?.id;
+    return approvalAuthorities.some((a) => {
+      if (!a.is_initial_cadet_approve || !a.is_active) return false;
+      if (a.user_id && a.user_id === userId) return true;
+      if (a.role_id && userRoleIds.includes(a.role_id)) return true;
+      return false;
+    });
+  }, [approvalAuthorities, user]);
 
   const loadResults = useCallback(async () => {
     try {
@@ -86,6 +113,13 @@ export default function AtwResultsPage() {
   useEffect(() => {
     loadResults();
   }, [loadResults]);
+
+  // Fetch authorities once on mount (global config, not per-result)
+  useEffect(() => {
+    atwApprovalService.getAuthorities({ allData: true, is_active: true })
+      .then((res) => setApprovalAuthorities(res.data))
+      .catch(() => {});
+  }, []);
 
   // Group results for Admin View (Non-instructor) - Semester wise
   const flattenedAdminResults = useMemo(() => {
@@ -135,6 +169,42 @@ export default function AtwResultsPage() {
       alert("Failed to delete result");
     } finally {
       setDeleteLoading(false);
+    }
+  };
+
+  const handleForwardResult = (result: AtwResult) => {
+    setForwardModal({ open: true, result, loading: false, error: "" });
+  };
+
+  const handleConfirmForward = async () => {
+    const result = forwardModal.result;
+    if (!result) return;
+    setForwardModal((prev) => ({ ...prev, loading: true, error: "" }));
+    try {
+      // Forward to only the NEXT authority in the sort chain, not all non-initial authorities
+      const nextAuthority = [...approvalAuthorities]
+        .filter((a) => !a.is_initial_cadet_approve && a.is_active)
+        .sort((a, b) => (a.sort ?? 0) - (b.sort ?? 0))[0];
+
+      await atwApprovalService.approveSubject({
+        course_id: result.course_id,
+        semester_id: result.semester_id,
+        program_id: result.program_id,
+        branch_id: result.branch_id,
+        group_id: result.group_id,
+        subject_id: result.atw_subject_id,
+        instructor_id: result.instructor_id,
+        status: "pending",
+        cadet_ids: result.result_getting_cadets?.map((c) => c.cadet_id) ?? [],
+        authority_ids: nextAuthority ? [nextAuthority.id] : [],
+      });
+      setForwardModal({ open: false, result: null, loading: false, error: "" });
+      await loadResults();
+    } catch (err: any) {
+      const msg = err?.errors
+        ? Object.values(err.errors).flat().join(" ")
+        : err?.message || "Failed to forward result.";
+      setForwardModal((prev) => ({ ...prev, loading: false, error: msg }));
     }
   };
 
@@ -207,12 +277,15 @@ export default function AtwResultsPage() {
     {
       key: "subject",
       header: "Subject",
-      render: (result) => (
-        <div>
-          <div className="font-medium text-gray-900">{result.atw_subject?.subject_name || "N/A"}</div>
-          <div className="text-xs text-gray-500">{result.atw_subject?.subject_code || ""}</div>
-        </div>
-      ),
+      render: (result) => {
+        const subjectModule = result.subject?.module || result.subject || result.atw_subject_module;
+        return (
+          <div>
+            <div className="font-medium text-gray-900">{subjectModule?.subject_name || "N/A"}</div>
+            <div className="text-xs text-gray-500">{subjectModule?.subject_code || ""}</div>
+          </div>
+        );
+      },
     },
     {
       key: "exam_type",
@@ -254,16 +327,57 @@ export default function AtwResultsPage() {
       render: (result) => result.branch?.name || "N/A",
     },
     {
-      key: "group",
-      header: "Group",
-      className: "text-gray-700",
-      render: (result) => result.group?.name || "—",
-    },
-    {
       key: "created_at",
       header: "Created At",
       className: "text-gray-700 text-sm",
       render: (result) => result.created_at ? new Date(result.created_at).toLocaleDateString("en-GB") : "—"
+    },
+    {
+      key: "approval_stats",
+      header: "Approval",
+      headerAlign: "center",
+      className: "text-center",
+      render: (result) => {
+        const stats = result.approval_stats;
+        const sa = (result as any).subject_approval;
+        // Subject approved by final authority → forwarded to program level
+        if (sa?.approved_by) {
+          return (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-green-100 text-green-800 whitespace-nowrap">
+              ↑ Forwarded
+            </span>
+          );
+        }
+        // Forwarded to authority but pending their review (not yet approved)
+        if (sa?.forwarded_by) {
+          return (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-800 whitespace-nowrap">
+              ⏳ Under Review
+            </span>
+          );
+        }
+        if (!stats || stats.total === 0) return <span className="text-gray-400 text-xs">—</span>;
+        if (stats.approved === stats.total) {
+          return (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-teal-100 text-teal-800 whitespace-nowrap">
+              ✓ All Cadets Approved
+            </span>
+          );
+        }
+        if (stats.approved === 0) {
+          return (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-100 text-red-800 whitespace-nowrap">
+              ✗ Not Approved
+            </span>
+          );
+        }
+        const remaining = stats.total - stats.approved;
+        return (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-yellow-100 text-yellow-800 whitespace-nowrap">
+            {stats.approved}/{stats.total} Approved
+          </span>
+        );
+      },
     },
     {
       key: "actions",
@@ -272,9 +386,35 @@ export default function AtwResultsPage() {
       className: "text-center no-print",
       render: (result) => (
         <div className="flex items-center justify-center gap-1" onClick={(e) => e.stopPropagation()}>
-          <button onClick={() => handleViewResult(result.id)} className="p-1 text-blue-600 hover:bg-blue-50 rounded" title="View"><Icon icon="hugeicons:view" className="w-4 h-4" /></button>
-          <button onClick={() => handleEditResult(result)} className="p-1 text-yellow-600 hover:bg-yellow-50 rounded" title="Edit"><Icon icon="hugeicons:pencil-edit-01" className="w-4 h-4" /></button>
-          <button onClick={() => handleDeleteResult(result)} className="p-1 text-red-600 hover:bg-red-50 rounded" title="Delete"><Icon icon="hugeicons:delete-02" className="w-4 h-4" /></button>
+          {can('view') && (
+            <button onClick={() => handleViewResult(result.id)} className="p-1 text-blue-600 hover:bg-blue-50 rounded" title="View"><Icon icon="hugeicons:view" className="w-4 h-4" /></button>
+          )}
+          {can('edit') && (
+            <button onClick={() => handleEditResult(result)} className="p-1 text-yellow-600 hover:bg-yellow-50 rounded" title="Edit"><Icon icon="hugeicons:pencil-edit-01" className="w-4 h-4" /></button>
+          )}
+          {can('delete') && (
+            <button onClick={() => handleDeleteResult(result)} className="p-1 text-red-600 hover:bg-red-50 rounded" title="Delete"><Icon icon="hugeicons:delete-02" className="w-4 h-4" /></button>
+          )}
+          {canInitialForward && (() => {
+            const sa = result.subject_approval;
+            const stats = result.approval_stats;
+            // Use per-result forwarding flag so other instructors' forward action
+            // doesn't hide the button for this instructor
+            const isMyResultForwarded = !!(stats as any)?.is_result_forwarded;
+            if (isMyResultForwarded) return null;
+            const allCadetsApproved = (stats?.approved ?? 0) > 0 && (stats?.approved ?? 0) >= (stats?.total ?? 0);
+            const canForward = (!sa?.approved_by) && allCadetsApproved;
+            return (
+              <button
+                onClick={() => handleForwardResult(result)}
+                disabled={!canForward}
+                title={canForward ? "Forward to Higher Authority" : "All cadets must be approved before forwarding"}
+                className={`p-1 rounded ${canForward ? "text-indigo-600 hover:bg-indigo-50" : "text-gray-300 cursor-not-allowed"}`}
+              >
+                <Icon icon="hugeicons:share-04" className="w-4 h-4" />
+              </button>
+            );
+          })()}
         </div>
       ),
     },
@@ -332,7 +472,11 @@ export default function AtwResultsPage() {
       key: "subject",
       header: "Subjects",
       render: (res) => {
-        const items = res.all_results?.map((r: any) => (r.subject?.subject_name || r.atw_subject?.subject_name)).filter(Boolean) as string[];
+        const items = res.all_results?.map((r: any) => (
+          r.subject?.module?.subject_name || 
+          r.subject?.subject_name || 
+          r.atw_subject_module?.subject_name
+        )).filter(Boolean) as string[];
         return <RenderChips items={items} color="indigo" max={3} />;
       },
     },
@@ -358,13 +502,15 @@ export default function AtwResultsPage() {
       className: "text-center no-print",
       render: (res) => (
         <div className="flex items-center justify-center gap-1">
-          <button 
-            onClick={() => handleViewSemesterResults(res.course_id, res.semester_id)} 
-            className="p-1 text-blue-600 hover:bg-blue-50 rounded" 
-            title="View Details"
-          >
-            <Icon icon="hugeicons:view" className="w-4 h-4" />
-          </button>
+          {can('view') && (
+            <button 
+              onClick={() => handleViewSemesterResults(res.course_id, res.semester_id)} 
+              className="p-1 text-blue-600 hover:bg-blue-50 rounded" 
+              title="View Details"
+            >
+              <Icon icon="hugeicons:view" className="w-4 h-4" />
+            </button>
+          )}
         </div>
       ),
     },
@@ -384,7 +530,7 @@ export default function AtwResultsPage() {
           <input type="text" placeholder="Search results..." value={searchTerm} onChange={(e) => handleSearchChange(e.target.value)} className="pl-10 pr-4 py-2 border border-gray-200 rounded-lg bg-white text-gray-900 w-full focus:outline-none focus:ring-0" />
         </div>
         <div className="flex items-center gap-3">
-          {isInstructor && (
+          {isInstructor && can('add') && (
             <button onClick={handleAddResult} className="px-4 py-2 rounded-lg text-white flex items-center gap-1 bg-blue-600 hover:bg-blue-700">
               <Icon icon="hugeicons:add-circle" className="w-4 h-4 mr-2" />
               Add Result
@@ -403,7 +549,7 @@ export default function AtwResultsPage() {
             data={results}
             keyExtractor={(result) => result.id.toString()}
             emptyMessage="No results found"
-            onRowClick={(res) => handleViewResult(res.id)}
+            onRowClick={can('view') ? (res) => handleViewResult(res.id) : undefined}
           />
           <div className="flex items-center justify-between mt-4">
             <div className="flex items-center gap-4">
@@ -443,7 +589,7 @@ export default function AtwResultsPage() {
             data={flattenedAdminResults}
             keyExtractor={(res) => res.id.toString()}
             emptyMessage="No results found"
-            onRowClick={(res) => handleViewSemesterResults(res.course_id, res.semester_id)}
+            onRowClick={can('view') ? (res) => handleViewSemesterResults(res.course_id, res.semester_id) : undefined}
           />
         </div>
       )}
@@ -453,12 +599,85 @@ export default function AtwResultsPage() {
         onClose={() => setDeleteModalOpen(false)}
         onConfirm={confirmDelete}
         title="Delete Result"
-        message={`Are you sure you want to delete this ATW result for "${deletingResult?.atw_subject?.subject_name}"? This will also delete all associated cadets and marks. This action cannot be undone.`}
+        message={`Are you sure you want to delete this ATW result for "${deletingResult?.subject?.module?.subject_name || deletingResult?.subject?.subject_name || deletingResult?.atw_subject_module?.subject_name || 'this subject'}"? This will also delete all associated cadets and marks. This action cannot be undone.`}
         confirmText="Delete"
         cancelText="Cancel"
         loading={deleteLoading}
         variant="danger"
       />
+
+      {/* Initial Subject Forward Modal */}
+      <Modal
+        isOpen={forwardModal.open}
+        onClose={() => setForwardModal((prev) => ({ ...prev, open: false }))}
+        showCloseButton
+        className="max-w-lg"
+      >
+        <div className="p-6">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="flex items-center justify-center w-10 h-10 rounded-full bg-indigo-100">
+              <Icon icon="hugeicons:share-04" className="w-5 h-5 text-indigo-600" />
+            </div>
+            <div>
+              <h2 className="text-lg font-bold text-gray-900">Forward to Higher Authority</h2>
+              <p className="text-xs text-gray-500">Initial subject result forwarding</p>
+            </div>
+          </div>
+
+          {forwardModal.result && (() => {
+            const r = forwardModal.result!;
+            const subjectModule = r.subject?.module || r.subject || r.atw_subject_module;
+            const rows: [string, string][] = [
+              ["Course",   r.course?.name   || "—"],
+              ["Semester", r.semester?.name || "—"],
+              ["Program",  r.program?.name  || "—"],
+              ["Branch",   r.branch?.name   || "—"],
+              ["Subject",  subjectModule?.subject_name ? `${subjectModule.subject_name} (${subjectModule.subject_code})` : "—"],
+              ["Exam Type", r.exam_type?.name || "—"],
+            ];
+            return (
+              <div className="mb-5 rounded-lg border border-gray-200 divide-y divide-gray-100 text-sm">
+                {rows.map(([label, value]) => (
+                  <div key={label} className="flex px-4 py-2.5">
+                    <span className="w-28 text-gray-500 shrink-0">{label}</span>
+                    <span className="font-medium text-gray-900">{value}</span>
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
+
+          <p className="text-sm text-gray-600 mb-5">
+            This will mark the subject result as forwarded to the higher authority for further review and approval. This action records your approval at the subject level.
+          </p>
+
+          {forwardModal.error && (
+            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm flex items-center gap-2">
+              <Icon icon="hugeicons:alert-circle" className="w-4 h-4 flex-shrink-0" />
+              {forwardModal.error}
+            </div>
+          )}
+
+          <div className="flex gap-3 justify-end pt-3 border-t border-gray-100">
+            <button
+              onClick={() => setForwardModal((prev) => ({ ...prev, open: false }))}
+              disabled={forwardModal.loading}
+              className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 text-sm hover:bg-gray-50 disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleConfirmForward}
+              disabled={forwardModal.loading}
+              className="px-6 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold hover:bg-indigo-700 flex items-center gap-2 disabled:opacity-50"
+            >
+              {forwardModal.loading && <Icon icon="hugeicons:fan-01" className="w-4 h-4 animate-spin" />}
+              <Icon icon="hugeicons:share-04" className="w-4 h-4" />
+              Confirm Forward
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

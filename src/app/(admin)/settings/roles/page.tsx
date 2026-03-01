@@ -1,21 +1,33 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { Role } from "@/libs/types/user";
+import { Role, Wing, SubWing } from "@/libs/types/user";
 import { Icon } from "@iconify/react";
 import { roleService } from "@/libs/services/roleService";
+import { wingService } from "@/libs/services/wingService";
+import { subWingService } from "@/libs/services/subWingService";
+import { useAuth } from "@/context/AuthContext";
 import FullLogo from "@/components/ui/fulllogo";
 import DataTable, { Column } from "@/components/ui/DataTable";
 import ConfirmationModal from "@/components/ui/modal/ConfirmationModal";
 import Pagination from "@/components/ui/Pagination";
 import RolePermissionModal from "@/components/roles/RolePermissionModal";
+import Select from "@/components/form/Select";
+import Label from "@/components/form/Label";
 
 export default function RolesPage() {
     const router = useRouter();
+    const { user, userIsSuperAdmin } = useAuth();
     const [roles, setRoles] = useState<Role[]>([]);
     const [loading, setLoading] = useState(true);
     
+    // Filter state
+    const [wings, setWings] = useState<Wing[]>([]);
+    const [subWings, setSubWings] = useState<SubWing[]>([]);
+    const [selectedWingId, setSelectedWingId] = useState<number | null>(null);
+    const [selectedSubWingId, setSelectedSubWingId] = useState<number | null>(null);
+
     // Status modal state
     const [statusModalOpen, setStatusModalOpen] = useState(false);
     const [statusRole, setStatusRole] = useState<Role | null>(null);
@@ -36,14 +48,33 @@ export default function RolesPage() {
         to: 0,
     });
 
+    // Determine the wing/subwing context for the current user
+    const userContext = useMemo(() => {
+        if (!user || userIsSuperAdmin) return null;
+        
+        const primaryAssignment = user.roles?.find((r: any) => r.pivot?.is_primary) || user.roles?.[0];
+        if (!primaryAssignment?.pivot) return null;
+
+        const { wing_id, sub_wing_id } = primaryAssignment.pivot;
+        return { wing_id, sub_wing_id };
+    }, [user, userIsSuperAdmin]);
+
     const loadRoles = useCallback(async () => {
         try {
             setLoading(true);
+            
+            // Priority: User's assigned context OR Super Admin's selected filter
+            const wing_id = userContext?.wing_id || selectedWingId || undefined;
+            const subwing_id = userContext?.sub_wing_id || selectedSubWingId || undefined;
+
             const response = await roleService.getAllRoles({
                 page: currentPage,
                 per_page: perPage,
                 search: searchTerm || undefined,
+                wing_id: wing_id,
+                subwing_id: subwing_id,
             });
+
             setRoles(response.data);
             setPagination({
                 current_page: response.current_page,
@@ -58,11 +89,29 @@ export default function RolesPage() {
         } finally {
             setLoading(false);
         }
-    }, [currentPage, perPage, searchTerm]);
+    }, [currentPage, perPage, searchTerm, userContext, selectedWingId, selectedSubWingId]);
+
+    const loadFilters = async () => {
+        if (!userIsSuperAdmin) return;
+        try {
+            const [wingsRes, subWingsRes] = await Promise.all([
+                wingService.getAllWings({ allData: true, is_active: true }),
+                subWingService.getAllSubWings({ allData: true, is_active: true })
+            ]);
+            setWings(wingsRes.data || []);
+            setSubWings(subWingsRes.data || []);
+        } catch (error) {
+            console.error("Failed to load filters:", error);
+        }
+    };
 
     useEffect(() => {
         loadRoles();
     }, [loadRoles]);
+
+    useEffect(() => {
+        loadFilters();
+    }, [userIsSuperAdmin]);
 
     // Listen for role updates
     useEffect(() => {
@@ -114,13 +163,39 @@ export default function RolesPage() {
 
     const handleSearchChange = (value: string) => {
         setSearchTerm(value);
-        setCurrentPage(1); // Reset to first page on search
+        setCurrentPage(1);
     };
 
     const handlePerPageChange = (value: number) => {
         setPerPage(value);
-        setCurrentPage(1); // Reset to first page when changing items per page
+        setCurrentPage(1);
     };
+
+    const handleWingFilterChange = (val: string) => {
+        setSelectedWingId(val ? parseInt(val) : null);
+        setSelectedSubWingId(null); // Reset subwing when wing changes
+        setCurrentPage(1);
+    };
+
+    const handleSubWingFilterChange = (val: string) => {
+        setSelectedSubWingId(val ? parseInt(val) : null);
+        setCurrentPage(1);
+    };
+
+    const wingOptions = useMemo(() => [
+        { label: "All Wings", value: "" },
+        ...wings.map(w => ({ label: w.name, value: w.id.toString() }))
+    ], [wings]);
+
+    const filteredSubWings = useMemo(() => {
+        if (!selectedWingId) return [];
+        return subWings.filter(sw => sw.wing_id === selectedWingId);
+    }, [subWings, selectedWingId]);
+
+    const subWingOptions = useMemo(() => [
+        { label: "All Sub-Wings", value: "" },
+        ...filteredSubWings.map(sw => ({ label: sw.name, value: sw.id.toString() }))
+    ], [filteredSubWings]);
 
     // Table skeleton loader
     const TableSkeleton = () => (
@@ -198,141 +273,175 @@ export default function RolesPage() {
         </div>
     );
 
-    // Define table columns
-    const columns: Column<Role>[] = [
-        {
-            key: "id",
-            header: "SL.",
-            className: "text-center text-gray-900",
-            render: (role, index) => (pagination.from || 0) + (index + 1),
-        },
-        {
-            key: "name",
-            header: "Role Name",
-            className: "font-medium text-gray-900",
-            render: (role) => (
-                <>
-                    {role.name}
-                    {role.is_super_admin && (
-                        <span className="ml-2 px-2 py-0.5 text-xs rounded-full bg-purple-100 text-purple-700">
-                            Super Admin
-                        </span>
-                    )}
-                </>
-            ),
-        },
-        {
-            key: "description",
-            header: "Description",
-            className: "text-gray-700",
-            render: (role) => (
-                <span className="line-clamp-2">
-                    {role.description || "—"}
-                </span>
-            ),
-        },
+    // Define table columns dynamically based on filters
+    const columns = useMemo(() => {
+        const isWingFiltered = !!(userContext?.wing_id || selectedWingId);
         
-        {
-            key: "permissions_list",
-            header: "Permissions",
-            className: "text-gray-700 whitespace-nowrap",
-            render: (role) => (
-                <div className="flex flex-wrap items-center gap-1 max-w-md">
-                    {role.permissions && role.permissions.length > 0 ? (
-                        role.permissions.slice(0, 3).map((permission, index) => (
-                            <span
-                                key={index}
-                                className="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded bg-gray-100 text-gray-700"
-                                title={permission.description || permission.name}
-                            >
-                                {permission.name}
+        const cols: Column<Role>[] = [
+            {
+                key: "id",
+                header: "SL.",
+                className: "text-center text-gray-900",
+                render: (role, index) => (pagination.from || 0) + (index + 1),
+            },
+            {
+                key: "name",
+                header: "Role Name",
+                className: "font-medium text-gray-900",
+                render: (role) => (
+                    <>
+                        {role.name}
+                        {role.is_super_admin && (
+                            <span className="ml-2 px-2 py-0.5 text-xs rounded-full bg-purple-100 text-purple-700">
+                                Super Admin
                             </span>
-                        ))
-                    ) : (
-                        <span className="text-gray-400 text-sm">No permissions</span>
-                    )}
-                    {role.permissions && role.permissions.length > 3 && (
-                        <span className="text-xs text-gray-500">+{role.permissions.length - 3} more</span>
-                    )}
-                    <button
-                        onClick={(e) => { e.stopPropagation(); setPermissionRole(role); }}
-                        className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors"
-                        title="Assign permissions"
-                    >
-                        <Icon icon="hugeicons:add-circle" className="w-3.5 h-3.5" />
-                        Assign
-                    </button>
-                </div>
-            ),
-        },
-        {
-            key: "is_active",
-            header: "Status",
-            className: "text-center",
-            headerAlign: "center",
-            render: (role) => (
-                <span className={`inline-flex items-center justify-center px-3 py-1 text-xs font-semibold rounded-full ${
-                    role.is_active !== false
-                        ? "bg-green-100 text-green-800"
-                        : "bg-red-100 text-red-800"
-                }`}>
-                    {role.is_active !== false ? "Active" : "Inactive"}
-                </span>
-            ),
-        },
-        {
-            key: "created_at",
-            header: "Created At",
-            className: "text-gray-700 whitespace-nowrap",
-            render: (role) =>
-                role.created_at ? new Date(role.created_at).toLocaleDateString("en-GB", {
-                    day: "2-digit",
-                    month: "short",
-                    year: "numeric",
-                }) : "—",
-        },
-        {
-            key: "actions",
-            header: "Actions",
-            headerAlign: "center",
-            className: "text-center no-print",
-            render: (role) => (
-                <div className="flex items-center justify-center gap-1" onClick={(e) => e.stopPropagation()}>
-                    <button
-                        onClick={() => handleViewRole(role)}
-                        className="p-1 text-blue-600 hover:bg-blue-50 rounded"
-                        title="View"
-                    >
-                        <Icon icon="hugeicons:view" className="w-4 h-4" />
-                    </button>
-                    <button
-                        onClick={() => handleEditRole(role)}
-                        className="p-1 text-yellow-600 hover:bg-yellow-50 rounded"
-                        title="Edit"
-                    >
-                        <Icon icon="hugeicons:pencil-edit-01" className="w-4 h-4" />
-                    </button>
-                    {role.is_active !== false ? (
+                        )}
+                    </>
+                ),
+            },
+        ];
+
+        // Only show Wing and Sub-Wing columns if we are not already filtered to one
+        if (!isWingFiltered) {
+            cols.push(
+                {
+                    key: "wing",
+                    header: "Wing",
+                    className: "text-gray-700",
+                    render: (role) => (
+                        <span className="whitespace-nowrap">
+                            {role.wing?.name || role.wing?.code || "Global"}
+                        </span>
+                    ),
+                },
+                {
+                    key: "subwing",
+                    header: "Sub-Wing",
+                    className: "text-gray-700",
+                    render: (role) => (
+                        <span className="whitespace-nowrap">
+                            {role.subwing?.name || "All"}
+                        </span>
+                    ),
+                }
+            );
+        }
+
+        cols.push(
+            {
+                key: "description",
+                header: "Description",
+                className: "text-gray-700",
+                render: (role) => (
+                    <span className="line-clamp-2">
+                        {role.description || "—"}
+                    </span>
+                ),
+            },
+            {
+                key: "permissions_list",
+                header: "Permissions",
+                className: "text-gray-700 whitespace-nowrap",
+                render: (role) => (
+                    <div className="flex flex-wrap items-center gap-1 max-w-md">
+                        {role.permissions && role.permissions.length > 0 ? (
+                            role.permissions.slice(0, 3).map((permission, index) => (
+                                <span
+                                    key={index}
+                                    className="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded bg-gray-100 text-gray-700"
+                                    title={permission.description || permission.name}
+                                >
+                                    {permission.name}
+                                </span>
+                            ))
+                        ) : (
+                            <span className="text-gray-400 text-sm">No permissions</span>
+                        )}
+                        {role.permissions && role.permissions.length > 3 && (
+                            <span className="text-xs text-gray-500">+{role.permissions.length - 3} more</span>
+                        )}
                         <button
-                            onClick={() => handleToggleStatus(role)}
-                            className="p-1 text-red-600 hover:bg-red-50 rounded"
-                            title="Deactivate"
+                            onClick={(e) => { e.stopPropagation(); setPermissionRole(role); }}
+                            className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors"
+                            title="Assign permissions"
                         >
-                            <Icon icon="hugeicons:unavailable" className="w-4 h-4" />
+                            <Icon icon="hugeicons:add-circle" className="w-3.5 h-3.5" />
+                            Assign
                         </button>
-                    ) : (
+                    </div>
+                ),
+            },
+            {
+                key: "is_active",
+                header: "Status",
+                className: "text-center",
+                headerAlign: "center",
+                render: (role) => (
+                    <span className={`inline-flex items-center justify-center px-3 py-1 text-xs font-semibold rounded-full ${
+                        role.is_active !== false
+                            ? "bg-green-100 text-green-800"
+                            : "bg-red-100 text-red-800"
+                    }`}>
+                        {role.is_active !== false ? "Active" : "Inactive"}
+                    </span>
+                ),
+            },
+            {
+                key: "created_at",
+                header: "Created At",
+                className: "text-gray-700 whitespace-nowrap",
+                render: (role) =>
+                    role.created_at ? new Date(role.created_at).toLocaleDateString("en-GB", {
+                        day: "2-digit",
+                        month: "short",
+                        year: "numeric",
+                    }) : "—",
+            },
+            {
+                key: "actions",
+                header: "Actions",
+                headerAlign: "center",
+                className: "text-center no-print",
+                render: (role) => (
+                    <div className="flex items-center justify-center gap-1" onClick={(e) => e.stopPropagation()}>
                         <button
-                            onClick={() => handleToggleStatus(role)}
-                            className="p-1 text-green-600 hover:bg-green-50 rounded"
-                            title="Activate"
+                            onClick={() => handleViewRole(role)}
+                            className="p-1 text-blue-600 hover:bg-blue-50 rounded"
+                            title="View"
                         >
-                            <Icon icon="hugeicons:checkmark-circle-02" className="w-4 h-4" />
+                            <Icon icon="hugeicons:view" className="w-4 h-4" />
                         </button>
-                    )}
-                </div>
-            ),
-        },
-    ];
+                        <button
+                            onClick={() => handleEditRole(role)}
+                            className="p-1 text-yellow-600 hover:bg-yellow-50 rounded"
+                            title="Edit"
+                        >
+                            <Icon icon="hugeicons:pencil-edit-01" className="w-4 h-4" />
+                        </button>
+                        {role.is_active !== false ? (
+                            <button
+                                onClick={() => handleToggleStatus(role)}
+                                className="p-1 text-red-600 hover:bg-red-50 rounded"
+                                title="Deactivate"
+                            >
+                                <Icon icon="hugeicons:unavailable" className="w-4 h-4" />
+                            </button>
+                        ) : (
+                            <button
+                                onClick={() => handleToggleStatus(role)}
+                                className="p-1 text-green-600 hover:bg-green-50 rounded"
+                                title="Activate"
+                            >
+                                <Icon icon="hugeicons:checkmark-circle-02" className="w-4 h-4" />
+                            </button>
+                        )}
+                    </div>
+                ),
+            }
+        );
+
+        return cols;
+    }, [userContext, selectedWingId, pagination.from]);
 
     return (
         <div className="bg-white p-6 rounded-lg border border-gray-200 space-y-6">
@@ -350,27 +459,29 @@ export default function RolesPage() {
             </div>
 
             {/* Controls */}
-            <div className="flex items-center justify-between gap-4 mb-6">
-                <div className="relative w-80">
-                    <Icon icon="hugeicons:search-01" className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
-                    <input
-                        type="text"
-                        placeholder="Search by role name..."
-                        value={searchTerm}
-                        onChange={(e) => handleSearchChange(e.target.value)}
-                        className="pl-10 pr-4 py-2 border border-gray-200 rounded-lg bg-white text-gray-900 w-full focus:outline-none focus:ring-0"
-                    />
-                </div>
+            <div className="space-y-4 mb-6">
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                    <div className="relative w-80">
+                        <Icon icon="hugeicons:search-01" className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+                        <input
+                            type="text"
+                            placeholder="Search by role name..."
+                            value={searchTerm}
+                            onChange={(e) => handleSearchChange(e.target.value)}
+                            className="pl-10 pr-4 py-2 border border-gray-200 rounded-lg bg-white text-gray-900 w-full focus:outline-none focus:ring-0"
+                        />
+                    </div>
 
-                <div className="flex items-center gap-3">
-                    <button onClick={handleAddRole} className="px-4 py-2 rounded-lg text-white flex items-center gap-1 bg-blue-600 hover:bg-blue-700">
-                        <Icon icon="hugeicons:add-circle" className="w-4 h-4 mr-2" />
-                        Add Role
-                    </button>
-                    <button onClick={handleExport} className="px-4 py-2 rounded-lg text-white flex items-center gap-1 bg-green-600 hover:bg-green-700">
-                        <Icon icon="hugeicons:download-04" className="w-4 h-4 mr-2" />
-                        Export
-                    </button>
+                    <div className="flex items-center gap-3">
+                        <button onClick={handleAddRole} className="px-4 py-2 rounded-lg text-white flex items-center gap-1 bg-blue-600 hover:bg-blue-700">
+                            <Icon icon="hugeicons:add-circle" className="w-4 h-4 mr-2" />
+                            Add Role
+                        </button>
+                        <button onClick={handleExport} className="px-4 py-2 rounded-lg text-white flex items-center gap-1 bg-green-600 hover:bg-green-700">
+                            <Icon icon="hugeicons:download-04" className="w-4 h-4 mr-2" />
+                            Export
+                        </button>
+                    </div>
                 </div>
             </div>
 

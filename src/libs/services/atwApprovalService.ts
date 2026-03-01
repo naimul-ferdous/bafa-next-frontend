@@ -11,6 +11,8 @@ interface AuthorityQueryParams {
   page?: number;
   per_page?: number;
   search?: string;
+  allData?: boolean;
+  is_active?: boolean;
 }
 
 interface AuthorityPaginatedResponse {
@@ -53,6 +55,8 @@ export const atwApprovalService = {
       if (params?.page) query.append('page', params.page.toString());
       if (params?.per_page) query.append('per_page', params.per_page.toString());
       if (params?.search) query.append('search', params.search);
+      if (params?.allData) query.append('allData', '1');
+      if (params?.is_active !== undefined) query.append('is_active', params.is_active ? '1' : '0');
 
       const endpoint = `/atw-approvals/authorities${query.toString() ? `?${query.toString()}` : ''}`;
       const token = getToken();
@@ -138,6 +142,16 @@ export const atwApprovalService = {
       return result;
     } catch (error) {
       console.error('Failed to approve program:', error);
+      throw error;
+    }
+  },
+
+  initSubjectApproval: async (data: { course_id: number; semester_id: number; program_id: number; branch_id: number; subject_id: number }) => {
+    try {
+      const token = getToken();
+      return await apiClient.post('/atw-approvals/init-subject-approval', data, token);
+    } catch (error) {
+      console.error('Failed to initialize subject approval:', error);
       throw error;
     }
   },

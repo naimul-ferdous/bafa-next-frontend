@@ -6,8 +6,7 @@ import { Modal } from "@/components/ui/modal";
 import { cadetService } from "@/libs/services/cadetService";
 import FullLogo from "@/components/ui/fulllogo";
 import { Icon } from "@iconify/react";
-import { SystemCourse, SystemSemester, SystemProgram, SystemBranch, SystemGroup } from "@/libs/types/system";
-import { AtwSubject } from "@/libs/types";
+import { SystemCourse, SystemSemester, SystemProgram, SystemBranch, SystemGroup, AtwSubject } from "@/libs/types/system";
 import { CadetProfile, InstructorBiodata } from "@/libs/types/user";
 import { AtwInstructorAssignCadet, atwInstructorAssignCadetService } from "@/libs/services/atwInstructorAssignCadetService";
 import { commonService } from "@/libs/services/commonService";
@@ -29,7 +28,7 @@ export default function InstructorAssignCadetModal({ isOpen, onClose, onSuccess,
   const [programs, setPrograms] = useState<SystemProgram[]>([]);
   const [branches, setBranches] = useState<SystemBranch[]>([]);
   const [groups, setGroups] = useState<SystemGroup[]>([]);
-  const [subjects, setSubjects] = useState<AtwSubject[]>([]);
+  const [subjectMappings, setSubjectMappings] = useState<AtwSubject[]>([]);
 
   const [cadets, setCadets] = useState<CadetProfile[]>([]);
   const [existingAssignments, setExistingAssignments] = useState<AtwInstructorAssignCadet[]>([]);
@@ -42,7 +41,7 @@ export default function InstructorAssignCadetModal({ isOpen, onClose, onSuccess,
     program_id: "",
     branch_id: "",
     group_id: "",
-    subject_id: "",
+    subject_id: "", // This will store the Mapping ID (atw_subjects.id)
     is_current: true,
     is_active: true,
   });
@@ -86,7 +85,7 @@ export default function InstructorAssignCadetModal({ isOpen, onClose, onSuccess,
             }),
             atwInstructorAssignCadetService.getAll({
               ...commonParams,
-              subject_id: Number(formData.subject_id),
+              subject_id: Number(formData.subject_id), // Pass Mapping ID
               per_page: 500,
             })
           ]);
@@ -116,14 +115,14 @@ export default function InstructorAssignCadetModal({ isOpen, onClose, onSuccess,
         setBranches(options.branches);
         setGroups(options.groups);
         
-        // Extract subjects directly from instructor's assignments
+        // Extract subject MAPPINGS directly from instructor's assignments
         if (instructor?.user?.atw_assigned_subjects) {
-          const assignedSubjects = instructor.user.atw_assigned_subjects
-            .map((as: any) => as.subject)
+          const assignedMappings = instructor.user.atw_assigned_subjects
+            .map((as: any) => as.subject) // In the new structure, 'subject' is the mapping object
             .filter((s: any) => s !== null);
-          setSubjects(assignedSubjects);
+          setSubjectMappings(assignedMappings);
         } else {
-          setSubjects([]);
+          setSubjectMappings([]);
         }
       }
     } catch (err: any) {
@@ -156,8 +155,6 @@ export default function InstructorAssignCadetModal({ isOpen, onClose, onSuccess,
       setSelectedCadetIds(prev => Array.from(new Set([...prev, ...unassignedFilteredIds])));
     }
   };
-
-  console.log("Selected:", instructor);
 
   const filteredCadets = cadets.filter(c =>
     c.name.toLowerCase().includes(cadetSearch.toLowerCase()) ||
@@ -193,7 +190,7 @@ export default function InstructorAssignCadetModal({ isOpen, onClose, onSuccess,
         program_id: Number(formData.program_id),
         branch_id: Number(formData.branch_id),
         group_id: formData.group_id ? Number(formData.group_id) : undefined,
-        subject_id: Number(formData.subject_id),
+        subject_id: Number(formData.subject_id), // Pass Mapping ID
         cadet_ids: selectedCadetIds,
         is_current: formData.is_current,
         is_active: formData.is_active,
@@ -211,19 +208,19 @@ export default function InstructorAssignCadetModal({ isOpen, onClose, onSuccess,
 
   const handleChange = (name: string, value: string) => {
     if (name === "subject_id") {
-      const selectedSubject = subjects.find(s => s.id === Number(value));
-      if (selectedSubject) {
+      const selectedMapping = subjectMappings.find(s => s.id === Number(value));
+      if (selectedMapping) {
         // Find the specific assignment to get the group_id if it exists
-        const assignment = instructor?.user?.atw_assigned_subjects?.find(as => as.subject_id === selectedSubject.id);
+        const instructorAssignment = instructor?.user?.atw_assigned_subjects?.find(as => as.subject_id === selectedMapping.id);
         
         setFormData(prev => ({
           ...prev,
           subject_id: value,
-          course_id: String(selectedSubject.course_id),
-          semester_id: String(selectedSubject.semester_id),
-          program_id: String(selectedSubject.program_id),
-          branch_id: String(selectedSubject.branch_id),
-          group_id: assignment?.group_id ? String(assignment.group_id) : "",
+          course_id: String(selectedMapping.course_id),
+          semester_id: String(selectedMapping.semester_id),
+          program_id: String(selectedMapping.program_id),
+          branch_id: String(selectedMapping.branch_id || ""),
+          group_id: instructorAssignment?.group_id ? String(instructorAssignment.group_id) : "",
         }));
         return;
       }
@@ -269,9 +266,9 @@ export default function InstructorAssignCadetModal({ isOpen, onClose, onSuccess,
                   className="w-full px-4 py-2.5 border border-gray-200 rounded-xl bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all text-sm font-bold"
                 >
                   <option value="">Choose from assigned subjects...</option>
-                  {subjects.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.subject_name} ({s.subject_code})
+                  {subjectMappings.map((mapping) => (
+                    <option key={mapping.id} value={mapping.id}>
+                      {mapping.module?.subject_name} ({mapping.module?.subject_code})
                     </option>
                   ))}
                 </select>
@@ -396,11 +393,6 @@ export default function InstructorAssignCadetModal({ isOpen, onClose, onSuccess,
                               <p className="text-[10px] text-gray-500 font-mono tracking-tighter">
                                 BD-{cadet.cadet_number}
                               </p>
-                              {/* {alreadyAssigned && (
-                                <p className={`text-[8px] font-bold uppercase mt-0.5 ${isAssignedToMe ? 'text-green-600' : 'text-red-600'}`}>
-                                  {isAssignedToMe ? 'Assigned to you' : `Assigned`}
-                                </p>
-                              )} */}
                             </div>
                             {isSelected && !alreadyAssigned && (
                               <div className="shrink-0">

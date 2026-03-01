@@ -28,7 +28,7 @@ export default function InstructorAssignSubjectModal({
   const [programs, setPrograms] = useState<SystemProgram[]>([]);
   const [branches, setBranches] = useState<SystemBranch[]>([]);
   const [groups, setGroups] = useState<SystemGroup[]>([]);
-  const [subjects, setSubjects] = useState<AtwSubject[]>([]);
+  const [subjectMappings, setSubjectMappings] = useState<AtwSubject[]>([]);
   const [existingAssignments, setExistingAssignments] = useState<AtwInstructorAssignSubject[]>([]);
   const [allExistingAssignments, setAllExistingAssignments] = useState<AtwInstructorAssignSubject[]>([]);
   const [loading, setLoading] = useState(false);
@@ -42,7 +42,7 @@ export default function InstructorAssignSubjectModal({
   const [selectedProgramId, setSelectedProgramId] = useState<number | "">("");
   const [selectedBranchId, setSelectedBranchId] = useState<number | "">("");
   const [selectedGroupId, setSelectedGroupId] = useState<number | "">("");
-  const [selectedSubjectIds, setSelectedSubjectIds] = useState<number[]>([]);
+  const [selectedMappingIds, setSelectedMappingIds] = useState<number[]>([]);
 
   // Load dropdown data
   useEffect(() => {
@@ -56,9 +56,9 @@ export default function InstructorAssignSubjectModal({
     if (selectedCourseId && selectedSemesterId && selectedProgramId && selectedBranchId) {
       loadSubjects();
     } else {
-      setSubjects([]);
+      setSubjectMappings([]);
       setAllExistingAssignments([]);
-      setSelectedSubjectIds([]);
+      setSelectedMappingIds([]);
     }
   }, [selectedCourseId, selectedSemesterId, selectedProgramId, selectedBranchId, selectedGroupId]);
 
@@ -104,63 +104,58 @@ export default function InstructorAssignSubjectModal({
         ? { ...params, group_id: Number(selectedGroupId) }
         : params;
 
-      const [subjectsRes, assignmentsRes] = await Promise.all([
+      // Use atwSubjectService to get MAPPED subjects for this context
+      const [mappingsRes, assignmentsRes] = await Promise.all([
         atwSubjectService.getAllSubjects(queryParams),
         atwInstructorAssignSubjectService.getAll({ ...queryParams, per_page: 1000 })
       ]);
 
-      setSubjects(subjectsRes.data);
+      setSubjectMappings(mappingsRes.data);
       setAllExistingAssignments(assignmentsRes.data);
-      setSelectedSubjectIds([]);
+      setSelectedMappingIds([]);
     } catch (err) {
       console.error("Failed to load subjects:", err);
-      setSubjects([]);
+      setSubjectMappings([]);
       setAllExistingAssignments([]);
     } finally {
       setLoadingSubjects(false);
     }
   };
 
-  // Check if subject is already assigned to THIS instructor
-  const isSubjectAlreadyAssignedToMe = (subjectId: number) => {
+  // Check if subject mapping is already assigned to THIS instructor
+  const isMappingAlreadyAssignedToMe = (mappingId: number) => {
     return existingAssignments.some(
-      (a) =>
-        a.subject_id === subjectId &&
-        a.course_id === Number(selectedCourseId) &&
-        a.semester_id === Number(selectedSemesterId) &&
-        a.program_id === Number(selectedProgramId) &&
-        a.branch_id === Number(selectedBranchId) &&
-        (!selectedGroupId || a.group_id === Number(selectedGroupId))
+      (a) => a.subject_id === mappingId
     );
   };
 
-  // Check if subject is assigned to ANY instructor (for these filters)
-  const getAssignmentInfo = (subjectId: number) => {
-    return allExistingAssignments.find(a => a.subject_id === subjectId);
+  // Check if mapping is assigned to ANY instructor (for these filters)
+  const getAssignmentInfo = (mappingId: number) => {
+    return allExistingAssignments.find(a => a.subject_id === mappingId);
   };
 
-  // Get available subjects (not assigned to anyone yet)
-  const availableSubjects = subjects.filter((s) => !getAssignmentInfo(s.id));
+  // Get available mappings (not assigned to anyone yet)
+  const availableMappings = subjectMappings.filter((m) => !getAssignmentInfo(m.id));
 
-  const handleSubjectToggle = (subjectId: number) => {
-    setSelectedSubjectIds((prev) =>
-      prev.includes(subjectId)
-        ? prev.filter((id) => id !== subjectId)
-        : [...prev, subjectId]
+  const handleMappingToggle = (mappingId: number) => {
+    setSelectedMappingIds((prev) =>
+      prev.includes(mappingId)
+        ? prev.filter((id) => id !== mappingId)
+        : [...prev, mappingId]
     );
   };
 
   const handleSelectAll = () => {
-    if (selectedSubjectIds.length === availableSubjects.length) {
-      setSelectedSubjectIds([]);
+    if (selectedMappingIds.length === availableMappings.length) {
+      setSelectedMappingIds([]);
     } else {
-      setSelectedSubjectIds(availableSubjects.map((s) => s.id));
+      setSelectedMappingIds(availableMappings.map((m) => m.id));
     }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!instructor?.user_id || selectedSubjectIds.length === 0) return;
+    if (!instructor?.user_id || selectedMappingIds.length === 0) return;
 
     setLoading(true);
     setError(null);
@@ -173,7 +168,7 @@ export default function InstructorAssignSubjectModal({
         program_id: Number(selectedProgramId),
         branch_id: Number(selectedBranchId),
         group_id: selectedGroupId ? Number(selectedGroupId) : undefined,
-        subject_ids: selectedSubjectIds,
+        subject_ids: selectedMappingIds, // Pass the mapping IDs
       });
 
       if (!result) throw new Error("Failed to assign subjects");
@@ -183,7 +178,7 @@ export default function InstructorAssignSubjectModal({
       setExistingAssignments(assignments);
 
       // Reset form
-      setSelectedSubjectIds([]);
+      setSelectedMappingIds([]);
       onSuccess?.();
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : "Failed to assign subjects";
@@ -212,8 +207,8 @@ export default function InstructorAssignSubjectModal({
     setSelectedProgramId("");
     setSelectedBranchId("");
     setSelectedGroupId("");
-    setSelectedSubjectIds([]);
-    setSubjects([]);
+    setSelectedMappingIds([]);
+    setSubjectMappings([]);
     setError(null);
     onClose();
   };
@@ -243,28 +238,27 @@ export default function InstructorAssignSubjectModal({
             {/* Existing Assignments */}
             {existingAssignments.length > 0 && (
               <div className="mb-6">
-                <h4 className="text-sm font-semibold text-gray-700 mb-3">Current Subject Assignments</h4>
-                <div className="space-y-2 max-h-48 overflow-y-auto">
+                <h4 className="text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wider border-b pb-1">Current Subject Assignments</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-48 overflow-y-auto">
                   {existingAssignments.map((assignment) => (
                     <div
                       key={assignment.id}
-                      className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200"
+                      className="flex items-center justify-between p-3 bg-blue-50 rounded-lg border border-blue-100"
                     >
                       <div className="flex items-center gap-3">
-                        <Icon icon="hugeicons:book-02" className="w-5 h-5 text-gray-500" />
+                        <Icon icon="hugeicons:book-02" className="w-5 h-5 text-blue-500" />
                         <div>
-                          <p className="text-sm font-medium text-gray-900">
-                            {assignment.subject?.subject_name || "Unknown Subject"} ({assignment.subject?.subject_code})
+                          <p className="text-sm font-bold text-gray-900">
+                            {assignment.subject?.module?.subject_name || "Unknown Subject"}
                           </p>
-                          <p className="text-xs text-gray-500">
-                            {assignment.course?.code} | {assignment.semester?.name} | {assignment.program?.code} | {assignment.branch?.code}
-                            {assignment.group?.name ? ` | ${assignment.group.name}` : ''}
+                          <p className="text-[10px] text-gray-500 font-mono">
+                            {assignment.subject?.module?.subject_code} | {assignment.course?.code} | {assignment.semester?.name}
                           </p>
                         </div>
                       </div>
                       <button
                         onClick={() => handleDeleteAssignment(assignment.id)}
-                        className="p-1 text-red-600 hover:bg-red-50 rounded"
+                        className="p-1 text-red-600 hover:bg-red-100 rounded-full transition-colors"
                         title="Remove"
                       >
                         <Icon icon="hugeicons:delete-02" className="w-4 h-4" />
@@ -287,7 +281,7 @@ export default function InstructorAssignSubjectModal({
               <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-4">
                 {/* Course Selection */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-[11px] font-bold text-gray-500 uppercase mb-1">
                     Course <span className="text-red-500">*</span>
                   </label>
                   <select
@@ -307,7 +301,7 @@ export default function InstructorAssignSubjectModal({
 
                 {/* Semester Selection */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-[11px] font-bold text-gray-500 uppercase mb-1">
                     Semester <span className="text-red-500">*</span>
                   </label>
                   <select
@@ -327,7 +321,7 @@ export default function InstructorAssignSubjectModal({
 
                 {/* Program Selection */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-[11px] font-bold text-gray-500 uppercase mb-1">
                     Program <span className="text-red-500">*</span>
                   </label>
                   <select
@@ -347,7 +341,7 @@ export default function InstructorAssignSubjectModal({
 
                 {/* Branch Selection */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-[11px] font-bold text-gray-500 uppercase mb-1">
                     Branch <span className="text-red-500">*</span>
                   </label>
                   <select
@@ -367,7 +361,7 @@ export default function InstructorAssignSubjectModal({
 
                 {/* Group Selection */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-[11px] font-bold text-gray-500 uppercase mb-1">
                     Group
                   </label>
                   <select
@@ -389,16 +383,16 @@ export default function InstructorAssignSubjectModal({
               {selectedCourseId && selectedSemesterId && selectedProgramId && selectedBranchId && (
                 <div className="mb-4">
                   <div className="flex items-center justify-between mb-2">
-                    <label className="block text-sm font-medium text-gray-700">
+                    <label className="block text-sm font-bold text-gray-700 uppercase">
                       Select Subjects <span className="text-red-500">*</span>
                     </label>
-                    {availableSubjects.length > 0 && (
+                    {availableMappings.length > 0 && (
                       <button
                         type="button"
                         onClick={handleSelectAll}
-                        className="text-xs text-purple-600 hover:text-purple-700"
+                        className="text-xs text-purple-600 hover:text-purple-700 font-bold"
                       >
-                        {selectedSubjectIds.length === availableSubjects.length ? "Deselect All" : "Select All"}
+                        {selectedMappingIds.length === availableMappings.length ? "Deselect All" : "Select All"}
                       </button>
                     )}
                   </div>
@@ -407,41 +401,47 @@ export default function InstructorAssignSubjectModal({
                     <div className="flex items-center justify-center py-4">
                       <Icon icon="hugeicons:fan-01" className="w-6 h-6 animate-spin text-purple-500" />
                     </div>
-                  ) : subjects.length === 0 ? (
-                    <p className="text-sm text-gray-500 py-4 text-center">No subjects found for selected filters</p>
+                  ) : subjectMappings.length === 0 ? (
+                    <div className="p-8 border-2 border-dashed border-gray-200 rounded-xl bg-gray-50 text-center">
+                      <Icon icon="hugeicons:book-02" className="w-8 h-8 mx-auto text-gray-300 mb-2" />
+                      <p className="text-sm text-gray-500">No subjects mapped to this context yet. Please map subjects first.</p>
+                    </div>
                   ) : (
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-2 max-h-48 overflow-y-auto p-2 border border-gray-200 rounded-lg">
-                      {subjects.map((subject) => {
-                        const assignment = getAssignmentInfo(subject.id);
-                        const isAssignedToMe = isSubjectAlreadyAssignedToMe(subject.id);
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 max-h-64 overflow-y-auto p-2 border border-gray-200 rounded-lg">
+                      {subjectMappings.map((mapping) => {
+                        const assignment = getAssignmentInfo(mapping.id);
+                        const isAssignedToMe = isMappingAlreadyAssignedToMe(mapping.id);
                         const isAssignedToOther = !!assignment && !isAssignedToMe;
                         // Only disable if already assigned to THIS specific instructor
                         const isDisabled = isAssignedToMe;
 
                         return (
                           <label
-                            key={subject.id}
-                            className={`flex items-center gap-2 p-2 rounded-lg cursor-pointer transition-colors ${
-                              selectedSubjectIds.includes(subject.id) || isDisabled
-                                ? "bg-purple-100 border border-purple-300"
-                                : "bg-gray-50 border border-gray-200 hover:bg-gray-100"
+                            key={mapping.id}
+                            className={`flex items-start gap-3 p-3 rounded-lg cursor-pointer transition-all border ${
+                              selectedMappingIds.includes(mapping.id) || isDisabled
+                                ? "bg-purple-50 border-purple-300 shadow-sm"
+                                : "bg-white border-gray-200 hover:border-purple-200 hover:bg-gray-50"
                             } ${isDisabled ? "opacity-75 cursor-not-allowed" : ""}`}
                           >
                             <input
                               type="checkbox"
-                              checked={selectedSubjectIds.includes(subject.id) || isDisabled}
-                              onChange={() => !isDisabled && handleSubjectToggle(subject.id)}
+                              checked={selectedMappingIds.includes(mapping.id) || isDisabled}
+                              onChange={() => !isDisabled && handleMappingToggle(mapping.id)}
                               disabled={isDisabled}
-                              className="rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                              className="mt-1 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
                             />
                             <div className="flex-1 min-w-0">
-                              <p className="text-sm font-medium text-gray-900 truncate">{subject.subject_code}</p>
-                              <p className="text-xs text-gray-500 truncate">{subject.subject_name}</p>
+                              <p className="text-sm font-bold text-gray-900 leading-tight mb-1">{mapping.module?.subject_name}</p>
+                              <div className="flex items-center gap-2">
+                                <span className="text-[10px] font-mono bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">{mapping.module?.subject_code}</span>
+                                <span className="text-[10px] font-bold text-blue-600 uppercase">{mapping.module?.subjects_full_mark} Marks</span>
+                              </div>
                               {isAssignedToOther && (
-                                <p className="text-[10px] font-bold text-orange-600 uppercase">Also Assigned: {assignment.instructor?.name || 'Other'}</p>
+                                <p className="mt-2 text-[9px] font-black bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full inline-block uppercase">Assigned: {assignment.instructor?.name}</p>
                               )}
                               {isAssignedToMe && (
-                                <p className="text-[10px] font-bold text-green-600 uppercase">Your Assignment</p>
+                                <p className="mt-2 text-[9px] font-black bg-green-100 text-green-700 px-2 py-0.5 rounded-full inline-block uppercase tracking-tighter">Already Your Assignment</p>
                               )}
                             </div>
                           </label>
@@ -457,14 +457,14 @@ export default function InstructorAssignSubjectModal({
                 <button
                   type="button"
                   onClick={handleClose}
-                  className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
+                  className="px-6 py-2 border border-gray-300 rounded-xl text-gray-700 font-bold hover:bg-gray-50"
                 >
                   Close
                 </button>
                 <button
                   type="submit"
-                  disabled={loading || (selectedSubjectIds.length === 0 && availableSubjects.length > 0)}
-                  className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                  disabled={loading || (selectedMappingIds.length === 0)}
+                  className="px-6 py-2 bg-purple-600 text-white rounded-xl font-bold hover:bg-purple-700 disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed flex items-center gap-2 shadow-md transition-all active:scale-95"
                 >
                   {loading ? (
                     <>
@@ -474,7 +474,7 @@ export default function InstructorAssignSubjectModal({
                   ) : (
                     <>
                       <Icon icon="hugeicons:add-circle" className="w-4 h-4" />
-                      Assign {selectedSubjectIds.length > 0 ? `(${selectedSubjectIds.length})` : ""} Subjects
+                      Assign {selectedMappingIds.length > 0 ? `(${selectedMappingIds.length})` : ""} Subjects
                     </>
                   )}
                 </button>

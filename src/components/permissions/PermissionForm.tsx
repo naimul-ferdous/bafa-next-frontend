@@ -1,12 +1,17 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import Input from "@/components/form/input/InputField";
 import Label from "@/components/form/Label";
+import Select from "@/components/form/Select";
 import { Icon } from "@iconify/react";
 import { permissionService } from "@/libs/services/permissionService";
+import { wingService } from "@/libs/services/wingService";
+import { subWingService } from "@/libs/services/subWingService";
+import { useAuth } from "@/context/AuthContext";
 import type { Permission, PermissionAction } from "@/libs/types/menu";
+import type { Wing, SubWing } from "@/libs/types/user";
 
 interface PermissionFormProps {
   initialData?: Permission | null;
@@ -23,12 +28,15 @@ export default function PermissionForm({
   loading,
   isEdit,
 }: PermissionFormProps) {
+  const { user, userIsSuperAdmin } = useAuth();
   const [formData, setFormData] = useState<{
     name: string;
     code: string;
     slug: string;
     description: string;
     module: string;
+    wing_id: number | null;
+    subwing_id: number | null;
     is_active: boolean;
     permission_action_id: number | null;
   }>({
@@ -37,6 +45,8 @@ export default function PermissionForm({
     slug: "",
     description: "",
     module: "",
+    wing_id: null,
+    subwing_id: null,
     is_active: true,
     permission_action_id: null,
   });
@@ -46,32 +56,47 @@ export default function PermissionForm({
   const [availableActions, setAvailableActions] = useState<PermissionAction[]>([]);
   const [selectedActionCodes, setSelectedActionCodes] = useState<string[]>([]);
 
-  // Module select state
+  // Entity state
+  const [wings, setWings] = useState<Wing[]>([]);
+  const [subWings, setSubWings] = useState<SubWing[]>([]);
   const [availableModules, setAvailableModules] = useState<string[]>([]);
   const [isCustomModule, setIsCustomModule] = useState(false);
 
+  // Determine the wing/subwing context for the current user
+  const userContext = useMemo(() => {
+    if (!user || userIsSuperAdmin) return null;
+    const primaryAssignment = user.roles?.find((r: any) => r.pivot?.is_primary) || user.roles?.[0];
+    if (!primaryAssignment?.pivot) return null;
+    return { 
+        wing_id: primaryAssignment.pivot.wing_id, 
+        sub_wing_id: primaryAssignment.pivot.sub_wing_id 
+    };
+  }, [user, userIsSuperAdmin]);
+
   useEffect(() => {
-    const fetchActions = async () => {
+    const fetchInitialData = async () => {
       try {
-        const actions = await permissionService.getAvailableActions();
+        const [actions, modules, wingsRes, subWingsRes] = await Promise.all([
+          permissionService.getAvailableActions(),
+          permissionService.getModules(),
+          wingService.getAllWings({ allData: true, is_active: true }),
+          subWingService.getAllSubWings({ allData: true, is_active: true })
+        ]);
+        
         setAvailableActions(actions);
-        setSelectedActionCodes(actions.map((a) => a.code)); // default all checked
-      } catch (err) {
-        console.error("Failed to fetch permission actions:", err);
-      }
-    };
-
-    const fetchModules = async () => {
-      try {
-        const modules = await permissionService.getModules();
         setAvailableModules(modules);
+        setWings(wingsRes.data || []);
+        setSubWings(subWingsRes.data || []);
+        
+        if (!isEdit) {
+          setSelectedActionCodes(actions.map((a) => a.code)); // default all checked
+        }
       } catch (err) {
-        console.error("Failed to fetch modules:", err);
+        console.error("Failed to fetch form data:", err);
       }
     };
 
-    fetchModules();
-    fetchActions();
+    fetchInitialData();
   }, [isEdit]);
 
   // Populate form when initialData changes
@@ -83,6 +108,8 @@ export default function PermissionForm({
         slug: initialData.slug || "",
         description: initialData.description || "",
         module: initialData.module || "",
+        wing_id: initialData.wing_id || null,
+        subwing_id: initialData.subwing_id || null,
         is_active: initialData.is_active !== false,
         permission_action_id: initialData.permission_action_id ?? null,
       });
@@ -98,16 +125,22 @@ export default function PermissionForm({
         slug: "",
         description: "",
         module: "",
+        wing_id: userContext?.wing_id || null,
+        subwing_id: userContext?.sub_wing_id || null,
         is_active: true,
         permission_action_id: null,
       });
-      setSelectedActionCodes([]);
+      setSelectedActionCodes(availableActions.map((a) => a.code));
     }
     setError("");
-  }, [initialData]);
+  }, [initialData, userContext, availableActions, availableModules]);
 
   const handleChange = (field: string, value: any) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
+    setFormData(prev => {
+        const next = { ...prev, [field]: value };
+        if (field === "wing_id") next.subwing_id = null;
+        return next;
+    });
 
     // Auto-generate code and slug from name when creating
     if (field === "name" && !isEdit) {
@@ -135,6 +168,21 @@ export default function PermissionForm({
       setError(err.message || "Failed to save permission");
     }
   };
+
+  const wingOptions = useMemo(() => [
+    { label: "Global / Common", value: "" },
+    ...wings.map(w => ({ label: w.name, value: w.id.toString() }))
+  ], [wings]);
+
+  const filteredSubWings = useMemo(() => {
+    if (!formData.wing_id) return [];
+    return subWings.filter(sw => sw.wing_id === formData.wing_id);
+  }, [subWings, formData.wing_id]);
+
+  const subWingOptions = useMemo(() => [
+    { label: "All Sub-Wings", value: "" },
+    ...filteredSubWings.map(sw => ({ label: sw.name, value: sw.id.toString() }))
+  ], [filteredSubWings]);
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
@@ -234,6 +282,29 @@ export default function PermissionForm({
             </div>
           )}
         </div>
+
+        {userIsSuperAdmin && (
+            <>
+                <div className="md:col-span-2">
+                    <Label>Wing Assignment (Optional)</Label>
+                    <Select
+                        value={formData.wing_id?.toString() || ""}
+                        onChange={(val) => handleChange("wing_id", val ? parseInt(val) : null)}
+                        options={wingOptions}
+                    />
+                </div>
+
+                <div className="md:col-span-2">
+                    <Label>Sub-Wing Assignment (Optional)</Label>
+                    <Select
+                        value={formData.subwing_id?.toString() || ""}
+                        onChange={(val) => handleChange("subwing_id", val ? parseInt(val) : null)}
+                        options={subWingOptions}
+                        disabled={!formData.wing_id}
+                    />
+                </div>
+            </>
+        )}
       </div>
 
       <div>

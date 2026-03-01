@@ -1,6 +1,8 @@
 export interface AtwResultApprovalAuthority {
   id: number;
-  role_id: number;
+  role_id: number | null;
+  user_id: number | null;
+  sort: number;
   is_cadet_approve: boolean;
   is_forward: boolean;
   is_final: boolean;
@@ -10,7 +12,11 @@ export interface AtwResultApprovalAuthority {
   role?: {
     id: number;
     name: string;
-  };
+  } | null;
+  user?: {
+    id: number;
+    name: string;
+  } | null;
 }
 
 export interface AtwApprovalActionData {
@@ -20,7 +26,10 @@ export interface AtwApprovalActionData {
   branch_id: number;
   group_id?: number;
   subject_id?: number;
+  instructor_id?: number;
   cadet_ids?: number[];
-  status: 'approved' | 'rejected';
+  authority_id?: number | null;
+  authority_ids?: number[];
+  status: 'approved' | 'rejected' | 'pending';
   rejected_reason?: string;
 }

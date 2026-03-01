@@ -9,9 +9,13 @@ import { commonService } from "@/libs/services/commonService";
 import FullLogo from "@/components/ui/fulllogo";
 import DataTable, { Column } from "@/components/ui/DataTable";
 import ConfirmationModal from "@/components/ui/modal/ConfirmationModal";
+import { usePageContext, useCan } from "@/context/PagePermissionsContext";
 
 export default function AtwAssessmentPenpictureGradesPage() {
   const router = useRouter();
+  const { permissions } = usePageContext();
+  const can = useCan();
+
   const [grades, setGrades] = useState<AtwAssessmentPenpictureGrade[]>([]);
   const [loading, setLoading] = useState(true);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
@@ -172,10 +176,16 @@ export default function AtwAssessmentPenpictureGradesPage() {
       headerAlign: "center",
       className: "text-center no-print",
       render: (grade) => (
-        <div className="flex items-center justify-center gap-1">
-          <button onClick={() => handleViewGrade(grade)} className="p-1 text-blue-600 hover:bg-blue-50 rounded" title="View"><Icon icon="hugeicons:view" className="w-4 h-4" /></button>
-          <button onClick={() => handleEditGrade(grade)} className="p-1 text-yellow-600 hover:bg-yellow-50 rounded" title="Edit"><Icon icon="hugeicons:pencil-edit-01" className="w-4 h-4" /></button>
-          <button onClick={() => handleDeleteGrade(grade)} className="p-1 text-red-600 hover:bg-red-50 rounded" title="Delete"><Icon icon="hugeicons:delete-02" className="w-4 h-4" /></button>
+        <div className="flex items-center justify-center gap-1" onClick={(e) => e.stopPropagation()}>
+          {can('view') && (
+            <button onClick={() => handleViewGrade(grade)} className="p-1 text-blue-600 hover:bg-blue-50 rounded" title="View"><Icon icon="hugeicons:view" className="w-4 h-4" /></button>
+          )}
+          {can('edit') && (
+            <button onClick={() => handleEditGrade(grade)} className="p-1 text-yellow-600 hover:bg-yellow-50 rounded" title="Edit"><Icon icon="hugeicons:pencil-edit-01" className="w-4 h-4" /></button>
+          )}
+          {can('delete') && (
+            <button onClick={() => handleDeleteGrade(grade)} className="p-1 text-red-600 hover:bg-red-50 rounded" title="Delete"><Icon icon="hugeicons:delete-02" className="w-4 h-4" /></button>
+          )}
         </div>
       ),
     },
@@ -216,12 +226,24 @@ export default function AtwAssessmentPenpictureGradesPage() {
         </div>
 
         <div className="flex items-center gap-3">
-          <button onClick={handleAddGrade} className="px-4 py-2 rounded-lg text-white flex items-center gap-1 bg-blue-600 hover:bg-blue-700"><Icon icon="hugeicons:add-circle" className="w-4 h-4 mr-2" />Add Grade</button>
+          {can('add') && (
+            <button onClick={handleAddGrade} className="px-4 py-2 rounded-lg text-white flex items-center gap-1 bg-blue-600 hover:bg-blue-700"><Icon icon="hugeicons:add-circle" className="w-4 h-4 mr-2" />Add Grade</button>
+          )}
           <button onClick={handleExport} className="px-4 py-2 rounded-lg text-white flex items-center gap-1 bg-green-600 hover:bg-green-700"><Icon icon="hugeicons:download-04" className="w-4 h-4 mr-2" />Export</button>
         </div>
       </div>
 
-      {loading ? <TableLoading /> : <DataTable columns={columns} data={grades} keyExtractor={(grade) => grade.id.toString()} emptyMessage="No grades found" />}
+      {loading ? (
+        <TableLoading />
+      ) : (
+        <DataTable
+          columns={columns}
+          data={grades}
+          keyExtractor={(grade) => grade.id.toString()}
+          emptyMessage="No grades found"
+          onRowClick={can('view') ? handleViewGrade : undefined}
+        />
+      )}
 
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">

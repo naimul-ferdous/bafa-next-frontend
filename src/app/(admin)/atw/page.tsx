@@ -1,10 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
-import React from "react";
+import React, { useMemo } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { Icon } from "@iconify/react";
+import { useAuth } from "@/context/AuthContext";
 
 // ─── Orbit Circle Node ────────────────────────────────────────────────────────
 interface OrbitCircleProps {
@@ -228,16 +229,37 @@ const NoticesPanel = () => {
 
 // ─── Main ATW Dashboard View ──────────────────────────────────────────────────
 export function ATWDashboardView() {
-  const nodes = [
+  const { menus } = useAuth();
+
+  // Collect all accessible routes from the user's menu tree (flat + children)
+  const accessibleRoutes = useMemo(() => {
+    const normalize = (p: string) => p.replace(/\/+$/, "");
+    const routes = new Set<string>();
+    const collect = (list: any[]) => {
+      for (const m of list) {
+        if (m.route) routes.add(normalize(m.route));
+        if (m.children?.length) collect(m.children);
+      }
+    };
+    collect(menus);
+    return routes;
+  }, [menus]);
+
+  // If menus haven't loaded yet (empty), show all items
+  const hasAccess = (href: string) =>
+    menus.length === 0 || accessibleRoutes.has(href.replace(/\/+$/, ""));
+
+  const allNodes = [
     { title: "Subjects", href: "/atw/subjects", icon: "hugeicons:star", angle: 270 },
     { title: "Results", href: "/atw/results", icon: "hugeicons:user-multiple", angle: 330 },
     { title: "Pen Picture", href: "/atw/assessments/penpicture/results", icon: "hugeicons:edit-02", angle: 30 },
-    { title: "Counseling", href: "/atw/assessments/counseling/results", icon: "hugeicons:notebook", angle: 90 },
+    { title: "Counseling", href: "/atw/assessments/counselings/results", icon: "hugeicons:notebook", angle: 90 },
     { title: "OLQ", href: "/atw/assessments/olq/results", icon: "hugeicons:book-02", angle: 150 },
     { title: "Warnings", href: "/atw/assessments/warnings", icon: "hugeicons:alert-02", angle: 210 },
   ];
+  const nodes = allNodes.filter((n) => hasAccess(n.href));
 
-  const statusCards: StatusCardProps[] = [
+  const allStatusCards: StatusCardProps[] = [
     {
       title: "OLQ Assessment",
       subtitle: "Officer Qualities",
@@ -249,7 +271,7 @@ export function ATWDashboardView() {
     {
       title: "Counseling",
       subtitle: "Cadet Support",
-      href: "/atw/assessments/counseling/results",
+      href: "/atw/assessments/counselings/results",
       icon: "hugeicons:user-multiple",
       accentColor: "from-blue-500 to-blue-700",
       bgImage: "corner-2.png",
@@ -263,6 +285,7 @@ export function ATWDashboardView() {
       bgImage: "corner-1.png",
     },
   ];
+  const statusCards = allStatusCards.filter((c) => hasAccess(c.href));
 
   const radius = 220;
   const getPosition = (angleInDegrees: number) => {

@@ -3,15 +3,18 @@
 import React from "react";
 import Link from "next/link";
 import { Icon } from "@iconify/react";
+import { useCan } from "@/context/PagePermissionsContext";
 
 interface DashboardCardProps {
   title: string;
   subtitle: string;
   icon: string;
   href: string;
+  visible?: boolean;
 }
 
-const DashboardCard = ({ title, subtitle, icon, href }: DashboardCardProps) => {
+const DashboardCard = ({ title, subtitle, icon, href, visible = true }: DashboardCardProps) => {
+  if (!visible) return null;
   return (
     <div className="bg-white rounded-xl shadow-md p-8 h-full relative overflow-hidden flex items-center justify-center">
       <div className="flex flex-col items-center gap-4 relative z-10">
@@ -36,42 +39,50 @@ const DashboardCard = ({ title, subtitle, icon, href }: DashboardCardProps) => {
 };
 
 export default function ATWAssessmentsPage() {
+  const can = useCan();
+  
   const cards = [
     {
       title: "OLQ Assessment",
       subtitle: "Officer Like Qualities",
       icon: "hugeicons:star",
       href: "/atw/assessments/olq/results",
+      visible: can('view', 'atw-olq-results'),
     },
     {
       title: "Counseling",
       subtitle: "Cadet counseling records",
       icon: "hugeicons:user-multiple",
       href: "/atw/assessments/counseling/results",
+      visible: can('view', 'atw-counseling-results'),
     },
     {
       title: "Pen Picture",
       subtitle: "Character assessments",
       icon: "hugeicons:edit-02",
       href: "/atw/assessments/penpicture/results",
+      visible: can('view', 'atw-penpicture-results'),
     },
     {
       title: "Cadet Warnings",
       subtitle: "Warning management",
       icon: "hugeicons:alert-02",
       href: "/atw/assessments/warnings",
+      visible: can('view', 'atw-warnings'),
     },
     {
       title: "Subjects",
       subtitle: "Academic subjects",
       icon: "hugeicons:book-02",
       href: "/atw/subjects",
+      visible: can('view', 'atw-subjects'),
     },
     {
       title: "Results",
       subtitle: "Exam results",
       icon: "hugeicons:notebook",
       href: "/atw/results",
+      visible: can('view', 'atw-results'),
     },
   ];
 

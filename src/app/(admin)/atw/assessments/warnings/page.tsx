@@ -10,10 +10,14 @@ import { useAuth } from "@/libs/hooks/useAuth";
 import FullLogo from "@/components/ui/fulllogo";
 import DataTable, { Column } from "@/components/ui/DataTable";
 import ConfirmationModal from "@/components/ui/modal/ConfirmationModal";
+import { usePageContext, useCan } from "@/context/PagePermissionsContext";
 
 export default function AtwCadetWarningsPage() {
   const router = useRouter();
   const { user } = useAuth();
+  const { permissions } = usePageContext();
+  const can = useCan();
+
   const isInstructor = !!user?.instructor_biodata;
 
   const [warnings, setWarnings] = useState<CadetWarning[]>([]);
@@ -192,9 +196,15 @@ export default function AtwCadetWarningsPage() {
       className: "text-center no-print",
       render: (warning) => (
         <div className="flex items-center justify-center gap-1" onClick={(e) => e.stopPropagation()}>
-          <button onClick={() => handleViewWarning(warning)} className="p-1 text-blue-600 hover:bg-blue-50 rounded transition-all" title="View Details"><Icon icon="hugeicons:view" className="w-4 h-4" /></button>
-          <button onClick={() => handleEditWarning(warning)} className="p-1 text-yellow-600 hover:bg-yellow-50 rounded transition-all" title="Edit"><Icon icon="hugeicons:pencil-edit-01" className="w-4 h-4" /></button>
-          <button onClick={() => handleDeleteWarning(warning)} className="p-1 text-red-600 hover:bg-red-50 rounded transition-all" title="Delete"><Icon icon="hugeicons:delete-02" className="w-4 h-4" /></button>
+          {can('view') && (
+            <button onClick={() => handleViewWarning(warning)} className="p-1 text-blue-600 hover:bg-blue-50 rounded transition-all" title="View Details"><Icon icon="hugeicons:view" className="w-4 h-4" /></button>
+          )}
+          {can('edit') && (
+            <button onClick={() => handleEditWarning(warning)} className="p-1 text-yellow-600 hover:bg-yellow-50 rounded transition-all" title="Edit"><Icon icon="hugeicons:pencil-edit-01" className="w-4 h-4" /></button>
+          )}
+          {can('delete') && (
+            <button onClick={() => handleDeleteWarning(warning)} className="p-1 text-red-600 hover:bg-red-50 rounded transition-all" title="Delete"><Icon icon="hugeicons:delete-02" className="w-4 h-4" /></button>
+          )}
         </div>
       ),
     },
@@ -241,9 +251,11 @@ export default function AtwCadetWarningsPage() {
       className: "text-center no-print",
       render: (row) => (
         <div className="flex flex-col items-center gap-1">
-            <button onClick={() => router.push(`/atw/assessments/warnings/course/${row.course_details?.id}/semester/${row.semester_details?.id}`)} className="px-3 py-1 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-lg flex items-center gap-1 text-[10px] font-black uppercase transition-all" title="View Details">
-              <Icon icon="hugeicons:view" className="w-3.5 h-3.5" /> View Detailed
-            </button>
+            {can('view') && (
+              <button onClick={() => router.push(`/atw/assessments/warnings/course/${row.course_details?.id}/semester/${row.semester_details?.id}`)} className="px-3 py-1 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-lg flex items-center gap-1 text-[10px] font-black uppercase transition-all" title="View Details">
+                <Icon icon="hugeicons:view" className="w-3.5 h-3.5" /> View Detailed
+              </button>
+            )}
         </div>
       ),
     },
@@ -263,9 +275,9 @@ export default function AtwCadetWarningsPage() {
           <input type="text" placeholder={isInstructor ? "Search by cadet name, BD No, warning..." : "Search by course or semester..."} value={searchTerm} onChange={(e) => handleSearchChange(e.target.value)} className="pl-10 pr-4 py-2 border border-gray-200 rounded-lg bg-gray-50 text-gray-900 w-full focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all" />
         </div>
         <div className="flex items-center gap-3">
-          {/* {isInstructor && ( */}
+          {can('add') && (
             <button onClick={handleAddWarning} className="px-4 py-2 rounded-lg text-white flex items-center gap-1 bg-blue-600 hover:bg-blue-700 transition-all shadow-md active:scale-95"><Icon icon="hugeicons:add-circle" className="w-4 h-4 mr-2" />Add Warning</button>
-          {/* )} */}
+          )}
           <button onClick={handleExport} className="px-4 py-2 rounded-lg text-white flex items-center gap-1 bg-green-600 hover:bg-green-700 transition-all shadow-md active:scale-95"><Icon icon="hugeicons:download-04" className="w-4 h-4 mr-2" />Export</button>
         </div>
       </div>
@@ -275,7 +287,7 @@ export default function AtwCadetWarningsPage() {
           <TableLoading />
         ) : (
           <>
-            <DataTable columns={columns} data={warnings} keyExtractor={(warning) => warning.id.toString()} emptyMessage="No cadet warnings found" onRowClick={handleViewWarning} />
+            <DataTable columns={columns} data={warnings} keyExtractor={(warning) => warning.id.toString()} emptyMessage="No cadet warnings found" onRowClick={can('view') ? handleViewWarning : undefined} />
             
             <div className="flex items-center justify-between mt-6 pt-6 border-t border-gray-100">
               <div className="flex items-center gap-4">

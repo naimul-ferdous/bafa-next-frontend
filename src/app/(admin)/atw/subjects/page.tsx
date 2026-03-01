@@ -6,229 +6,373 @@ import { useRouter } from "next/navigation";
 import { AtwSubject } from "@/libs/types/system";
 import { Icon } from "@iconify/react";
 import { atwSubjectService } from "@/libs/services/atwSubjectService";
-import { useAuth } from "@/libs/hooks/useAuth";
 import FullLogo from "@/components/ui/fulllogo";
 import DataTable, { Column } from "@/components/ui/DataTable";
 import ConfirmationModal from "@/components/ui/modal/ConfirmationModal";
+import Pagination from "@/components/ui/Pagination";
+import { useCan } from "@/context/PagePermissionsContext";
 
 export default function AtwSubjectsPage() {
-  const router = useRouter();
-  const { user } = useAuth();
-  const [subjects, setSubjects] = useState<AtwSubject[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
-  const [deletingSubject, setDeletingSubject] = useState<AtwSubject | null>(null);
-  const [deleteLoading, setDeleteLoading] = useState(false);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [perPage, setPerPage] = useState(10);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [pagination, setPagination] = useState({
-    current_page: 1,
-    last_page: 1,
-    per_page: 10,
-    total: 0,
-    from: 0,
-    to: 0,
-  });
+    const router = useRouter();
+    const [subjects, setSubjects] = useState<AtwSubject[]>([]);
+    const [loading, setLoading] = useState(true);
+    const can = useCan();
 
-  const isInstructor = !!user?.instructor_biodata;
+    // Modal states
+    const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+    const [deletingSubject, setDeletingSubject] = useState<AtwSubject | null>(null);
+    const [deleteLoading, setDeleteLoading] = useState(false);
 
-  const loadSubjects = useCallback(async () => {
-    try {
-      setLoading(true);
-      const response = await atwSubjectService.getAllSubjects({
-        page: currentPage,
-        per_page: perPage,
-        search: searchTerm || undefined,
-      });
+    const [statusModalOpen, setStatusModalOpen] = useState(false);
+    const [statusSubject, setStatusSubject] = useState<AtwSubject | null>(null);
+    const [statusLoading, setStatusLoading] = useState(false);
 
-      let subjectsData = response.data;
+    const [currentModalOpen, setCurrentModalOpen] = useState(false);
+    const [currentSubject, setCurrentSubject] = useState<AtwSubject | null>(null);
+    const [currentLoading, setCurrentLoading] = useState(false);
 
-      // Filter subjects if user is an instructor
-      if (isInstructor && user?.atw_assigned_subjects) {
-        const assignedSubjectIds = user.atw_assigned_subjects.map((as: any) => as.subject_id);
-        subjectsData = subjectsData.filter(s => assignedSubjectIds.includes(s.id));
-      }
+    const [searchTerm, setSearchTerm] = useState("");
+    const [perPage, setPerPage] = useState(10);
+    const [currentPage, setCurrentPage] = useState(1);
+    const [pagination, setPagination] = useState({
+        current_page: 1,
+        last_page: 1,
+        per_page: 10,
+        total: 0,
+        from: 0,
+        to: 0,
+    });
 
-      setSubjects(subjectsData);
-      setPagination({
-        current_page: response.current_page,
-        last_page: response.last_page,
-        per_page: response.per_page,
-        total: response.total,
-        from: response.from,
-        to: response.to,
-      });
-    } catch (error) {
-      console.error("Failed to load subjects:", error);
-    } finally {
-      setLoading(false);
-    }
-  }, [currentPage, perPage, searchTerm, isInstructor, user?.atw_assigned_subjects]);
+    const loadSubjects = useCallback(async () => {
+        try {
+            setLoading(true);
+            const response = await atwSubjectService.getAllSubjects({
+                page: currentPage,
+                per_page: perPage,
+                search: searchTerm || undefined,
+            });
 
-  useEffect(() => {
-    loadSubjects();
-  }, [loadSubjects]);
+            setSubjects(response.data);
+            setPagination({
+                current_page: response.current_page,
+                last_page: response.last_page,
+                per_page: response.per_page,
+                total: response.total,
+                from: response.from,
+                to: response.to,
+            });
+        } catch (error) {
+            console.error("Failed to load subjects:", error);
+        } finally {
+            setLoading(false);
+        }
+    }, [currentPage, perPage, searchTerm]);
 
-  const handleAddSubject = () => router.push("/atw/subjects/create");
-  const handleEditSubject = (subject: AtwSubject) => router.push(`/atw/subjects/${subject.id}/edit`);
-  const handleViewSubject = (subject: AtwSubject) => router.push(`/atw/subjects/${subject.id}`);
-  const handleDeleteSubject = (subject: AtwSubject) => {
-    setDeletingSubject(subject);
-    setDeleteModalOpen(true);
-  };
+    useEffect(() => {
+        loadSubjects();
+    }, [loadSubjects]);
 
-  const confirmDelete = async () => {
-    if (!deletingSubject) return;
-    try {
-      setDeleteLoading(true);
-      await atwSubjectService.deleteSubject(deletingSubject.id);
-      await loadSubjects();
-      setDeleteModalOpen(false);
-      setDeletingSubject(null);
-    } catch (error) {
-      console.error("Failed to delete subject:", error);
-      alert("Failed to delete subject");
-    } finally {
-      setDeleteLoading(false);
-    }
-  };
+    const handleAddSubject = () => router.push("/atw/subjects/create");
+    const handleEditSubject = (subject: AtwSubject) => router.push(`/atw/subjects/${subject.id}/edit`);
+    const handleViewSubject = (subject: AtwSubject) => router.push(`/atw/subjects/${subject.id}`);
 
-  const handleExport = () => console.log("Export subjects");
-  const handleSearchChange = (value: string) => {
-    setSearchTerm(value);
-    setCurrentPage(1);
-  };
-  const handlePerPageChange = (value: number) => {
-    setPerPage(value);
-    setCurrentPage(1);
-  };
+    const confirmDelete = async () => {
+        if (!deletingSubject) return;
+        try {
+            setDeleteLoading(true);
+            await atwSubjectService.deleteSubject(deletingSubject.id);
+            await loadSubjects();
+            setDeleteModalOpen(false);
+            setDeletingSubject(null);
+        } catch (error) {
+            console.error("Failed to delete subject:", error);
+        } finally {
+            setDeleteLoading(false);
+        }
+    };
 
-  const TableLoading = () => (
-    <div className="w-full min-h-[20vh] flex items-center justify-center">
-      <div><Icon icon="hugeicons:fan-01" className="w-10 h-10 animate-spin mx-auto my-10 text-blue-500" /></div>
-    </div>
-  );
+    const handleToggleStatus = (subject: AtwSubject) => {
+        setStatusSubject(subject);
+        setStatusModalOpen(true);
+    };
 
-  const columns: Column<AtwSubject>[] = [
-    { key: "id", header: "SL.", headerAlign:"center", className: "text-center text-gray-900", render: (subject, index) => (pagination.from || 0) + (index) },
-    { key: "subject_name", header: "Subject Name", className: "font-medium text-gray-900" },
-    { key: "subject_code", header: "Code", className: "text-gray-700 font-mono text-sm" },
-    {
-      key: "course",
-      header: "Course",
-      className: "text-gray-700",
-      render: (subject) => subject.course?.name || "—"
-    },
-    {
-      key: "semester",
-      header: "Semester",
-      className: "text-gray-700",
-      render: (subject) => subject.semester?.name || "—"
-    },
-    {
-      key: "program",
-      header: "Program",
-      className: "text-gray-700",
-      render: (subject) => subject.program?.name || "—"
-    },
-    {
-      key: "subjects_full_mark",
-      header: "Full Mark",
-      headerAlign:"center",
-      className: "text-gray-700 text-center",
-      render: (subject) => subject.subjects_full_mark
-    },
-    {
-      key: "subjects_credit",
-      header: "Credit",
-      headerAlign:"center",
-      className: "text-gray-700 text-center",
-      render: (subject) => subject.subjects_credit
-    },
-    {
-      key: "is_professional",
-      header: "Type",
-      headerAlign:"center",
-      className: "text-center",
-      render: (subject) => (
-        <span className={`inline-flex items-center px-2.5 py-1 text-xs font-semibold rounded-full ${subject.is_professional ? "bg-purple-100 text-purple-800" : "bg-gray-100 text-gray-800"}`}>
-          {subject.is_professional ? "Professional" : "General"}
-        </span>
-      ),
-    },
-    {
-      key: "is_active",
-      header: "Status",
-      headerAlign:"center",
-      className: "text-center",
-      render: (subject) => (
-        <span className={`inline-flex items-center px-2.5 py-1 text-xs font-semibold rounded-full ${subject.is_active ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}`}>
-          {subject.is_active ? "Active" : "Inactive"}
-        </span>
-      ),
-    },
-    ...(!isInstructor ? [{
-      key: "actions",
-      header: "Actions",
-      headerAlign: "center" as const,
-      className: "text-center no-print",
-      render: (subject: AtwSubject) => (
-        <div className="flex items-center justify-center gap-1" onClick={(e) => e.stopPropagation()}>
-          <button onClick={() => handleViewSubject(subject)} className="p-1 text-blue-600 hover:bg-blue-50 rounded" title="View"><Icon icon="hugeicons:view" className="w-4 h-4" /></button>
-          <button onClick={() => handleEditSubject(subject)} className="p-1 text-yellow-600 hover:bg-yellow-50 rounded" title="Edit"><Icon icon="hugeicons:pencil-edit-01" className="w-4 h-4" /></button>
-          <button onClick={() => handleDeleteSubject(subject)} className="p-1 text-red-600 hover:bg-red-50 rounded" title="Delete"><Icon icon="hugeicons:delete-02" className="w-4 h-4" /></button>
+    const confirmToggleStatus = async () => {
+        if (!statusSubject) return;
+        try {
+            setStatusLoading(true);
+            await atwSubjectService.updateSubject(statusSubject.id, {
+                is_active: !statusSubject.is_active
+            });
+            await loadSubjects();
+            setStatusModalOpen(false);
+            setStatusSubject(null);
+        } catch (error) {
+            console.error("Failed to update status:", error);
+        } finally {
+            setStatusLoading(false);
+        }
+    };
+
+    const handleToggleCurrent = (subject: AtwSubject) => {
+        setCurrentSubject(subject);
+        setCurrentModalOpen(true);
+    };
+
+    const confirmToggleCurrent = async () => {
+        if (!currentSubject) return;
+        try {
+            setCurrentLoading(true);
+            await atwSubjectService.updateSubject(currentSubject.id, {
+                is_current: !currentSubject.is_current
+            });
+            await loadSubjects();
+            setCurrentModalOpen(false);
+            setCurrentSubject(null);
+        } catch (error) {
+            console.error("Failed to update current status:", error);
+        } finally {
+            setCurrentLoading(false);
+        }
+    };
+
+    const handleSearchChange = (value: string) => {
+        setSearchTerm(value);
+        setCurrentPage(1);
+    };
+
+    const columns: Column<AtwSubject>[] = [
+        {
+            key: "id",
+            header: "SL.",
+            headerAlign: "center",
+            className: "text-center text-gray-900",
+            render: (subject, index) => (pagination.from || 0) + (index)
+        },
+        {
+            key: "module",
+            header: "Subject Name",
+            className: "font-medium text-gray-900",
+            render: (subject) => (
+                <div>
+                    <div>{subject.module?.subject_name}</div>
+                    <div className="text-[10px] text-gray-500 font-mono">{subject.module?.subject_code}</div>
+                </div>
+            )
+        },
+        {
+            key: "course",
+            header: "Course",
+            render: (subject) => (
+                <div className="max-w-[150px] truncate" title={subject.course?.name}>
+                    {subject.course?.name || "—"}
+                </div>
+            )
+        },
+        {
+            key: "semester",
+            header: "Semester",
+            render: (subject) => subject.semester?.name || "—"
+        },
+        {
+            key: "program",
+            header: "Program",
+            render: (subject) => subject.program?.name || "—"
+        },
+        {
+            key: "branch",
+            header: "Branch",
+            render: (subject) => subject.branch?.name || "—"
+        },
+        {
+            key: "group",
+            header: "Group",
+            render: (subject) => subject.group?.name || "—"
+        },
+        {
+            key: "is_current",
+            header: "Current",
+            headerAlign: "center",
+            className: "text-center",
+            render: (subject) => (
+                <span
+                    className={`inline-flex items-center px-2.5 py-1 text-[10px] font-bold rounded-full ${subject.is_current
+                        ? "bg-blue-100 text-blue-800"
+                        : "bg-gray-100 text-gray-800"
+                        }`}
+                >
+                    {subject.is_current ? "CURRENT" : "NOT CURRENT"}
+                </span>
+            ),
+        },
+        {
+            key: "is_active",
+            header: "Status",
+            headerAlign: "center",
+            className: "text-center",
+            render: (subject) => (
+                <span
+                    className={`inline-flex items-center px-2.5 py-1 text-[10px] font-bold rounded-full ${subject.is_active
+                        ? "bg-green-100 text-green-800"
+                        : "bg-red-100 text-red-800"
+                        }`}
+                >
+                    {subject.is_active ? "ACTIVE" : "INACTIVE"}
+                </span>
+            ),
+        },
+        {
+            key: "actions",
+            header: "Actions",
+            headerAlign: "center",
+            className: "text-center no-print",
+            render: (subject: AtwSubject) => (
+                <div className="flex items-center justify-center gap-1" onClick={(e) => e.stopPropagation()}>
+                    {can('edit') ? (
+                        <button
+                            onClick={() => handleEditSubject(subject)}
+                            className="p-1 text-yellow-600 hover:bg-yellow-50 rounded transition-colors"
+                            title="Edit"
+                        >
+                            <Icon icon="hugeicons:pencil-edit-01" className="w-4 h-4" />
+                        </button>
+                    ) : null}
+                    {can('delete') ? (
+                        <button
+                            onClick={() => handleToggleCurrent(subject)}
+                            className={`p-1 rounded transition-colors ${subject.is_current ? "text-gray-600 hover:bg-gray-50" : "text-blue-600 hover:bg-blue-50"}`}
+                            title={subject.is_current ? "Set as Not Current" : "Set as Current"}
+                        >
+                            <Icon icon={subject.is_current ? "hugeicons:clock-01" : "hugeicons:clock-04"} className="w-4 h-4" />
+                        </button>
+                    ) : null}
+                    {can("delete") ? (
+                        subject.is_active ? (
+                            <button
+                                onClick={() => handleToggleStatus(subject)}
+                                className="p-1 text-red-600 hover:bg-red-50 rounded transition-colors"
+                                title="Deactivate"
+                            >
+                                <Icon icon="hugeicons:unavailable" className="w-4 h-4" />
+                            </button>
+                        ) : (
+                            <button
+                                onClick={() => handleToggleStatus(subject)}
+                                className="p-1 text-green-600 hover:bg-green-50 rounded transition-colors"
+                                title="Activate"
+                            >
+                                <Icon icon="hugeicons:checkmark-circle-02" className="w-4 h-4" />
+                            </button>
+                        )
+                    ) : null}
+                </div>
+            ),
+        },
+    ];
+
+    return (
+        <div className="bg-white p-6 rounded-lg border border-gray-200 space-y-6 shadow-sm">
+            {/* Header */}
+            <div className="text-center mb-8">
+                <div className="flex justify-center mb-4">
+                    <FullLogo />
+                </div>
+                <h1 className="text-xl font-bold text-gray-900 uppercase tracking-tight">
+                    Bangladesh Air Force Academy
+                </h1>
+                <h2 className="text-md font-semibold text-gray-700 mt-1 uppercase">
+                    ATW Subject Mapping Management
+                </h2>
+            </div>
+
+            {/* Controls */}
+            <div className="flex items-center justify-between gap-4 mb-6">
+                <div className="relative w-80">
+                    <Icon icon="hugeicons:search-01" className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+                    <input
+                        type="text"
+                        placeholder="Search Subjects..."
+                        value={searchTerm}
+                        onChange={(e) => handleSearchChange(e.target.value)}
+                        className="pl-10 pr-4 py-2 border border-gray-200 rounded-lg bg-gray-50 text-gray-900 w-full focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all"
+                    />
+                </div>
+
+                <div className="flex items-center gap-3">
+                    {can('add') ? (
+                        <button onClick={handleAddSubject} className="px-4 py-2 rounded-lg text-white flex items-center gap-1 bg-blue-600 hover:bg-blue-700 transition-all shadow-md active:scale-95 font-medium">
+                            <Icon icon="hugeicons:add-circle" className="w-4 h-4 mr-2" />
+                            New Subject
+                        </button>
+                    ) : null}
+                </div>
+            </div>
+
+            {/* Table */}
+            {loading ? (
+                <div className="w-full min-h-[40vh] flex items-center justify-center">
+                    <Icon icon="hugeicons:fan-01" className="w-10 h-10 animate-spin text-blue-500" />
+                </div>
+            ) : (
+                <DataTable
+                    columns={columns}
+                    data={subjects}
+                    keyExtractor={(subject) => subject.id.toString()}
+                    emptyMessage="No subject mappings found"
+                    onRowClick={can('view') ? handleViewSubject : undefined}
+                />
+            )}
+
+            {/* Pagination */}
+            <Pagination
+                currentPage={currentPage}
+                lastPage={pagination.last_page}
+                total={pagination.total}
+                from={pagination.from}
+                to={pagination.to}
+                perPage={perPage}
+                onPageChange={setCurrentPage}
+                onPerPageChange={(val) => {
+                    setPerPage(val);
+                    setCurrentPage(1);
+                }}
+            />
+
+            {/* Modals */}
+            <ConfirmationModal
+                isOpen={deleteModalOpen}
+                onClose={() => setDeleteModalOpen(false)}
+                onConfirm={confirmDelete}
+                title="Delete Mapping"
+                message={`Are you sure you want to delete this subject mapping? This will remove the subject from this course context.`}
+                confirmText="Delete"
+                cancelText="Cancel"
+                loading={deleteLoading}
+                variant="danger"
+            />
+
+            <ConfirmationModal
+                isOpen={statusModalOpen}
+                onClose={() => setStatusModalOpen(false)}
+                onConfirm={confirmToggleStatus}
+                title={statusSubject?.is_active ? "Deactivate Mapping" : "Activate Mapping"}
+                message={`Are you sure you want to ${statusSubject?.is_active ? "deactivate" : "activate"} the subject mapping for "${statusSubject?.module?.subject_name}"?`}
+                confirmText={statusSubject?.is_active ? "Deactivate" : "Activate"}
+                cancelText="Cancel"
+                loading={statusLoading}
+                variant={statusSubject?.is_active ? "danger" : "success"}
+            />
+
+            <ConfirmationModal
+                isOpen={currentModalOpen}
+                onClose={() => setCurrentModalOpen(false)}
+                onConfirm={confirmToggleCurrent}
+                title={currentSubject?.is_current ? "Unset Current" : "Set as Current"}
+                message={`Are you sure you want to set "${currentSubject?.module?.subject_name}" as ${currentSubject?.is_current ? "not current" : "current"}?`}
+                confirmText={currentSubject?.is_current ? "Unset" : "Set Current"}
+                cancelText="Cancel"
+                loading={currentLoading}
+                variant={currentSubject?.is_current ? "warning" : "info"}
+            />
         </div>
-      ),
-    }] : []),
-  ];
-
-  return (
-    <div className="bg-white p-6 rounded-lg border border-gray-200 space-y-6">
-      <div className="text-center mb-8">
-        <div className="flex justify-center mb-4"><FullLogo /></div>
-        <h1 className="text-xl font-bold text-gray-900 uppercase">Bangladesh Air Force Academy</h1>
-        <h2 className="text-md font-semibold text-gray-700 mt-2 uppercase">ATW Subjects List</h2>
-      </div>
-
-      <div className="flex items-center justify-between gap-4 mb-6">
-        <div className="relative w-80">
-          <Icon icon="hugeicons:search-01" className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
-          <input type="text" placeholder="Search by subject name, code..." value={searchTerm} onChange={(e) => handleSearchChange(e.target.value)} className="pl-10 pr-4 py-2 border border-gray-200 rounded-lg bg-white text-gray-900 w-full focus:outline-none focus:ring-0" />
-        </div>
-        <div className="flex items-center gap-3">
-          {!isInstructor && (
-            <button onClick={handleAddSubject} className="px-4 py-2 rounded-lg text-white flex items-center gap-1 bg-blue-600 hover:bg-blue-700">
-              <Icon icon="hugeicons:add-circle" className="w-4 h-4 mr-2" />
-              Add Subject
-            </button>
-          )}
-          <button onClick={handleExport} className="px-4 py-2 rounded-lg text-white flex items-center gap-1 bg-green-600 hover:bg-green-700"><Icon icon="hugeicons:download-04" className="w-4 h-4 mr-2" />Export</button>
-        </div>
-      </div>
-
-      {loading ? <TableLoading /> : <DataTable columns={columns} data={subjects} keyExtractor={(subject) => subject.id.toString()} emptyMessage="No subjects found" onRowClick={handleViewSubject} />}
-
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <div className="text-sm text-gray-700">Showing {pagination.from || 0} to {pagination.to || 0} of {pagination.total} results</div>
-          <select value={perPage} onChange={(e) => handlePerPageChange(Number(e.target.value))} className="px-4 py-2 border border-gray-200 rounded-lg bg-white text-gray-900">
-            <option value={5}>5 per page</option>
-            <option value={10}>10 per page</option>
-            <option value={25}>25 per page</option>
-            <option value={50}>50 per page</option>
-          </select>
-        </div>
-        <div className="flex items-center gap-2">
-          <button onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))} disabled={currentPage === 1} className="px-4 py-2 text-sm border border-black rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"><Icon icon="hugeicons:arrow-left-01" className="w-4 h-4 inline mr-1" />Prev</button>
-          {Array.from({ length: pagination.last_page }, (_, i) => i + 1).map(page => (
-            <button key={page} onClick={() => setCurrentPage(page)} className={`px-4 py-2 text-sm rounded-lg ${currentPage === page ? "bg-blue-600 text-white" : "border border-black hover:bg-gray-50"}`}>{page}</button>
-          ))}
-          <button onClick={() => setCurrentPage(prev => Math.min(pagination.last_page, prev + 1))} disabled={currentPage === pagination.last_page} className="px-4 py-2 text-sm border border-black rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed">Next<Icon icon="hugeicons:arrow-right-01" className="w-4 h-4 inline ml-1" /></button>
-        </div>
-      </div>
-
-      <ConfirmationModal isOpen={deleteModalOpen} onClose={() => setDeleteModalOpen(false)} onConfirm={confirmDelete} title="Delete Subject" message={`Are you sure you want to delete "${deletingSubject?.subject_name}"? This action cannot be undone.`} confirmText="Delete" cancelText="Cancel" loading={deleteLoading} variant="danger" />
-    </div>
-  );
+    );
 }

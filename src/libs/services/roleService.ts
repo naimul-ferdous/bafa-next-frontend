@@ -11,12 +11,16 @@ export interface RoleQueryParams {
   page?: number;
   per_page?: number;
   search?: string;
+  wing_id?: number;
+  subwing_id?: number;
 }
 
 export interface RoleCreateData {
   name: string;
   slug?: string;
   description?: string;
+  wing_id?: number | null;
+  subwing_id?: number | null;
   is_active: boolean;
 }
 
@@ -74,6 +78,14 @@ export const roleService = {
 
       if (params?.search) {
         query.append('search', params.search);
+      }
+
+      if (params?.wing_id) {
+        query.append('wing_id', params.wing_id.toString());
+      }
+
+      if (params?.subwing_id) {
+        query.append('subwing_id', params.subwing_id.toString());
       }
 
       const endpoint = `/roles${query.toString() ? `?${query.toString()}` : ''}`;

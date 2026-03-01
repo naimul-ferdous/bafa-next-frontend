@@ -12,7 +12,7 @@ import type {
   SystemBranch,
   SystemGroup,
   SystemExam,
-  AtwSubject,
+  AtwSubjectModule,
   SystemWarningType,
 } from '@/libs/types/system';
 import type {
@@ -28,6 +28,7 @@ import type {
 import type { CtwAssessmentOlqType } from '@/libs/types/ctwAssessmentOlq';
 import type { Ftw11sqnFlyingPhaseType, Ftw11sqnFlyingSyllabus, Ftw11sqnGroundSyllabus } from '@/libs/types/ftw11sqnFlying';
 import type { Ftw12sqnFlyingPhaseType, Ftw12sqnFlyingSyllabus, Ftw12sqnGroundSyllabus } from '@/libs/types/ftw12sqnFlying';
+import type { FilePrintType } from '@/libs/types/filePrintType';
 
 interface ResultOptionsResponse {
   success: boolean;
@@ -42,9 +43,10 @@ interface ResultOptionsResponse {
     ranks: Rank[];
     wings: Wing[];
     sub_wings: SubWing[];
+    file_print_types: FilePrintType[];
     divisions: SystemDivision[];
     warning_types: SystemWarningType[];
-    subjects: AtwSubject[];
+    subjects: AtwSubjectModule[];
     instructors: User[];
     cadets: CadetProfile[];
     ctw_olq_types: CtwAssessmentOlqType[];

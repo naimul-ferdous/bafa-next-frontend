@@ -22,10 +22,14 @@ export interface Permission {
   description?: string | null;
   module: string;
   permission_action_id?: number | null;
+  wing_id?: number | null;
+  subwing_id?: number | null;
   is_active: boolean;
   created_at: string;
   updated_at: string;
   action?: PermissionAction;
+  wing?: Wing;
+  subwing?: SubWing;
   pivot?: PermissionPivot;
 }
 
@@ -92,6 +96,8 @@ export interface PermissionQueryParams {
   page?: number;
   per_page?: number;
   search?: string;
+  wing_id?: number;
+  subwing_id?: number;
   sort_by?: string;
   sort_order?: 'asc' | 'desc';
 }

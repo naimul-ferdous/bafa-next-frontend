@@ -20,7 +20,7 @@ interface EstimatedMarkInput {
   id?: number;
   event_name: string;
   event_code: string;
-  estimated_mark: number;
+  estimated_mark: number | string;
   remarks: string;
 }
 
@@ -124,7 +124,7 @@ export default function OlqTypeForm({ initialData, onSubmit, onCancel, loading, 
         estimated_marks: formData.estimated_marks.map((m, index) => ({
           event_name: m.event_name,
           event_code: m.event_code,
-          estimated_mark: m.estimated_mark,
+          estimated_mark: typeof m.estimated_mark === "number" ? m.estimated_mark : (parseFloat(m.estimated_mark as string) || 0),
           remarks: m.remarks || undefined,
           order: index + 1, // Maintain order from the form
         })),
@@ -148,7 +148,7 @@ export default function OlqTypeForm({ initialData, onSubmit, onCancel, loading, 
   const addEstimatedMark = () => {
     setFormData(prev => ({
       ...prev,
-      estimated_marks: [...prev.estimated_marks, { event_name: "", event_code: "", estimated_mark: 0, remarks: "" }],
+      estimated_marks: [...prev.estimated_marks, { event_name: "", event_code: "", estimated_mark: '', remarks: "" }],
     }));
   };
 
@@ -333,10 +333,31 @@ export default function OlqTypeForm({ initialData, onSubmit, onCancel, loading, 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Estimated Mark</label>
                     <input
-                      type="number"
-                      step="0.01"
+                      type="text"
+                      inputMode="decimal"
+                      pattern="[0-9]*\.?[0-9]*"
                       value={mark.estimated_mark}
-                      onChange={(e) => updateEstimatedMark(index, "estimated_mark", parseFloat(e.target.value) || 0)}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val === "") {
+                          updateEstimatedMark(index, "estimated_mark", "");
+                          return;
+                        }
+                        if (/^\d*\.?\d*$/.test(val)) {
+                          updateEstimatedMark(index, "estimated_mark", val);
+                        }
+                      }}
+                      onBlur={(e) => {
+                        const val = e.target.value;
+                        if (val !== "") {
+                          const parsed = parseFloat(val);
+                          if (!isNaN(parsed)) {
+                            updateEstimatedMark(index, "estimated_mark", parsed);
+                          } else {
+                            updateEstimatedMark(index, "estimated_mark", "");
+                          }
+                        }
+                      }}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
                       placeholder="0.00"
                     />

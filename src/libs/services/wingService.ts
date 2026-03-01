@@ -11,6 +11,8 @@ interface WingQueryParams {
   page?: number;
   per_page?: number;
   search?: string;
+  allData?: boolean;
+  is_active?: boolean;
 }
 
 interface WingPaginatedResponse {
@@ -75,6 +77,14 @@ export const wingService = {
 
       if (params?.search) {
         query.append('search', params.search);
+      }
+
+      if (params?.allData) {
+        query.append('allData', 'true');
+      }
+
+      if (params?.is_active !== undefined) {
+        query.append('is_active', params.is_active ? '1' : '0');
       }
 
       const endpoint = `/wings${query.toString() ? `?${query.toString()}` : ''}`;

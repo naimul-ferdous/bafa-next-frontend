@@ -350,12 +350,16 @@ export interface Role {
   name: string;
   slug?: string;
   description?: string;
+  wing_id?: number | null;
+  subwing_id?: number | null;
   is_super_admin?: boolean;
   is_active?: boolean;
   created_at?: string;
   updated_at?: string;
   permissions?: Permission[];
   pivot?: RolePivot;
+  wing?: Wing;
+  subwing?: SubWing;
 }
 
 export interface RolePivot {
@@ -583,21 +587,7 @@ export interface InstructorAssignWing {
   instructor?: User;
 }
 
-export interface AtwSubject {
-  id: number;
-  course_id: number;
-  semester_id: number;
-  program_id: number;
-  branch_id?: number;
-  subject_name: string;
-  subject_code: string;
-  subject_legend?: string;
-  subject_period?: string;
-  subjects_full_mark?: number;
-  subjects_credit?: number;
-  is_professional?: boolean;
-  is_active?: boolean;
-}
+import type { AtwSubject } from './system';
 
 export interface AtwInstructorAssignSubject {
   id: number;

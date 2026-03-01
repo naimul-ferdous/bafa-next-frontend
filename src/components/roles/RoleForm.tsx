@@ -1,12 +1,16 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { Icon } from "@iconify/react";
 import Input from "@/components/form/input/InputField";
 import Label from "@/components/form/Label";
+import Select from "@/components/form/Select";
 import { permissionService } from "@/libs/services/permissionService";
-import type { Role } from "@/libs/types/user";
+import { wingService } from "@/libs/services/wingService";
+import { subWingService } from "@/libs/services/subWingService";
+import { useAuth } from "@/context/AuthContext";
+import type { Role, Wing, SubWing } from "@/libs/types/user";
 import type { Permission } from "@/libs/types/menu";
 
 interface RoleFormProps {
@@ -24,23 +28,65 @@ export default function RoleForm({
     loading,
     isEdit,
 }: RoleFormProps) {
+    const { user, userIsSuperAdmin } = useAuth();
     const [formData, setFormData] = useState({
         name: "",
         slug: "",
         description: "",
+        wing_id: null as number | null,
+        subwing_id: null as number | null,
         is_active: true,
     });
     const [error, setError] = useState("");
 
-    // Permissions state
+    // Entity state
+    const [wings, setWings] = useState<Wing[]>([]);
+    const [subWings, setSubWings] = useState<SubWing[]>([]);
     const [permissions, setPermissions] = useState<Permission[]>([]);
     const [selectedPermissions, setSelectedPermissions] = useState<number[]>([]);
     const [permissionsLoading, setPermissionsLoading] = useState(false);
     const [searchTerm, setSearchTerm] = useState("");
 
+    // Determine the wing/subwing context for the current user
+    const userContext = useMemo(() => {
+        if (!user || userIsSuperAdmin) return null;
+        
+        // Find assignment from roles array or singular role property
+        const primaryAssignment = user.roles?.find((r: any) => r.pivot?.is_primary) || 
+                                user.roles?.[0] || 
+                                (user as any).role;
+                                
+        if (!primaryAssignment) return null;
+
+        // Extract IDs from pivot (roles array) or direct property (singular role)
+        const wing_id = primaryAssignment.pivot?.wing_id || primaryAssignment.wing_id;
+        const sub_wing_id = primaryAssignment.pivot?.sub_wing_id || primaryAssignment.subwing_id;
+        
+        if (!wing_id && !sub_wing_id) return null;
+
+        // Map wing_id to module prefix (based on seeders)
+        let prefix = "";
+        if (wing_id === 1) prefix = "atw";
+        else if (wing_id === 2) prefix = "ctw";
+        else if (wing_id === 3) prefix = "ftw";
+
+        // Handle subwing specific squadron modules
+        if (sub_wing_id === 1) prefix = "ftw-11sqn"; 
+        else if (sub_wing_id === 2) prefix = "ftw-12sqn"; 
+
+        const roleSlug = primaryAssignment.slug || "";
+        if (roleSlug.includes("atw")) prefix = "atw";
+        else if (roleSlug.includes("ctw")) prefix = "ctw";
+        else if (roleSlug.includes("11sqn")) prefix = "ftw-11sqn";
+        else if (roleSlug.includes("12sqn")) prefix = "ftw-12sqn";
+        else if (roleSlug.includes("ftw")) prefix = "ftw";
+
+        return { wing_id, sub_wing_id, prefix };
+    }, [user, userIsSuperAdmin]);
+
     useEffect(() => {
-        loadPermissions();
-    }, []);
+        loadInitialData();
+    }, [userContext]);
 
     // Populate form when initialData changes
     useEffect(() => {
@@ -49,6 +95,8 @@ export default function RoleForm({
                 name: initialData.name || "",
                 slug: initialData.slug || "",
                 description: initialData.description || "",
+                wing_id: initialData.wing_id || null,
+                subwing_id: initialData.subwing_id || null,
                 is_active: initialData.is_active !== false,
             });
             // Set selected permissions from the role
@@ -60,19 +108,72 @@ export default function RoleForm({
                 name: "",
                 slug: "",
                 description: "",
+                wing_id: userContext?.wing_id || null,
+                subwing_id: userContext?.sub_wing_id || null,
                 is_active: true,
             });
             setSelectedPermissions([]);
         }
         setError("");
-    }, [initialData]);
+    }, [initialData, userContext]);
 
-    const loadPermissions = async () => {
+    const loadInitialData = async () => {
         try {
             setPermissionsLoading(true);
-            // Fetch all permissions for the list
-            const response = await permissionService.getPermissions({ per_page: 1000 });
-            setPermissions(response.data.filter((p: Permission) => p.is_active));
+            
+            // 1. Load Wings
+            const wingsData = await wingService.getAllWings({ allData: true, is_active: true });
+            setWings(wingsData.data || []);
+
+            // 2. Load SubWings
+            const subWingsData = await subWingService.getAllSubWings({ allData: true, is_active: true });
+            setSubWings(subWingsData.data || []);
+
+            // 3. Load Permissions (filtered by wing/subwing if selected)
+            await loadPermissions(formData.wing_id, formData.subwing_id);
+
+        } catch (error) {
+            console.error("Failed to load initial data:", error);
+        } finally {
+            setPermissionsLoading(false);
+        }
+    };
+
+    const loadPermissions = async (wingId?: number | null, subwingId?: number | null) => {
+        try {
+            setPermissionsLoading(true);
+            
+            // Priority: provided arguments OR formData OR userContext
+            let targetWingId: number | undefined;
+            let targetSubwingId: number | undefined;
+
+            if (wingId !== undefined) {
+                // If explicitly provided (could be null for Global)
+                targetWingId = wingId || undefined;
+                targetSubwingId = subwingId || undefined;
+            } else {
+                // Initial load or from formData
+                targetWingId = (formData.wing_id || userContext?.wing_id) || undefined;
+                targetSubwingId = (formData.subwing_id || userContext?.sub_wing_id) || undefined;
+            }
+
+            const response = await permissionService.getPermissions({ 
+                per_page: 1000,
+                wing_id: targetWingId,
+                subwing_id: targetSubwingId
+            });
+            
+            let allPermissions = response.data.filter((p: Permission) => p.is_active);
+
+            // Additional module-based filtering for userContext if applicable (fallback)
+            if (userContext?.prefix) {
+                const prefix = userContext.prefix.toLowerCase();
+                allPermissions = allPermissions.filter(p => {
+                    const module = (p.module || "").toLowerCase();
+                    return module.startsWith(prefix) || module === "dashboard" || module === "users";
+                });
+            }
+            setPermissions(allPermissions);
         } catch (error) {
             console.error("Failed to load permissions:", error);
         } finally {
@@ -81,7 +182,19 @@ export default function RoleForm({
     };
 
     const handleChange = (field: string, value: any) => {
-        setFormData(prev => ({ ...prev, [field]: value }));
+        setFormData(prev => {
+            const next = { ...prev, [field]: value };
+            
+            // If wing or subwing changes, reload permissions
+            if (field === "wing_id") {
+                next.subwing_id = null; // Reset subwing
+                loadPermissions(value, null);
+            } else if (field === "subwing_id") {
+                loadPermissions(prev.wing_id, value);
+            }
+            
+            return next;
+        });
 
         // Auto-generate slug from name if not editing
         if (field === "name" && !isEdit) {
@@ -152,6 +265,21 @@ export default function RoleForm({
         return selectedCount > 0 && selectedCount < modulePermissions.length;
     };
 
+    const wingOptions = useMemo(() => [
+        { label: "None / Global", value: "" },
+        ...wings.map(w => ({ label: w.name, value: w.id.toString() }))
+    ], [wings]);
+
+    const filteredSubWings = useMemo(() => {
+        if (!formData.wing_id) return [];
+        return subWings.filter(sw => sw.wing_id === formData.wing_id);
+    }, [subWings, formData.wing_id]);
+
+    const subWingOptions = useMemo(() => [
+        { label: "None / All Sub-Wings", value: "" },
+        ...filteredSubWings.map(sw => ({ label: sw.name, value: sw.id.toString() }))
+    ], [filteredSubWings]);
+
     return (
         <form onSubmit={handleSubmit} className="space-y-6">
             {error && (
@@ -184,6 +312,29 @@ export default function RoleForm({
                         required
                     />
                 </div>
+
+                {userIsSuperAdmin && (
+                    <>
+                        <div>
+                            <Label>Wing Assignment (Optional)</Label>
+                            <Select
+                                value={formData.wing_id?.toString() || ""}
+                                onChange={(val) => handleChange("wing_id", val ? parseInt(val) : null)}
+                                options={wingOptions}
+                            />
+                        </div>
+
+                        <div>
+                            <Label>Sub-Wing Assignment (Optional)</Label>
+                            <Select
+                                value={formData.subwing_id?.toString() || ""}
+                                onChange={(val) => handleChange("subwing_id", val ? parseInt(val) : null)}
+                                options={subWingOptions}
+                                disabled={!formData.wing_id}
+                            />
+                        </div>
+                    </>
+                )}
             </div>
 
             <div>

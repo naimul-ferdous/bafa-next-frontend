@@ -8,9 +8,13 @@ import { atwAssessmentOlqResultService } from "@/libs/services/atwAssessmentOlqR
 import FullLogo from "@/components/ui/fulllogo";
 import DataTable, { Column } from "@/components/ui/DataTable";
 import ConfirmationModal from "@/components/ui/modal/ConfirmationModal";
+import { usePageContext, useCan } from "@/context/PagePermissionsContext";
 
 export default function AtwAssessmentOlqResultsPage() {
   const router = useRouter();
+  const { permissions } = usePageContext();
+  const can = useCan();
+
   const [results, setResults] = useState<AtwAssessmentOlqResult[]>([]);
   const [loading, setLoading] = useState(true);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
@@ -156,10 +160,16 @@ export default function AtwAssessmentOlqResultsPage() {
       headerAlign: "center",
       className: "text-center no-print",
       render: (result) => (
-        <div className="flex items-center justify-center gap-1">
-          <button onClick={() => handleViewResult(result)} className="p-1 text-blue-600 hover:bg-blue-50 rounded" title="View"><Icon icon="hugeicons:view" className="w-4 h-4" /></button>
-          <button onClick={() => handleEditResult(result)} className="p-1 text-yellow-600 hover:bg-yellow-50 rounded" title="Edit"><Icon icon="hugeicons:pencil-edit-01" className="w-4 h-4" /></button>
-          <button onClick={() => handleDeleteResult(result)} className="p-1 text-red-600 hover:bg-red-50 rounded" title="Delete"><Icon icon="hugeicons:delete-02" className="w-4 h-4" /></button>
+        <div className="flex items-center justify-center gap-1" onClick={(e) => e.stopPropagation()}>
+          {can('view') && (
+            <button onClick={() => handleViewResult(result)} className="p-1 text-blue-600 hover:bg-blue-50 rounded" title="View"><Icon icon="hugeicons:view" className="w-4 h-4" /></button>
+          )}
+          {can('edit') && (
+            <button onClick={() => handleEditResult(result)} className="p-1 text-yellow-600 hover:bg-yellow-50 rounded" title="Edit"><Icon icon="hugeicons:pencil-edit-01" className="w-4 h-4" /></button>
+          )}
+          {can('delete') && (
+            <button onClick={() => handleDeleteResult(result)} className="p-1 text-red-600 hover:bg-red-50 rounded" title="Delete"><Icon icon="hugeicons:delete-02" className="w-4 h-4" /></button>
+          )}
         </div>
       ),
     },
@@ -175,7 +185,9 @@ export default function AtwAssessmentOlqResultsPage() {
 
       <div className="flex items-center justify-end gap-4 mb-6">
         <div className="flex items-center gap-3">
-          <button onClick={handleAddResult} className="px-4 py-2 rounded-lg text-white flex items-center gap-1 bg-blue-600 hover:bg-blue-700"><Icon icon="hugeicons:add-circle" className="w-4 h-4 mr-2" />Add Result</button>
+          {can('add') && (
+            <button onClick={handleAddResult} className="px-4 py-2 rounded-lg text-white flex items-center gap-1 bg-blue-600 hover:bg-blue-700"><Icon icon="hugeicons:add-circle" className="w-4 h-4 mr-2" />Add Result</button>
+          )}
           <button onClick={handleExport} className="px-4 py-2 rounded-lg text-white flex items-center gap-1 bg-green-600 hover:bg-green-700"><Icon icon="hugeicons:download-04" className="w-4 h-4 mr-2" />Export</button>
         </div>
       </div>
@@ -188,7 +200,7 @@ export default function AtwAssessmentOlqResultsPage() {
           data={results}
           keyExtractor={(result) => result.id.toString()}
           emptyMessage="No OLQ results found"
-          onRowClick={handleViewResult}
+          onRowClick={can('view') ? handleViewResult : undefined}
         />
       )}
 

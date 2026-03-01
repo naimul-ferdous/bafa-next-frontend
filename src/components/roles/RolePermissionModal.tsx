@@ -6,6 +6,7 @@ import { Modal } from "@/components/ui/modal";
 import FullLogo from "@/components/ui/fulllogo";
 import { permissionService } from "@/libs/services/permissionService";
 import { roleService } from "@/libs/services/roleService";
+import { useAuth } from "@/context/AuthContext";
 import type { Role } from "@/libs/types/user";
 import type { Permission } from "@/libs/types/menu";
 
@@ -22,6 +23,7 @@ export default function RolePermissionModal({
   role,
   onSaved,
 }: RolePermissionModalProps) {
+  const { user, userIsSuperAdmin } = useAuth();
   const [grouped, setGrouped] = useState<Record<string, Permission[]>>({});
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [search, setSearch] = useState("");
@@ -29,19 +31,85 @@ export default function RolePermissionModal({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
+  // Determine the wing/subwing context for the current user
+  const userContext = useMemo(() => {
+    if (!user || userIsSuperAdmin) return null;
+    
+    // Find assignment from roles array or singular role property
+    const primaryAssignment = user.roles?.find((r: any) => r.pivot?.is_primary) || 
+                            user.roles?.[0] || 
+                            (user as any).role;
+                            
+    if (!primaryAssignment) return null;
+
+    // Extract IDs from pivot (roles array) or direct property (singular role)
+    const wing_id = primaryAssignment.pivot?.wing_id || primaryAssignment.wing_id;
+    const sub_wing_id = primaryAssignment.pivot?.sub_wing_id || primaryAssignment.subwing_id;
+    
+    if (!wing_id && !sub_wing_id) return null;
+
+    // Map wing_id to module prefix (based on seeders)
+    let prefix = "";
+    if (wing_id === 1) prefix = "atw";
+    else if (wing_id === 2) prefix = "ctw";
+    else if (wing_id === 3) prefix = "ftw";
+
+    // Handle subwing specific squadron modules
+    if (sub_wing_id === 1) prefix = "ftw-11sqn"; 
+    else if (sub_wing_id === 2) prefix = "ftw-12sqn"; 
+
+    // Alternatively, use the role slug prefix if it follows the pattern
+    const roleSlug = primaryAssignment.slug || "";
+    if (roleSlug.includes("atw")) prefix = "atw";
+    else if (roleSlug.includes("ctw")) prefix = "ctw";
+    else if (roleSlug.includes("11sqn")) prefix = "ftw-11sqn";
+    else if (roleSlug.includes("12sqn")) prefix = "ftw-12sqn";
+    else if (roleSlug.includes("ftw")) prefix = "ftw";
+
+    return { wing_id, sub_wing_id, prefix };
+  }, [user, userIsSuperAdmin]);
+
   useEffect(() => {
     if (isOpen && role) {
       loadData();
     }
-  }, [isOpen, role]);
+  }, [isOpen, role, userContext]);
 
   const loadData = async () => {
     setLoadingData(true);
     setError("");
     setSearch("");
     try {
-      const response = await permissionService.getGroupedByCode({ per_page: 999 });
-      setGrouped(response.data);
+      // Priority: User's assigned context (ignoring the role's own wing/subwing)
+      const targetWingId = userContext?.wing_id || undefined;
+      const targetSubwingId = userContext?.sub_wing_id || undefined;
+
+      const response = await permissionService.getGroupedByCode({ 
+        per_page: 999,
+        wing_id: targetWingId,
+        subwing_id: targetSubwingId
+      });
+      let data = response.data;
+
+      // Filter permissions if in a restricted wing/subwing context (fallback prefix logic)
+      if (userContext?.prefix) {
+        const prefix = userContext.prefix.toLowerCase();
+        const filteredData: Record<string, Permission[]> = {};
+        
+        for (const [key, items] of Object.entries(data)) {
+          const filteredItems = items.filter(p => {
+            const module = (p.module || "").toLowerCase();
+            return module.startsWith(prefix) || module === "dashboard";
+          });
+          
+          if (filteredItems.length > 0) {
+            filteredData[key] = filteredItems;
+          }
+        }
+        data = filteredData;
+      }
+
+      setGrouped(data);
       setSelectedIds(new Set((role?.permissions || []).map((p) => p.id)));
     } catch (err) {
       console.error("Failed to load permissions:", err);

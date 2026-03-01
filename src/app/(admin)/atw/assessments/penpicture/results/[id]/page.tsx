@@ -8,6 +8,8 @@ import { atwAssessmentPenpictureResultService } from "@/libs/services/atwAssessm
 import { atwAssessmentPenpictureGradeService } from "@/libs/services/atwAssessmentPenpictureGradeService";
 import FullLogo from "@/components/ui/fulllogo";
 import type { AtwAssessmentPenpictureResult, AtwAssessmentPenpictureGrade } from "@/libs/types/system";
+import type { FilePrintType } from "@/libs/types/filePrintType";
+import PrintTypeModal from "@/components/ui/modal/PrintTypeModal";
 
 export default function ResultDetailsPage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter();
@@ -19,15 +21,18 @@ export default function ResultDetailsPage({ params }: { params: Promise<{ id: st
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
+  const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
+  const [selectedPrintType, setSelectedPrintType] = useState<FilePrintType | null>(null);
+
   useEffect(() => {
     const loadData = async () => {
       try {
         setLoading(true);
         const resultData = await atwAssessmentPenpictureResultService.getResult(resultId);
-        
+
         if (resultData) {
           setResult(resultData);
-          
+
           // Fetch all active grades for this course and semester
           const gradesData = await atwAssessmentPenpictureGradeService.getActiveGrades({
             course_id: resultData.course_id,
@@ -50,7 +55,17 @@ export default function ResultDetailsPage({ params }: { params: Promise<{ id: st
     }
   }, [resultId]);
 
-  const handlePrint = () => window.print();
+  const handlePrintClick = () => {
+    setIsPrintModalOpen(true);
+  };
+
+  const confirmPrint = (type: FilePrintType) => {
+    setSelectedPrintType(type);
+    setIsPrintModalOpen(false);
+    setTimeout(() => {
+      window.print();
+    }, 100);
+  };
 
   if (loading) {
     return (
@@ -86,6 +101,25 @@ export default function ResultDetailsPage({ params }: { params: Promise<{ id: st
 
   return (
     <div className="print-no-border bg-white rounded-lg border border-gray-200 min-h-screen">
+      <style jsx global>{`
+        @media print {
+          @page {
+            size: A3 landscape;
+            margin: 10mm;
+          }
+          .cv-content {
+            width: 100% !important;
+            max-width: none !important;
+          }
+          table{
+            font-size: 14px !important;
+          }
+          .print-div{
+            max-width: 60vh !important;
+            margin: 0 auto !important;
+          }
+        }
+      `}</style>
       {/* Action Buttons - Hidden on print */}
       <div className="p-4 flex items-center justify-between no-print">
         <button
@@ -97,7 +131,7 @@ export default function ResultDetailsPage({ params }: { params: Promise<{ id: st
         </button>
         <div className="flex items-center gap-3">
           <button
-            onClick={handlePrint}
+            onClick={handlePrintClick}
             className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 flex items-center gap-2 font-medium transition-all"
           >
             <Icon icon="hugeicons:printer" className="w-4 h-4" />
@@ -108,6 +142,18 @@ export default function ResultDetailsPage({ params }: { params: Promise<{ id: st
 
       {/* CV Content Area */}
       <div className="p-12 cv-content">
+        <div className="w-full flex justify-between mb-6 text-xs font-bold">
+          <div className="w-20">
+            <p className="text-center font-medium text-gray-900 uppercase tracking-wider"></p>
+          </div>
+          <div>
+            <p className="text-center font-medium text-gray-900 uppercase tracking-wider">{selectedPrintType?.name}</p>
+          </div>
+          <div>
+            <p className="text-center font-medium text-gray-900 tracking-wider">BAF</p>
+          </div>
+        </div>
+
         {/* Header Section */}
         <div className="mb-8">
           <div className="flex justify-center mb-4">
@@ -277,7 +323,13 @@ export default function ResultDetailsPage({ params }: { params: Promise<{ id: st
         <div className="mt-16 text-center text-[10px] text-gray-400 italic">
           Report Generated: {new Date().toLocaleString("en-GB", { day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" })}
         </div>
+
       </div>
+      <PrintTypeModal
+        isOpen={isPrintModalOpen}
+        onClose={() => setIsPrintModalOpen(false)}
+        onConfirm={confirmPrint}
+      />
     </div>
   );
 }

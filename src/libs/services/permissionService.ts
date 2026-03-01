@@ -38,6 +38,14 @@ export const permissionService = {
         query.append('search', params.search);
       }
 
+      if (params?.wing_id) {
+        query.append('wing_id', params.wing_id.toString());
+      }
+
+      if (params?.subwing_id) {
+        query.append('subwing_id', params.subwing_id.toString());
+      }
+
       if (params?.sort_by) {
         query.append('sort_by', params.sort_by);
       }
@@ -173,10 +181,17 @@ export const permissionService = {
    * Get permissions grouped by module
    * Response: { "module_name": [ ...permissions ] }
    */
-  async getGroupedByModule(): Promise<Record<string, Permission[]>> {
+  async getGroupedByModule(params?: { wing_id?: number; subwing_id?: number }): Promise<Record<string, Permission[]>> {
     try {
+      const query = new URLSearchParams();
+      if (params?.wing_id) query.append('wing_id', params.wing_id.toString());
+      if (params?.subwing_id) query.append('subwing_id', params.subwing_id.toString());
+
+      const queryString = query.toString();
+      const endpoint = `/permissions/grouped-by-module${queryString ? `?${queryString}` : ''}`;
+      
       const token = getToken();
-      const result = await apiClient.get<{ success: boolean; data: Record<string, Permission[]> }>('/permissions/grouped-by-module', token);
+      const result = await apiClient.get<{ success: boolean; data: Record<string, Permission[]> }>(endpoint, token);
       return result?.data || {};
     } catch (error) {
       console.error('Failed to fetch permissions grouped by module:', error);
@@ -187,7 +202,7 @@ export const permissionService = {
   /**
    * Get permissions grouped by code with pagination and search
    */
-  async getGroupedByCode(params?: { page?: number; per_page?: number; search?: string }): Promise<{
+  async getGroupedByCode(params?: { page?: number; per_page?: number; search?: string; wing_id?: number; subwing_id?: number }): Promise<{
     data: Record<string, Permission[]>;
     current_page: number;
     per_page: number;
@@ -202,6 +217,8 @@ export const permissionService = {
       if (params?.page)     query.append('page',     params.page.toString());
       if (params?.per_page) query.append('per_page', params.per_page.toString());
       if (params?.search)   query.append('search',   params.search);
+      if (params?.wing_id)  query.append('wing_id',  params.wing_id.toString());
+      if (params?.subwing_id) query.append('subwing_id', params.subwing_id.toString());
 
       const queryString = query.toString();
       const endpoint = `/permissions/grouped-by-code${queryString ? `?${queryString}` : ''}`;
