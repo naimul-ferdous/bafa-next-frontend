@@ -46,7 +46,7 @@ export default function EditOlqResultPage() {
     setLoading(true);
     try {
       await atwAssessmentOlqResultService.updateResult(parseInt(resultId), data);
-      router.push("/atw/assessments/olq/results");
+      router.push("/atw/assessments/olq/results/view");
     } catch (err: any) {
       throw err;
     } finally {
@@ -55,7 +55,7 @@ export default function EditOlqResultPage() {
   };
 
   const handleCancel = () => {
-    router.push("/atw/assessments/olq/results");
+    router.push("/atw/assessments/olq/results/view");
   };
 
   if (loadingResult) {

@@ -89,7 +89,8 @@ export default function PermissionForm({
         setSubWings(subWingsRes.data || []);
         
         if (!isEdit) {
-          setSelectedActionCodes(actions.map((a) => a.code)); // default all checked
+          const DEFAULT_ACTIONS = ["view", "edit", "delete", "add"];
+          setSelectedActionCodes(actions.filter((a) => DEFAULT_ACTIONS.includes(a.code)).map((a) => a.code));
         }
       } catch (err) {
         console.error("Failed to fetch form data:", err);
@@ -130,7 +131,8 @@ export default function PermissionForm({
         is_active: true,
         permission_action_id: null,
       });
-      setSelectedActionCodes(availableActions.map((a) => a.code));
+      const DEFAULT_ACTIONS = ["view", "edit", "delete", "add"];
+      setSelectedActionCodes(availableActions.filter((a) => DEFAULT_ACTIONS.includes(a.code)).map((a) => a.code));
     }
     setError("");
   }, [initialData, userContext, availableActions, availableModules]);

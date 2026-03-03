@@ -26,11 +26,15 @@ function findMenuByRoute(menus: Menu[], pathname: string): Menu | null {
 interface PagePermissionsValue {
   menu: Menu | null;
   permissions: Permission[];
+  allMenus: Menu[];
+  userSlugs: Set<string>;
 }
 
 const PagePermissionsContext = createContext<PagePermissionsValue>({
   menu: null,
   permissions: [],
+  allMenus: [],
+  userSlugs: new Set(),
 });
 
 // ─── provider ───────────────────────────────────────────────────────────────
@@ -43,16 +47,16 @@ export function PagePermissionsProvider({ children }: { children: React.ReactNod
     const menu = findMenuByRoute(menus, pathname);
     const menuPermissions = menu?.permissions ?? [];
 
-    if (menuPermissions.length === 0) return { menu, permissions: [] };
-
     // Build set of slugs the user actually holds (from all roles)
     const userSlugs = new Set<string>();
     (user?.roles ?? []).forEach((role: any) => {
       (role.permissions ?? []).forEach((p: any) => userSlugs.add(p.slug));
     });
 
+    if (menuPermissions.length === 0) return { menu, permissions: [], allMenus: menus, userSlugs };
+
     const permissions = menuPermissions.filter((p) => userSlugs.has(p.slug));
-    return { menu, permissions };
+    return { menu, permissions, allMenus: menus, userSlugs };
   }, [menus, pathname, user]);
 
   return (
@@ -76,16 +80,28 @@ export function usePermissions(): Permission[] {
 
 /**
  * Returns a checker: can('view') | can('add') | can('edit') | can('delete')
- * Matches against permission action code (preferred) or slug suffix.
+ * Pass an optional URL to check permissions for a different route instead of
+ * the current page. e.g. useCan("/atw/results")
  */
-export function useCan() {
-  const { permissions } = useContext(PagePermissionsContext);
+export function useCan(url?: string) {
+  const { permissions, allMenus, userSlugs } = useContext(PagePermissionsContext);
+
   return useMemo(() => {
+    let resolved = permissions;
+
+    if (url) {
+      const targetMenu = findMenuByRoute(allMenus, url);
+      const menuPermissions = targetMenu?.permissions ?? [];
+      resolved = menuPermissions.length === 0
+        ? []
+        : menuPermissions.filter((p) => userSlugs.has(p.slug));
+    }
+
     return (action: string): boolean =>
-      permissions.some(
+      resolved.some(
         (p) =>
           p.action?.code === action ||
           p.slug.endsWith(`-${action}`)
       );
-  }, [permissions]);
+  }, [permissions, url, allMenus, userSlugs]);
 }

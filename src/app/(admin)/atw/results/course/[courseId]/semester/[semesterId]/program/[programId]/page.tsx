@@ -99,7 +99,7 @@ type ActiveTab = 'consolidated' | 'breakdown';
 export default function AtwCourseSemesterProgramResultsPage() {
     const params = useParams();
     const router = useRouter();
-    const can = useCan();
+    const can = useCan("/atw/results");
     const courseId = params.courseId as string;
     const semesterId = params.semesterId as string;
     const programId = params.programId as string;
@@ -443,11 +443,20 @@ export default function AtwCourseSemesterProgramResultsPage() {
                                         ))}
                                     </tr>
                                     <tr>
-                                        {data.subjects.map((sub, idx) => (
-                                            <th key={idx} className="border border-black p-2 text-center text-xs">
-                                                <div className="truncate" title={sub.name}>{sub.code}</div>
-                                            </th>
-                                        ))}
+                                        {data.subjects.map((sub, idx) => {
+                                            const resultId = data.cadets.find(c => c.result_ids[sub.mapping_id])?.result_ids[sub.mapping_id];
+                                            const canView = can('view');
+                                            return (
+                                                <th
+                                                    key={idx}
+                                                    className={`border border-black p-2 text-center text-xs ${resultId && canView ? 'cursor-pointer hover:bg-gray-100 transition-colors' : ''}`}
+                                                    onClick={() => canView && resultId && handleViewResultDetails(resultId)}
+                                                    title={resultId && canView ? "Click to view subject result details" : ""}
+                                                >
+                                                    <div className="truncate" title={sub.name}>{sub.code}</div>
+                                                </th>
+                                            );
+                                        })}
                                     </tr>
                                     <tr>
                                         {data.subjects.map((sub, idx) => (
@@ -581,12 +590,23 @@ export default function AtwCourseSemesterProgramResultsPage() {
                                     {/* Subject header */}
                                     <div className="flex justify-between items-center mb-3 flex-wrap gap-2">
                                         <div className="flex items-center gap-3">
-                                            <p className="text-sm">
-                                                <span className="font-bold text-gray-900 uppercase mr-2">Subject</span>
-                                                <span className="border-b border-dashed border-black">
-                                                    : {subject.name} ({subject.code})
-                                                </span>
-                                            </p>
+                                            <div 
+                                                className={`flex items-center gap-2 ${data.cadets.find(c => c.result_ids[subject.mapping_id])?.result_ids[subject.mapping_id] && can('view') ? 'cursor-pointer group' : ''}`}
+                                                onClick={() => {
+                                                    const resultId = data.cadets.find(c => c.result_ids[subject.mapping_id])?.result_ids[subject.mapping_id];
+                                                    if (resultId && can('view')) handleViewResultDetails(resultId);
+                                                }}
+                                            >
+                                                <p className="text-sm">
+                                                    <span className="font-bold text-gray-900 uppercase mr-2">Subject</span>
+                                                    <span className={`border-b border-dashed border-black ${data.cadets.find(c => c.result_ids[subject.mapping_id])?.result_ids[subject.mapping_id] && can('view') ? 'group-hover:text-blue-600 group-hover:border-blue-600 transition-colors' : ''}`}>
+                                                        : {subject.name} ({subject.code})
+                                                    </span>
+                                                </p>
+                                                {data.cadets.find(c => c.result_ids[subject.mapping_id])?.result_ids[subject.mapping_id] && can('view') && (
+                                                    <Icon icon="hugeicons:view" className="w-4 h-4 text-gray-400 group-hover:text-blue-600 transition-colors no-print" />
+                                                )}
+                                            </div>
                                             {/* Subject-level approval badge */}
                                             {subjectApprovals.length > 0 && (
                                                 <span className={`no-print inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${

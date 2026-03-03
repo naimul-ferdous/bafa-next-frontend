@@ -10,7 +10,7 @@ import { atwApprovalService } from "@/libs/services/atwApprovalService";
 import { useAuth } from "@/context/AuthContext";
 import FullLogo from "@/components/ui/fulllogo";
 import type { AtwResult, AtwResultMarkCadetApproval } from "@/libs/types/atwResult";
-import type { AtwSubjectModuleMark } from "@/libs/types/system";
+import type { AtwSubjectsModuleMarksheetMark } from "@/libs/types/system";
 import type { FilePrintType } from "@/libs/types/filePrintType";
 import PrintTypeModal from "@/components/ui/modal/PrintTypeModal";
 import { Modal } from "@/components/ui/modal";
@@ -411,23 +411,52 @@ export default function ResultDetailsPage() {
     <div className="print-no-border bg-white rounded-lg border border-gray-200">
       <style jsx global>{`
         @media print {
-          @page {
-            size: A3 landscape;
-            margin: 10mm;
-          }
           .cv-content {
             width: 100% !important;
             max-width: none !important;
           }
-          table{
+          table {
             font-size: 14px !important;
           }
-          .print-div{
+          .print-div {
             max-width: 60vh !important;
             margin: 0 auto !important;
           }
+          .no-print {
+            display: none !important;
+          }
         }
       `}</style>
+
+      {/* Dynamic @page rules — overrides browser default header/footer with custom content */}
+      <style dangerouslySetInnerHTML={{ __html: `
+        @media print {
+          @page {
+            size: A3 landscape;
+            margin: 14mm 10mm 14mm 10mm;
+
+            @top-left   { content: ""; }
+            @top-center {
+              content: "${(selectedPrintType?.name ?? '').replace(/"/g, '\\"')}";
+              font-size: 10pt;
+              white-space: pre;
+              text-align: center;
+              text-transform: uppercase;
+            }
+            @top-right  { content: ""; }
+
+            @bottom-left   { content: ""; }
+            @bottom-center {
+              content: "${(selectedPrintType?.name ?? '').replace(/"/g, '\\"')}" "\\A" counter(page);
+              font-size: 10pt;
+              white-space: pre;
+              text-align: center;
+              text-transform: uppercase;
+            }
+            @bottom-right  { content: ""; }
+          }
+        }
+      ` }} />
       <div className="p-4 flex items-center justify-between no-print">
         <button
           onClick={() => history.back()}
@@ -495,12 +524,6 @@ export default function ResultDetailsPage() {
 
       {/* Content */}
       <div className="p-4 cv-content">
-        {selectedPrintType ? (
-          <div className="flex justify-center mb-6">
-            <p className="font-light uppercase">{selectedPrintType?.name}</p>
-          </div>
-        ) : null}
-
         <div className="mb-8">
           <div className="flex justify-center mb-4">
             <FullLogo />
@@ -509,7 +532,7 @@ export default function ResultDetailsPage() {
             Bangladesh Air Force Academy
           </h1>
           <div className="mb-2">
-            <p className="text-center font-medium text-gray-900 uppercase underline tracking-wider">ATW Result Sheet {selectedPrintType ? `- ${selectedPrintType.name}` : ""}</p>
+            <p className="text-center font-medium text-gray-900 uppercase underline tracking-wider">Academic Training Wing</p>
             <p className="text-center font-medium text-gray-900 uppercase underline tracking-wider">
               {result.exam_type?.code} {result.semester?.name} Exam : {result.created_at ? new Date(result.created_at).toLocaleDateString("en-GB", { month: "short", year: "numeric" }) : ""}
             </p>
@@ -845,7 +868,7 @@ export default function ResultDetailsPage() {
               <div className="col-span-3 text-sm text-gray-900">
                 <div className="min-w-2xl mx-auto flex justify-center">
                   <div className="">
-                    <p className="w-full font-bold mb-4 pb-1 text-center uppercase underline">{result.exam_type?.name || "Unknown"} Exam</p>
+                    <p className="w-full font-bold mb-4 pb-1 text-center uppercase underline">End Semester Exam</p>
                     <div className="border-l border-black pl-4 py-1 space-y-1.5 mr-24">
                       <div className="flex"><span className="w-40 font-medium">No Appeared</span><span>: {noAppeared}</span></div>
                       <div className="flex"><span className="w-40 font-medium">No Passed</span><span>: {noPassed}</span></div>
@@ -881,14 +904,6 @@ export default function ResultDetailsPage() {
             </div>
           );
         })()}
-        {selectedPrintType ? (
-          <div className="flex justify-center mt-16">
-            <p className="font-light text-sm uppercase">{selectedPrintType?.name}</p>
-          </div>
-        ) : null}
-        <div className="text-center text-sm text-gray-600">
-          <p>Generated on: {new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}</p>
-        </div>
       </div>
 
       <PrintTypeModal

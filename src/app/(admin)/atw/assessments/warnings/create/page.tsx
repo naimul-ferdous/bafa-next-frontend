@@ -15,7 +15,7 @@ export default function CreateAtwCadetWarningPage() {
     try {
       const res = await atwCadetWarningService.create(data);
       if (res) {
-        router.push("/atw/assessments/warnings");
+        router.push("/atw/assessments/warnings/view");
       }
     } catch (err: any) {
       throw err;
@@ -25,7 +25,7 @@ export default function CreateAtwCadetWarningPage() {
   };
 
   const handleCancel = () => {
-    router.push("/atw/assessments/warnings");
+    router.push("/atw/assessments/warnings/view");
   };
 
   return (

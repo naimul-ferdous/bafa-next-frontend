@@ -229,7 +229,7 @@ const NoticesPanel = () => {
 
 // ─── Main ATW Dashboard View ──────────────────────────────────────────────────
 export function ATWDashboardView() {
-  const { menus } = useAuth();
+  const { user, menus } = useAuth();
 
   // Collect all accessible routes from the user's menu tree (flat + children)
   const accessibleRoutes = useMemo(() => {
@@ -285,7 +285,33 @@ export function ATWDashboardView() {
       bgImage: "corner-1.png",
     },
   ];
-  const statusCards = allStatusCards.filter((c) => hasAccess(c.href));
+  const instructorStatusCards: StatusCardProps[] = [
+    {
+      title: "Assigned Courses",
+      subtitle: "My Courses",
+      href: "/atw/course",
+      icon: "hugeicons:star",
+      accentColor: "from-blue-600 to-indigo-700",
+      bgImage: "corner-1.png",
+    },
+    {
+      title: "Assigned Subjects",
+      subtitle: "My Subjects",
+      href: "/atw/subjects",
+      icon: "hugeicons:book-02",
+      accentColor: "from-blue-500 to-blue-700",
+      bgImage: "corner-2.png",
+    },
+    {
+      title: "Results",
+      subtitle: "Exam Results",
+      href: "/atw/results",
+      icon: "hugeicons:notebook",
+      accentColor: "from-emerald-500 to-teal-700",
+      bgImage: "corner-1.png",
+    },
+  ];
+  const statusCards = user?.instructor_biodata ? instructorStatusCards : allStatusCards.filter((c) => hasAccess(c.href));
 
   const radius = 220;
   const getPosition = (angleInDegrees: number) => {

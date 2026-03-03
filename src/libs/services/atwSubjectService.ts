@@ -110,6 +110,7 @@ export const atwSubjectService = {
    * Get single subject mapping
    */
   async getSubject(id: number): Promise<AtwSubject | null> {
+    if (!id || isNaN(id)) return null;
     try {
       const token = getToken();
       const result = await apiClient.get<SingleSubjectApiResponse>(`/atw-subjects/${id}`, token);

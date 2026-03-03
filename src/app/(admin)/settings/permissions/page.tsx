@@ -12,6 +12,7 @@ import { useAuth } from "@/context/AuthContext";
 import FullLogo from "@/components/ui/fulllogo";
 import DataTable, { Column } from "@/components/ui/DataTable";
 import ConfirmationModal from "@/components/ui/modal/ConfirmationModal";
+import PermissionAssignActionModal from "@/components/permissions/PermissionAssignActionModal";
 import Pagination from "@/components/ui/Pagination";
 import Select from "@/components/form/Select";
 import Label from "@/components/form/Label";
@@ -49,6 +50,10 @@ export default function PermissionsPage() {
     const [statusModalOpen, setStatusModalOpen] = useState(false);
     const [statusPermission, setStatusPermission] = useState<Permission | null>(null);
     const [statusLoading, setStatusLoading] = useState(false);
+
+    // Assign action modal state
+    const [assignActionModalOpen, setAssignActionModalOpen] = useState(false);
+    const [assignActionRow, setAssignActionRow] = useState<GroupRow | null>(null);
 
     // Determine the wing/subwing context for the current user
     const userContext = useMemo(() => {
@@ -208,7 +213,7 @@ export default function PermissionsPage() {
                 key: "permissions",
                 header: "Permissions",
                 render: (row) => (
-                    <div className="flex flex-wrap gap-2 py-1">
+                    <div className="flex flex-wrap gap-2 py-1 items-center">
                         {row.permissions.map((permission) => (
                             <div
                                 key={permission.id}
@@ -253,6 +258,15 @@ export default function PermissionsPage() {
                                 </span>
                             </div>
                         ))}
+                        {/* Add Action button */}
+                        <button
+                            onClick={(e) => { e.stopPropagation(); setAssignActionRow(row); setAssignActionModalOpen(true); }}
+                            className="flex items-center gap-1 px-2.5 py-1 rounded-full border border-dashed border-indigo-300 text-indigo-600 bg-indigo-50 hover:bg-indigo-100 text-xs font-medium transition-colors"
+                            title="Add Action"
+                        >
+                            <Icon icon="hugeicons:plus-sign" className="w-3.5 h-3.5" />
+                            Action
+                        </button>
                     </div>
                 ),
             },
@@ -373,6 +387,14 @@ export default function PermissionsPage() {
                 cancelText="Cancel"
                 loading={statusLoading}
                 variant={statusPermission?.is_active ? "danger" : "success"}
+            />
+
+            <PermissionAssignActionModal
+                isOpen={assignActionModalOpen}
+                onClose={() => { setAssignActionModalOpen(false); setAssignActionRow(null); }}
+                onSuccess={() => { loadPermissions(); setAssignActionModalOpen(false); setAssignActionRow(null); }}
+                code={assignActionRow?.code ?? ""}
+                permissions={assignActionRow?.permissions ?? []}
             />
         </div>
     );

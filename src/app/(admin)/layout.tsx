@@ -30,8 +30,8 @@ export default function AdminLayout({
   const mainContentMargin = isMobileOpen
     ? "ml-0"
     : isExpanded || isHovered
-    ? "lg:ml-[290px]"
-    : "lg:ml-[90px]";
+      ? "lg:ml-[290px]"
+      : "lg:ml-[90px]";
 
   // Show loading state while checking authentication
   if (loading) {
@@ -51,7 +51,7 @@ export default function AdminLayout({
   }
 
   return (
-    <div className="min-h-screen xl:flex">
+    <div className="xl:flex">
       {/* Sidebar and Backdrop */}
       <AppSidebar />
       <Backdrop />
@@ -63,10 +63,12 @@ export default function AdminLayout({
         <AppHeader />
         {/* Page Content */}
         <div className="p-4 mx-auto md:p-6">
-          <PagePermissionsProvider>
-            {children}
-          </PagePermissionsProvider>
-          <Footer/>
+          <div className="min-h-[80vh]">
+            <PagePermissionsProvider>
+              {children}
+            </PagePermissionsProvider>
+          </div>
+          <Footer />
         </div>
       </div>
     </div>

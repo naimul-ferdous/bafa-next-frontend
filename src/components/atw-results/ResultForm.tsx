@@ -12,6 +12,7 @@ import { useAuth } from "@/libs/hooks/useAuth";
 import { Icon } from "@iconify/react";
 import type { SystemCourse, SystemSemester, SystemProgram, SystemBranch, SystemExam, AtwSubjectsModuleMarksheetMark, AtwSubject } from "@/libs/types/system";
 import type { AtwResult } from "@/libs/types/atwResult";
+import Link from "next/link";
 
 interface ResultFormProps {
   initialData?: AtwResult | null;
@@ -64,6 +65,7 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
   const [cadetRows, setCadetRows] = useState<CadetRow[]>([]);
   const [error, setError] = useState("");
   const [alreadyExists, setAlreadyExists] = useState(false);
+  const [existingResultId, setExistingResultId] = useState<number | null>(null);
 
   // Check if record already exists
   useEffect(() => {
@@ -80,7 +82,7 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
         formData.instructor_id
       ) {
         try {
-          const exists = await atwResultService.checkExistence({
+          const { exists, id } = await atwResultService.checkExistence({
             course_id: formData.course_id,
             semester_id: formData.semester_id,
             program_id: formData.program_id,
@@ -92,11 +94,13 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
 
           if (exists) {
             setAlreadyExists(true);
+            setExistingResultId(id ?? null);
             if (error !== "This result has already been entered for the selected criteria.") {
               setError("This result has already been entered for the selected criteria.");
             }
           } else {
             setAlreadyExists(false);
+            setExistingResultId(null);
             if (error === "This result has already been entered for the selected criteria.") {
               setError("");
             }
@@ -262,6 +266,9 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
       try {
         setLoadingCadets(true);
         let cadetsList: any[] = [];
+        // Resolve branch name from the already-loaded branches state (most reliable)
+        const selectedBranchName = branches.find((b: any) => b.id === formData.branch_id)?.name || "";
+
         if (!userIsSystemAdmin && user?.instructor_biodata && formData.atw_subject_id) {
           // Use atw_subject_id (mapping) to fetch instructor assigned cadets
           const assignedCadetsRes = await atwInstructorAssignCadetService.getAll({
@@ -276,7 +283,11 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
           });
 
           if (assignedCadetsRes.data.length > 0) {
-            cadetsList = assignedCadetsRes.data.map((as: any) => as.cadet);
+            // Carry the assignment's branch along so it isn't lost when extracting as.cadet
+            cadetsList = assignedCadetsRes.data.map((as: any) => ({
+              ...as.cadet,
+              _assignmentBranch: as.branch,
+            }));
           } else {
             cadetsList = [];
           }
@@ -295,12 +306,18 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
         // Create cadet rows
         const rows: CadetRow[] = cadetsList.filter(c => c).map(cadet => {
           const currentRank = cadet.assigned_ranks?.find((ar: any) => ar.rank)?.rank;
+          const branchName =
+            cadet._assignmentBranch?.name ||
+            cadet.assigned_branchs?.find((ab: any) => ab.is_current)?.branch?.name ||
+            cadet.assigned_branchs?.[0]?.branch?.name ||
+            selectedBranchName ||
+            "N/A";
           return {
             cadet_id: cadet.id,
             cadet_bd_no: cadet.bd_no || cadet.cadet_number || "",
             cadet_name: cadet.name,
             cadet_rank: currentRank?.short_name || currentRank?.name || "-",
-            cadet_branch: cadet.assigned_branchs?.find((ab: any) => ab.is_current)?.branch?.name || cadet.assigned_branchs?.[0]?.branch?.name || "N/A",
+            cadet_branch: branchName,
             gender: cadet.gender,
             remarks: "",
             is_present: true,
@@ -350,7 +367,7 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
             cadet_bd_no: c.cadet_bd_no,
             cadet_name: c.cadet?.name || "Unknown",
             cadet_rank: currentRank?.short_name || currentRank?.name || "-",
-            cadet_branch: c.cadet?.assigned_branchs?.find((ab: any) => ab.is_current)?.branch?.name || c.cadet?.assigned_branchs?.[0]?.branch?.name || "N/A",
+            cadet_branch: c.cadet?.assigned_branchs?.find((ab: any) => ab.is_current)?.branch?.name || c.cadet?.assigned_branchs?.[0]?.branch?.name || initialData.branch?.name || "N/A",
             gender: c.cadet?.gender,
             remarks: c.remarks || "",
             is_present: c.is_present,
@@ -374,7 +391,9 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
       setLoadingSemesters(true);
       const semestersList = await commonService.getSemestersByCourse(formData.course_id);
       setSemesters(semestersList);
-      if (semestersList.length > 0 && !isEdit) {
+      if (semestersList.length === 1) {
+        setFormData(prev => ({ ...prev, semester_id: semestersList[0].id }));
+      } else if (semestersList.length > 0 && !isEdit) {
         setFormData(prev => ({ ...prev, semester_id: semestersList[0].id }));
       }
       setLoadingSemesters(false);
@@ -483,7 +502,7 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div>
               <Label>Course <span className="text-red-500">*</span></Label>
-              <select value={formData.course_id} onChange={(e) => handleChange("course_id", parseInt(e.target.value))} className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500" required>
+              <select value={formData.course_id} onChange={(e) => handleChange("course_id", parseInt(e.target.value))} className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed" required disabled={isEdit}>
                 <option value={0}>Select Course</option>
                 {courses.map(course => (<option key={course.id} value={course.id}>{course.name} ({course.code})</option>))}
               </select>
@@ -494,9 +513,9 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
               <select
                 value={formData.semester_id}
                 onChange={(e) => handleChange("semester_id", parseInt(e.target.value))}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
                 required
-                disabled={!formData.course_id || loadingSemesters || (!!formData.course_id && !loadingSemesters && semesters.length === 0)}
+                disabled={isEdit || !formData.course_id || loadingSemesters || (!!formData.course_id && !loadingSemesters && semesters.length === 0) || (semesters.length === 1)}
               >
                 {loadingSemesters ? (
                   <option value={0}>Loading semesters...</option>
@@ -504,6 +523,8 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
                   <option value={0}>Select Course First</option>
                 ) : semesters.length === 0 ? (
                   <option value={0}>No semester on this course</option>
+                ) : semesters.length === 1 ? (
+                  <option value={semesters[0].id}>{semesters[0].name} ({semesters[0].code})</option>
                 ) : (
                   <>
                     <option value={0}>Select Semester</option>
@@ -517,7 +538,7 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
 
             <div>
               <Label>Program <span className="text-red-500">*</span></Label>
-              <select value={formData.program_id} onChange={(e) => handleChange("program_id", parseInt(e.target.value))} className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500" required>
+              <select value={formData.program_id} onChange={(e) => handleChange("program_id", parseInt(e.target.value))} className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed" required disabled={isEdit}>
                 <option value={0}>Select Program</option>
                 {programs.map(program => (<option key={program.id} value={program.id}>{program.name} ({program.code})</option>))}
               </select>
@@ -528,9 +549,9 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
               <select
                 value={formData.branch_id}
                 onChange={(e) => handleChange("branch_id", parseInt(e.target.value))}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
                 required
-                disabled={!formData.program_id}
+                disabled={isEdit || !formData.program_id}
               >
                 <option value={0}>{!formData.program_id ? "Select Program First" : "Select Branch"}</option>
                 {filteredBranches.map(branch => (<option key={branch.id} value={branch.id}>{branch.name} ({branch.code})</option>))}
@@ -539,7 +560,7 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
 
             <div>
               <Label>Exam Type <span className="text-red-500">*</span></Label>
-              <select value={formData.exam_type_id} onChange={(e) => handleChange("exam_type_id", parseInt(e.target.value))} className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500" required>
+              <select value={formData.exam_type_id} onChange={(e) => handleChange("exam_type_id", parseInt(e.target.value))} className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed" required disabled={isEdit}>
                 <option value={0}>Select Exam Type</option>
                 {exams.map(exam => (<option key={exam.id} value={exam.id}>{exam.name} ({exam.code})</option>))}
               </select>
@@ -547,7 +568,7 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
 
             <div>
               <Label>Subject <span className="text-red-500">*</span></Label>
-              <select value={formData.atw_subject_id} onChange={(e) => handleChange("atw_subject_id", parseInt(e.target.value))} className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 font-semibold" required>
+              <select value={formData.atw_subject_id} onChange={(e) => handleChange("atw_subject_id", parseInt(e.target.value))} className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 font-semibold disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed" required disabled={isEdit}>
                 <option value={0}>Select Subject</option>
                 {subjectMappings.map(s => (<option key={s.id} value={s.id}>{s.module?.subject_name} ({s.module?.subject_code})</option>))}
               </select>
@@ -582,6 +603,14 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
               <Icon icon="hugeicons:alert-circle" className="w-10 h-10 mx-auto mb-2" />
               <p className="font-semibold text-lg uppercase tracking-wider">Already Result Map inputed</p>
               <p className="text-sm">A result for these criteria already exists in the system.</p>
+              {existingResultId && (
+                <div className="mt-3">
+                  <Link href={`/atw/results/${existingResultId}/edit`} className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors">
+                    <Icon icon="hugeicons:pencil-edit-01" className="w-4 h-4" />
+                    Edit Existing Result
+                  </Link>
+                </div>
+              )}
             </div>
           ) : loadingCadets ? (
             <div className="w-full min-h-[20vh] flex items-center justify-center">
@@ -787,7 +816,7 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
                           })
                         )}
                         <td className="border border-black px-3 py-2 text-center font-black">
-                          {(Number(rowTotal) || 0).toFixed(2)}
+                          {(Number(rowTotal) || 0).toFixed(2)} ~ {Math.ceil(Number(rowTotal) || 0)}
                         </td>
                       </tr>
                     );

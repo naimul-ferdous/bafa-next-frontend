@@ -288,6 +288,17 @@ export const atwAssessmentPenpictureResultService = {
   },
 
   /**
+   * Bulk create results (single API call)
+   */
+  async bulkCreate(results: any[]): Promise<any> {
+    const token = getToken();
+    if (!token) throw new Error('Authentication token not found. Please login again.');
+    const result = await apiClient.post<any>('/atw-assessment-penpicture-results/bulk', { results }, token);
+    if (!result || !result.success) throw new Error(result?.message || 'Failed to create results');
+    return result.data;
+  },
+
+  /**
    * Get results grouped by semester with pagination
    */
   async getGroupedResults(params?: { instructor_id?: number; page?: number; per_page?: number; search?: string }): Promise<ResultPaginatedResponse & { data: any[] }> {

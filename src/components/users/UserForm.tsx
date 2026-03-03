@@ -7,8 +7,10 @@ import Input from "@/components/form/input/InputField";
 import Label from "@/components/form/Label";
 import { roleService } from "@/libs/services/roleService";
 import { rankService } from "@/libs/services/rankService";
+import { wingService } from "@/libs/services/wingService";
+import { subWingService } from "@/libs/services/subWingService";
 import FullLogo from "@/components/ui/fulllogo";
-import type { User, Role, Rank } from "@/libs/types/user";
+import type { User, Role, Rank, Wing, SubWing } from "@/libs/types/user";
 import { Icon } from "@iconify/react";
 import DatePicker from "@/components/form/input/DatePicker";
 import { getImageUrl } from "@/libs/utils/formatter";
@@ -29,6 +31,8 @@ export default function UserForm({ initialData, onSubmit, onCancel, loading: ext
     password: "",
     phone: "",
     rank_id: "" as string | number,
+    wing_id: "" as string | number,
+    sub_wing_id: "" as string | number,
     date_of_birth: "",
     date_of_joining: "",
     blood_group: "",
@@ -44,12 +48,16 @@ export default function UserForm({ initialData, onSubmit, onCancel, loading: ext
   const [signature, setSignature] = useState<string>("");
   const [signaturePreview, setSignaturePreview] = useState<string>("");
 
-  // Roles and Ranks state
+  // Roles, Ranks, Wings, Sub-Wings state
   const [roles, setRoles] = useState<Role[]>([]);
   const [selectedRoles, setSelectedRoles] = useState<number[]>([]);
   const [rolesLoading, setRolesLoading] = useState(false);
   const [ranks, setRanks] = useState<Rank[]>([]);
   const [ranksLoading, setRanksLoading] = useState(false);
+  const [wings, setWings] = useState<Wing[]>([]);
+  const [wingsLoading, setWingsLoading] = useState(false);
+  const [subWings, setSubWings] = useState<SubWing[]>([]);
+  const [subWingsLoading, setSubWingsLoading] = useState(false);
 
   // Format date from YYYY-MM-DD to DD/MM/YYYY
   const formatDateForDisplay = (dateStr?: string | null) => {
@@ -62,14 +70,28 @@ export default function UserForm({ initialData, onSubmit, onCancel, loading: ext
     return `${d}/${m}/${y}`;
   };
 
-  // Load roles and ranks on mount
+  // Load initial data on mount
   useEffect(() => {
     loadRoles();
     loadRanks();
+    loadWings();
   }, []);
+
+  // Load sub-wings when wing changes
+  useEffect(() => {
+    if (formData.wing_id) {
+      loadSubWings(Number(formData.wing_id));
+    } else {
+      setSubWings([]);
+      setFormData(prev => ({ ...prev, sub_wing_id: "" }));
+    }
+  }, [formData.wing_id]);
 
   useEffect(() => {
     if (initialData) {
+      // Find primary role assignment for wing/sub-wing
+      const primaryAssignment = initialData.role_assignments?.find(a => a.is_primary) || initialData.role_assignments?.[0];
+
       setFormData({
         service_number: initialData.service_number,
         name: initialData.name,
@@ -77,6 +99,8 @@ export default function UserForm({ initialData, onSubmit, onCancel, loading: ext
         password: "",
         phone: initialData.phone || "",
         rank_id: initialData.rank_id || "",
+        wing_id: primaryAssignment?.wing_id || "",
+        sub_wing_id: primaryAssignment?.sub_wing_id || "",
         date_of_birth: formatDateForDisplay(initialData.date_of_birth),
         date_of_joining: formatDateForDisplay(initialData.date_of_joining),
         blood_group: initialData.blood_group || "",
@@ -147,6 +171,31 @@ export default function UserForm({ initialData, onSubmit, onCancel, loading: ext
       console.error("Failed to load ranks:", error);
     } finally {
       setRanksLoading(false);
+    }
+  };
+
+  const loadWings = async () => {
+    try {
+      setWingsLoading(true);
+      const response = await wingService.getAllWings({ per_page: 1000 });
+      setWings(response.data.filter(w => w.is_active !== false));
+    } catch (error) {
+      console.error("Failed to load wings:", error);
+    } finally {
+      setWingsLoading(false);
+    }
+  };
+
+  const loadSubWings = async (wingId: number) => {
+    try {
+      setSubWingsLoading(true);
+      const result = await subWingService.getSubWingsByWing(wingId);
+      setSubWings(result.filter(sw => sw.is_active !== false));
+    } catch (error) {
+      console.error("Failed to load sub-wings:", error);
+      setSubWings([]);
+    } finally {
+      setSubWingsLoading(false);
     }
   };
 
@@ -330,14 +379,58 @@ export default function UserForm({ initialData, onSubmit, onCancel, loading: ext
             </div>
           </div>
 
-          {/* Roles Section */}
+          {/* Roles & Wing Section */}
           <div className="mb-8">
             <h2 className="text-lg font-bold text-gray-900 mb-4 pb-2 border-b border-dashed border-gray-300">
-              2. Assign Roles
+              2. Roles & Wing Access
+            </h2>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+              <div>
+                <Label> Wing <span className="text-red-500">*</span></Label>
+                <select 
+                  value={formData.wing_id} 
+                  onChange={(e) => handleChange("wing_id", e.target.value)} 
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  disabled={wingsLoading}
+                  required
+                >
+                  <option value="">No Wing Assignment</option>
+                  {wings.map((wing) => (
+                    <option key={wing.id} value={wing.id}>
+                      {wing.name} ({wing.code})
+                    </option>
+                  ))}
+                </select>
+                {wingsLoading && <p className="text-xs text-gray-500 mt-1 italic">Loading wings...</p>}
+              </div>
+
+              <div>
+                <Label> Sub-Wing</Label>
+                <select 
+                  value={formData.sub_wing_id} 
+                  onChange={(e) => handleChange("sub_wing_id", e.target.value)} 
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  disabled={subWingsLoading || !formData.wing_id}
+                >
+                  <option value="">No Sub-Wing Assignment</option>
+                  {subWings.map((sw) => (
+                    <option key={sw.id} value={sw.id}>
+                      {sw.name} ({sw.code})
+                    </option>
+                  ))}
+                </select>
+                {subWingsLoading && <p className="text-xs text-gray-500 mt-1 italic">Loading sub-wings...</p>}
+                {!formData.wing_id && <p className="text-xs text-gray-400 mt-1 italic">Select a wing first</p>}
+              </div>
+            </div>
+
+            <h3 className="text-md font-bold text-gray-700 mb-3">
+              Assign Roles 
               <span className="ml-2 text-sm font-normal text-gray-500">
                 ({selectedRoles.length} selected)
               </span>
-            </h2>
+            </h3>
 
             {rolesLoading ? (
               <div className="text-center py-4 text-gray-500">

@@ -107,24 +107,53 @@ export default function PenpictureCourseSemesterResultPage({ params }: { params:
     <div className="print-no-border bg-white rounded-lg border border-gray-200">
       <style jsx global>{`
         @media print {
-          @page {
-            size: A3 landscape;
-            margin: 10mm;
-          }
           .cv-content {
             width: 100% !important;
             max-width: none !important;
+            padding: 0 !important;
           }
           table {
-            font-size: 11px !important;
+            font-size: 14px !important;
           }
           .print-div {
             max-width: 60vh !important;
             margin: 0 auto !important;
           }
+          .no-print {
+            display: none !important;
+          }
         }
       `}</style>
 
+      {/* Dynamic @page rules — overrides browser default header/footer with custom content */}
+      <style dangerouslySetInnerHTML={{ __html: `
+        @media print {
+          @page {
+            size: A4;
+            margin: 12mm 2mm;
+
+            @top-left   { content: ""; }
+            @top-center {
+              content: "${(selectedPrintType?.name ?? '').replace(/"/g, '\\"')}";
+              font-size: 10pt;
+              white-space: pre;
+              text-align: center;
+              text-transform: uppercase;
+            }
+            @top-right  { content: ""; }
+
+            @bottom-left   { content: ""; }
+            @bottom-center {
+              content: "${(selectedPrintType?.name ?? '').replace(/"/g, '\\"')}" "\\A" counter(page);
+              font-size: 10pt;
+              white-space: pre;
+              text-align: center;
+              text-transform: uppercase;
+            }
+            @bottom-right  { content: ""; }
+          }
+        }
+      ` }} />
       {/* Action Bar */}
       <div className="p-4 flex items-center justify-between no-print">
         <button
@@ -145,113 +174,65 @@ export default function PenpictureCourseSemesterResultPage({ params }: { params:
 
       {/* Content */}
       <div className="p-4 cv-content">
-        {selectedPrintType && (
-          <div className="flex justify-center mb-6">
-            <p className="font-light uppercase">{selectedPrintType.name}</p>
-          </div>
-        )}
-
         {/* Header */}
-        <div className="mb-8 text-center">
-          <div className="flex justify-center mb-4">
+        <div className="mb-6 text-center">
+          <div className="flex justify-center mb-2">
             <FullLogo />
           </div>
-          <h1 className="text-xl font-bold text-gray-900 uppercase tracking-wider">
-            Bangladesh Air Force Academy
+          <h1 className="text-xl font-bold text-gray-900 uppercase">
+            Performance Evaluation Report by OC ATW, BAFA
           </h1>
-          <p className="font-medium text-gray-900 uppercase underline tracking-wider mt-1">
-            ATW Pen Picture Assessment Result {selectedPrintType ? `— ${selectedPrintType.name}` : ""}
-          </p>
-          <p className="font-medium text-gray-900 uppercase tracking-wider mt-1">
-            {meta?.course?.name}{meta?.course?.code ? ` (${meta.course.code})` : ""}
-            {" — "}
-            {meta?.semester?.name}{meta?.semester?.code ? ` (${meta.semester.code})` : ""}
+          <p className="font-medium text-gray-900 uppercase underline mt-1">
+            No. {meta?.course?.name} Course ({meta?.program?.name})
           </p>
         </div>
 
-        {/* Meta Row */}
-        <div className="flex items-center justify-between mb-4 text-sm">
-          <p>
-            <span className="font-bold text-gray-900 uppercase mr-2">Program</span>
-            <span className="border-b border-dashed border-black">: {meta?.program?.name || "—"}</span>
-          </p>
-          <p>
-            <span className="font-bold text-gray-900 uppercase mr-2">Total Submissions</span>
-            <span className="border-b border-dashed border-black">: {results.length} Cadet(s)</span>
-          </p>
-        </div>
-
-        {/* Results Table */}
+        {/* Results List */}
         {results.length === 0 ? (
           <div className="text-center py-12 text-gray-400">
             No results found for this course and semester.
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse border border-black text-sm">
-              <thead>
-                <tr>
-                  <th className="border border-black px-2 py-2 text-center align-middle">Ser</th>
-                  <th className="border border-black px-2 py-2 text-center align-middle">BD No</th>
-                  <th className="border border-black px-2 py-2 text-center align-middle">Rank</th>
-                  <th className="border border-black px-2 py-2 text-center align-middle">Name</th>
-                  <th className="border border-black px-2 py-2 text-center align-middle">Branch</th>
-                  <th className="border border-black px-2 py-2 text-center align-middle">Instructor</th>
-                  <th className="border border-black px-2 py-2 text-center align-middle">Grade</th>
-                  <th className="border border-black px-2 py-2 text-center align-middle no-print">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {results.map((result, index) => (
-                  <tr
-                    key={result.id}
-                    className="hover:bg-blue-50 cursor-pointer transition-colors"
-                    onClick={() => router.push(`/atw/assessments/penpicture/results/${result.id}`)}
-                  >
-                    <td className="border border-black px-2 py-2 text-center">{index + 1}</td>
-                    <td className="border border-black px-2 py-2 text-center font-mono">
-                      {(result.cadet as any)?.bd_no || (result.cadet as any)?.cadet_number || "—"}
-                    </td>
-                    <td className="border border-black px-2 py-2 text-center whitespace-nowrap">
-                      {(result.cadet as any)?.assigned_ranks?.[0]?.rank?.short_name || "Cdt"}
-                    </td>
-                    <td className="border border-black px-2 py-2 font-medium whitespace-nowrap">
-                      {result.cadet?.name || "N/A"}
-                    </td>
-                    <td className="border border-black px-2 py-2 text-center whitespace-nowrap">
-                      {result.branch?.name || "—"}
-                    </td>
-                    <td className="border border-black px-2 py-2 text-center whitespace-nowrap">
-                      {(result.instructor as any)?.name || "—"}
-                    </td>
-                    <td className="border border-black px-2 py-2 text-center">
-                      <span className="font-bold">{(result.grade as any)?.grade_code || "—"}</span>
-                      {(result.grade as any)?.grade_name && (
-                        <div className="text-xs text-gray-500">{(result.grade as any).grade_name}</div>
-                      )}
-                    </td>
-                    <td className="border border-black px-2 py-2 text-center no-print" onClick={(e) => e.stopPropagation()}>
-                      <div className="flex items-center justify-center gap-1">
-                        <button
-                          onClick={() => router.push(`/atw/assessments/penpicture/results/${result.id}/edit`)}
-                          className="p-1 text-yellow-600 hover:bg-yellow-50 rounded transition-all"
-                          title="Edit"
-                        >
-                          <Icon icon="hugeicons:pencil-edit-01" className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => { setDeletingResult(result); setDeleteModalOpen(true); }}
-                          className="p-1 text-red-600 hover:bg-red-50 rounded transition-all"
-                          title="Delete"
-                        >
-                          <Icon icon="hugeicons:delete-02" className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="space-y-3">
+            {results.map((result, index) => {
+              const cadet = result.cadet as any;
+              const rank  = cadet?.rank?.short_name || cadet?.rank?.name || "";
+              const name  = cadet?.name || "—";
+              const bdNo  = cadet?.cadet_number || cadet?.bd_no || "—";
+
+              return (
+                <div key={result.id} className="flex items-start gap-3">
+                  {/* Serial - empty placeholder to keep alignment if needed */}
+                  <div className="w-1 shrink-0"></div>
+
+                  {/* Label + performance */}
+                  <div className="flex-1 text-justify">
+                    <span className="font-bold text-gray-900">
+                      <span className="inline-block mr-10">{index + 1}.</span><span className="underline mr-10"> BD/{bdNo}, {rank && `${rank} `}{name}, {cadet.branch?.name || "—"} :</span>
+                    </span>
+                    <span className="text-gray-700 ml-2">{result.course_performance || "—"}</span>
+                  </div>
+
+                  {/* Actions (hidden on print) */}
+                  <div className="no-print flex items-center gap-1 shrink-0">
+                    <button
+                      onClick={() => router.push(`/atw/assessments/penpicture/results/${result.id}/edit`)}
+                      className="p-1 text-yellow-600 hover:bg-yellow-50 rounded transition-all"
+                      title="Edit"
+                    >
+                      <Icon icon="hugeicons:pencil-edit-01" className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => { setDeletingResult(result); setDeleteModalOpen(true); }}
+                      className="p-1 text-red-600 hover:bg-red-50 rounded transition-all"
+                      title="Delete"
+                    >
+                      <Icon icon="hugeicons:delete-02" className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>

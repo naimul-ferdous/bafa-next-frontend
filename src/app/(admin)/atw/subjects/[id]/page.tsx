@@ -28,11 +28,12 @@ export default function AtwSubjectDetailsPage() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    if (!subjectId) return;
+    const parsedId = parseInt(subjectId);
+    if (!subjectId || isNaN(parsedId)) { setError("Invalid subject ID"); setLoading(false); return; }
     const load = async () => {
       try {
         setLoading(true);
-        const data = await atwSubjectService.getSubject(parseInt(subjectId));
+        const data = await atwSubjectService.getSubject(parsedId);
         if (data) setSubject(data);
         else setError("Subject not found");
       } catch {

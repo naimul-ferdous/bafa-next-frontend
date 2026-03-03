@@ -14,6 +14,7 @@ import { commonService } from "@/libs/services/commonService";
 import { atwAssessmentCounselingTypeService } from "@/libs/services/atwAssessmentCounselingTypeService";
 import { cadetService } from "@/libs/services/cadetService";
 import { atwInstructorAssignCadetService } from "@/libs/services/atwInstructorAssignCadetService";
+import { atwAssessmentCounselingResultService } from "@/libs/services/atwAssessmentCounselingResultService";
 import { useAuth } from "@/libs/hooks/useAuth";
 import DatePicker from "@/components/form/input/DatePicker";
 
@@ -37,7 +38,7 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
     exam_type_id: 0,
     atw_assessment_counseling_type_id: 0,
     counseling_date: new Date().toLocaleDateString("en-GB"), // Initialize with today's date
-    instructor_id: 0,
+    instructor_id: user?.id || 0,
     cadet_id: 0,
     remarks: "", // Global remarks
     is_active: true,
@@ -54,7 +55,7 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
   const [groups, setGroups] = useState<SystemGroup[]>([]);
   const [exams, setExams] = useState<SystemExam[]>([]);
   const [cadets, setCadets] = useState<any[]>([]);
-  const [instructors, setInstructors] = useState<any[]>([]);
+  const [existingCadetIds, setExistingCadetIds] = useState<number[]>([]);
   
   const [loadingDropdowns, setLoadingDropdowns] = useState(true);
   const [loadingSemesters, setLoadingSemesters] = useState(false);
@@ -77,7 +78,6 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
           setBranches(commonData.branches || []);
           setGroups(commonData.groups || []);
           setExams(commonData.exams || []);
-          if (!isInstructor) setInstructors(commonData.instructors || []);
         }
       } catch (err) {
         console.error("Failed to load dropdown data:", err);
@@ -94,27 +94,56 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
   useEffect(() => {
     if (!formData.course_id) {
       setSemesters([]);
+      setExistingCadetIds([]);
       return;
     }
     const fetchSemesters = async () => {
       setLoadingSemesters(true);
       const data = await commonService.getSemestersByCourse(formData.course_id);
       setSemesters(data);
+      if (data.length > 0) {
+        setFormData(prev => ({ ...prev, semester_id: data[0].id }));
+      }
       setLoadingSemesters(false);
     };
     fetchSemesters();
   }, [formData.course_id]);
 
-  // Auto-select instructor when user is an instructor
+  // Fetch existing results to filter out cadets (only in create mode)
   useEffect(() => {
-    if (isInstructor && user?.id && !isEdit) {
+    if (isEdit || !formData.course_id || !formData.semester_id) {
+      setExistingCadetIds([]);
+      return;
+    }
+
+    const fetchExistingResults = async () => {
+      try {
+        const res = await atwAssessmentCounselingResultService.getAllResults({
+          course_id: formData.course_id,
+          semester_id: formData.semester_id,
+          per_page: 1000,
+        });
+        
+        const ids = res.data.flatMap(r => (r.result_cadets || []).map(c => c.cadet_id));
+        setExistingCadetIds(ids);
+      } catch (err) {
+        console.error("Failed to fetch existing results:", err);
+      }
+    };
+
+    fetchExistingResults();
+  }, [formData.course_id, formData.semester_id, isEdit]);
+
+  // Auto-select instructor
+  useEffect(() => {
+    if (user?.id && !isEdit) {
       setFormData(prev => ({ ...prev, instructor_id: user.id }));
     }
-  }, [isInstructor, user?.id, isEdit]);
+  }, [user?.id, isEdit]);
 
   // Load assigned cadets for instructor when course+semester are selected
   useEffect(() => {
-    if (!isInstructor || !user?.id) return;
+    if (!user?.id) return;
     if (!formData.course_id || !formData.semester_id) {
       setCadets([]);
       return;
@@ -133,6 +162,9 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
           name: a.cadet?.name,
           cadet_number: a.cadet?.cadet_number,
           bd_no: a.cadet?.cadet_number,
+          program_id: a.cadet?.program_id,
+          branch_id: a.cadet?.branch_id,
+          group_id: a.cadet?.group_id,
           is_active: true,
         }))
         .filter((c: any) => c.id);
@@ -141,7 +173,7 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
       setLoadingCadets(false);
     };
     fetchCadets();
-  }, [isInstructor, user?.id, formData.course_id, formData.semester_id]);
+  }, [user?.id, formData.course_id, formData.semester_id]);
 
   // Fetch Counseling Type when course and semester change
   useEffect(() => {
@@ -196,7 +228,7 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
   useEffect(() => {
     if (isInstructor || isEdit) return;
     const loadCadets = async () => {
-      if (!formData.course_id || !formData.semester_id || !formData.program_id) {
+      if (!formData.course_id || !formData.semester_id) {
         setCadets([]);
         return;
       }
@@ -207,7 +239,7 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
           per_page: 500,
           course_id: formData.course_id,
           semester_id: formData.semester_id,
-          program_id: formData.program_id,
+          program_id: formData.program_id || undefined,
           branch_id: formData.branch_id || undefined,
           group_id: formData.group_id || undefined,
         });
@@ -228,7 +260,7 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
       setFormData({
         course_id: initialData.course_id,
         semester_id: initialData.semester_id,
-        program_id: initialData.program_id,
+        program_id: initialData.program_id || 0,
         branch_id: initialData.branch_id || 0,
         group_id: initialData.group_id || 0,
         exam_type_id: initialData.exam_type_id || 0,
@@ -270,6 +302,21 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
       setFormData(prev => ({ ...prev, semester_id: value, cadet_id: 0 }));
       return;
     }
+    if (field === "cadet_id") {
+      const selectedCadet = cadets.find(c => c.id === value);
+      if (selectedCadet) {
+        setFormData(prev => ({
+          ...prev,
+          cadet_id: value,
+          program_id: selectedCadet.program_id || prev.program_id,
+          branch_id: selectedCadet.branch_id || prev.branch_id,
+          group_id: selectedCadet.group_id || prev.group_id,
+        }));
+      } else {
+        setFormData(prev => ({ ...prev, cadet_id: value }));
+      }
+      return;
+    }
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
@@ -278,9 +325,7 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
   };
 
   const getSelectedInstructor = () => {
-    if (isInstructor) return user?.name || "—";
-    const instructor = instructors.find(i => i.id === formData.instructor_id);
-    return instructor?.name || instructor?.instructor_biodata?.name || "—";
+    return user?.name || "—";
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -289,8 +334,7 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
 
     if (!formData.course_id) { setError("Please select a course"); return; }
     if (!formData.semester_id) { setError("Please select a semester"); return; }
-    if (!formData.program_id) { setError("Please select a program"); return; }
-    if (!formData.instructor_id) { setError("Please select an instructor"); return; }
+    if (!formData.instructor_id) { setError("Instructor information not found. Please log in again."); return; }
     if (!formData.cadet_id) { setError("Please select a cadet"); return; }
     if (!formData.atw_assessment_counseling_type_id) { setError("No Counseling Type found for selected Course and Semester"); return; }
 
@@ -306,7 +350,7 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
       const submitData: AtwAssessmentCounselingResultCreateData = {
         course_id: formData.course_id,
         semester_id: formData.semester_id,
-        program_id: formData.program_id,
+        program_id: formData.program_id || undefined,
         branch_id: formData.branch_id || undefined,
         group_id: formData.group_id || undefined,
         exam_type_id: formData.exam_type_id || undefined,
@@ -335,7 +379,12 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
     }
   };
 
-  const filtersSelected = formData.course_id && formData.semester_id && formData.program_id;
+  const filtersSelected = formData.course_id && formData.semester_id;
+  
+  const filteredCadets = isEdit 
+    ? cadets 
+    : cadets.filter(c => !existingCadetIds.includes(c.id));
+
   const showEvents = filtersSelected && detectedType && availableEvents.length > 0 && formData.cadet_id > 0;
 
   if (loadingDropdowns) {
@@ -373,7 +422,7 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
               onChange={(e) => handleChange("semester_id", parseInt(e.target.value))}
               className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 focus:outline-none disabled:bg-gray-50 disabled:text-gray-400"
               required
-              disabled={!formData.course_id || loadingSemesters || (!loadingSemesters && semesters.length === 0)}
+              disabled={true}
             >
               <option value={0}>
                 {loadingSemesters
@@ -395,8 +444,8 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Select Program<span className="text-red-500">*</span></label>
-          <select value={formData.program_id} onChange={(e) => handleChange("program_id", parseInt(e.target.value))} className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 focus:outline-none" required>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Select Program</label>
+          <select value={formData.program_id} onChange={(e) => handleChange("program_id", parseInt(e.target.value))} className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 focus:outline-none">
             <option value={0}>Select Program</option>
             {programs.map(program => (<option key={program.id} value={program.id}>{program.name}</option>))}
           </select>
@@ -413,30 +462,13 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
       </div>
 
       {/* Second Row */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 gap-4">
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Select Exam Type</label>
           <select value={formData.exam_type_id} onChange={(e) => handleChange("exam_type_id", parseInt(e.target.value))} className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 focus:outline-none">
             <option value={0}>Select Exam Type</option>
             {exams.map(exam => (<option key={exam.id} value={exam.id}>{exam.name}</option>))}
           </select>
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Select Instructor<span className="text-red-500">*</span></label>
-          {isInstructor ? (
-            <input
-              type="text"
-              value={user?.name ?? ""}
-              readOnly
-              className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-gray-50 text-gray-700 cursor-not-allowed"
-            />
-          ) : (
-            <select value={formData.instructor_id} onChange={(e) => handleChange("instructor_id", parseInt(e.target.value))} className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 focus:outline-none" required>
-              <option value={0}>Select Instructor</option>
-              {instructors.map(ins => (<option key={ins.id} value={ins.id}>{ins.name || ins.instructor_biodata?.name} ({ins.service_number || ins.instructor_biodata?.service_number})</option>))}
-            </select>
-          )}
         </div>
 
         <div>
@@ -447,26 +479,20 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
               onChange={(e) => handleChange("cadet_id", parseInt(e.target.value))}
               className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 focus:outline-none disabled:bg-gray-50 disabled:text-gray-400"
               required
-              disabled={
-                isInstructor
-                  ? (!formData.course_id || !formData.semester_id || loadingCadets)
-                  : (!formData.course_id || !formData.semester_id || !formData.program_id || loadingCadets)
-              }
+              disabled={!formData.course_id || !formData.semester_id || loadingCadets}
             >
               <option value={0}>
-                {isInstructor && !formData.course_id
+                {!formData.course_id
                   ? "Select course first"
-                  : isInstructor && !formData.semester_id
+                  : !formData.semester_id
                     ? "Select semester first"
-                    : !isInstructor && (!formData.course_id || !formData.semester_id || !formData.program_id)
-                      ? "Select Course, Semester & Program first"
-                      : loadingCadets
-                        ? "Loading cadets..."
-                        : isInstructor && cadets.length === 0 && formData.course_id && formData.semester_id
-                          ? "No assigned cadets"
-                          : "Select Cadet"}
+                    : loadingCadets
+                      ? "Loading cadets..."
+                      : filteredCadets.length === 0
+                        ? "No assigned cadets found"
+                        : "Select Cadet"}
               </option>
-              {cadets.map(cadet => (<option key={cadet.id} value={cadet.id}>{cadet.name} ({cadet.bd_no || cadet.cadet_number})</option>))}
+              {filteredCadets.map(cadet => (<option key={cadet.id} value={cadet.id}>{cadet.name} ({cadet.bd_no || cadet.cadet_number})</option>))}
             </select>
             {loadingCadets && (
               <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
@@ -482,7 +508,7 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
         <div className="text-center py-12 text-gray-500 border border-dashed border-black rounded-xl">
           <Icon icon="hugeicons:user-edit" className="w-12 h-12 mx-auto mb-3 text-black" />
           {!filtersSelected ? (
-            <p>Please select Course, Semester, and Program first</p>
+            <p>Please select Course and Semester first</p>
           ) : !formData.cadet_id ? (
             <p>Please select a Cadet to start inputting remarks</p>
           ) : !detectedType ? (

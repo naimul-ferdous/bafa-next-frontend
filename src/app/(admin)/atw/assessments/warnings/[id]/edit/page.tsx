@@ -3,7 +3,6 @@
 import React, { useEffect, useState, use } from "react";
 import { useRouter } from "next/navigation";
 import { atwCadetWarningService } from "@/libs/services/atwCadetWarningService";
-import FullLogo from "@/components/ui/fulllogo";
 import AtwCadetWarningForm from "@/components/atw/warnings/AtwCadetWarningForm";
 import { CadetWarning } from "@/libs/types/system";
 import { Icon } from "@iconify/react";
@@ -43,7 +42,7 @@ export default function EditAtwCadetWarningPage({ params }: { params: Promise<{ 
     setLoading(true);
     try {
       await atwCadetWarningService.update(id, data);
-      router.push("/atw/assessments/warnings");
+      router.push("/atw/assessments/warnings/view");
     } catch (err: any) {
       throw err;
     } finally {
@@ -52,7 +51,7 @@ export default function EditAtwCadetWarningPage({ params }: { params: Promise<{ 
   };
 
   const handleCancel = () => {
-    router.push("/atw/assessments/warnings");
+    router.push("/atw/assessments/warnings/view");
   };
 
   if (loadingWarning) {

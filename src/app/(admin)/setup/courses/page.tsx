@@ -135,7 +135,7 @@ function CoursesPageContent() {
       key: "id",
       header: "SL.",
       className: "text-center text-gray-900",
-      render: (course, index) => (pagination.from || 0) + (index + 1),
+      render: (course, index) => (pagination.from || 0) + (index),
     },
     {
       key: "name",

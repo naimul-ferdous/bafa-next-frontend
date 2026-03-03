@@ -16,7 +16,7 @@ export default function CreateOlqResultPage() {
     setLoading(true);
     try {
       await atwAssessmentOlqResultService.createResult(data);
-      router.push("/atw/assessments/olq/results");
+      router.push("/atw/assessments/olq/results/view");
     } catch (err: any) {
       throw err;
     } finally {
@@ -25,7 +25,7 @@ export default function CreateOlqResultPage() {
   };
 
   const handleCancel = () => {
-    router.push("/atw/assessments/olq/results");
+    router.push("/atw/assessments/olq/results/view");
   };
 
   return (

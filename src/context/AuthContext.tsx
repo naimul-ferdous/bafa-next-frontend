@@ -46,6 +46,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   /**
+   * Listen for session displacement (logged in from another device)
+   */
+  useEffect(() => {
+    const handleSessionDisplaced = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      removeToken();
+      setUser(null);
+      setMenus([]);
+      setError(detail?.message || 'You have been logged out because another device logged into your account.');
+      router.push('/signin');
+    };
+    window.addEventListener('auth:session-displaced', handleSessionDisplaced);
+    return () => window.removeEventListener('auth:session-displaced', handleSessionDisplaced);
+  }, [router]);
+
+  /**
    * Load user data from API
    */
   const loadUser = async () => {

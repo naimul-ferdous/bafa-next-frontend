@@ -94,10 +94,13 @@ export interface AtwAssessmentCounselingResultCadet {
 
 // Counseling Result
 export interface AtwAssessmentCounselingResult {
+  total_approved: number;
+  total_counseled: number;
+  total_cadets: number;
   id: number;
   course_id: number;
   semester_id: number;
-  program_id: number;
+  program_id?: number;
   branch_id?: number;
   group_id?: number;
   exam_type_id?: number;
@@ -140,7 +143,7 @@ export interface AtwAssessmentCounselingTypeCreateData {
 export interface AtwAssessmentCounselingResultCreateData {
   course_id: number;
   semester_id: number;
-  program_id: number;
+  program_id?: number;
   branch_id?: number;
   group_id?: number;
   exam_type_id?: number;

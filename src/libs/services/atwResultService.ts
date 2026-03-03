@@ -136,7 +136,7 @@ export const atwResultService = {
   /**
    * Check if a result already exists
    */
-  async checkExistence(params: ResultQueryParams): Promise<boolean> {
+  async checkExistence(params: ResultQueryParams): Promise<{ exists: boolean; id?: number }> {
     try {
       const query = new URLSearchParams();
       if (params.course_id) query.append('course_id', params.course_id.toString());
@@ -145,19 +145,19 @@ export const atwResultService = {
       if (params.branch_id) query.append('branch_id', params.branch_id.toString());
       if (params.group_id) query.append('group_id', params.group_id.toString());
       else query.append('group_id', 'null'); // Explicitly send null for group_id if not set
-      
+
       if (params.exam_type_id) query.append('exam_type_id', params.exam_type_id.toString());
       if (params.instructor_id) query.append('instructor_id', params.instructor_id.toString());
-      
+
       if (params.atw_subject_id) query.append('atw_subject_id', params.atw_subject_id.toString());
       else if (params.atw_subject_module_id) query.append('atw_subject_id', params.atw_subject_module_id.toString());
 
       const token = getToken();
-      const result = await apiClient.get<{ success: boolean; data: { exists: boolean } }>(`/atw-results/check-existence?${query.toString()}`, token);
-      return result?.data?.exists || false;
+      const result = await apiClient.get<{ success: boolean; data: { exists: boolean; id?: number } }>(`/atw-results/check-existence?${query.toString()}`, token);
+      return { exists: result?.data?.exists || false, id: result?.data?.id };
     } catch (error) {
       console.error('Failed to check existence:', error);
-      return false;
+      return { exists: false };
     }
   },
 

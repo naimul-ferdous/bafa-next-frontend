@@ -45,7 +45,7 @@ export default function EditUserPage() {
     try {
       await userService.updateUser(parseInt(id), formData);
       if (selectedRoles.length > 0) {
-        await userService.syncRoles(parseInt(id), selectedRoles);
+        await userService.syncRoles(parseInt(id), selectedRoles, formData.wing_id, formData.sub_wing_id);
       }
       router.push("/users");
     } catch (err: any) {

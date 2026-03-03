@@ -65,7 +65,11 @@ const AppSidebar: React.FC = () => {
   const [openSubmenus, setOpenSubmenus] = useState<Record<string, boolean>>({});
 
   const isActive = useCallback(
-    (path: string) => normalizeRoute(path) === normalizeRoute(pathname),
+    (path: string) => {
+      const normalized = normalizeRoute(path);
+      const normalizedPathname = normalizeRoute(pathname);
+      return normalizedPathname === normalized || normalizedPathname.startsWith(normalized + "/");
+    },
     [pathname]
   );
 
@@ -80,9 +84,13 @@ const AppSidebar: React.FC = () => {
   const autoOpenKeys = useMemo(() => {
     const result: Record<string, boolean> = {};
     const normalizedPathname = normalizeRoute(pathname);
+    const matchesRoute = (route: string) => {
+      const normalized = normalizeRoute(route);
+      return normalizedPathname === normalized || normalizedPathname.startsWith(normalized + "/");
+    };
     const traverse = (menu: Menu, ancestors: string[]): boolean => {
       const key = `menu-${menu.id}`;
-      let active = !!(menu.route && normalizeRoute(menu.route) === normalizedPathname);
+      let active = !!(menu.route && matchesRoute(menu.route));
       if (menu.children && menu.children.length > 0) {
         const childActive = menu.children.some((child: Menu) => traverse(child, [...ancestors, key]));
         if (childActive) active = true;
@@ -99,8 +107,12 @@ const AppSidebar: React.FC = () => {
 
   // Recursive function to check if any child is active
   const hasActiveChild = useCallback((menu: Menu): boolean => {
-    if (menu.route && normalizeRoute(menu.route) === normalizeRoute(pathname)) {
-      return true;
+    if (menu.route) {
+      const normalized = normalizeRoute(menu.route);
+      const normalizedPathname = normalizeRoute(pathname);
+      if (normalizedPathname === normalized || normalizedPathname.startsWith(normalized + "/")) {
+        return true;
+      }
     }
     if (menu.children && menu.children.length > 0) {
       return menu.children.some((child: Menu) => hasActiveChild(child));
@@ -114,6 +126,7 @@ const AppSidebar: React.FC = () => {
     const menuPath = menu.route || "";
     const menuKey = `menu-${menu.id}`;
     const isOpen = openSubmenus[menuKey] ?? autoOpenKeys[menuKey] ?? false;
+    const parentActive = hasChildren && !!menuPath ? hasActiveChild(menu) : false;
 
     return (
       <li key={menu.id}>
@@ -121,14 +134,14 @@ const AppSidebar: React.FC = () => {
           <>
             <button
               onClick={() => toggleSubmenu(menuKey)}
-              className={`menu-item group menu-item-inactive cursor-pointer ${
+              className={`menu-item group ${parentActive ? "menu-item-active" : "menu-item-inactive"} cursor-pointer ${
                 level === 0 && !isExpanded && !isHovered
                   ? "lg:justify-center"
                   : "lg:justify-start"
               }`}
               style={{ paddingLeft: level > 0 ? `${level * 1.5}rem` : undefined }}
             >
-              <span className="menu-item-icon-inactive">
+              <span className={parentActive ? "menu-item-icon-active" : "menu-item-icon-inactive"}>
                 <Icon icon={getIconName(menu.icon)} className="w-5 h-5" />
               </span>
               {(isExpanded || isHovered || isMobileOpen) && (

@@ -15,6 +15,7 @@ import { commonService } from "@/libs/services/commonService";
 import { atwAssessmentOlqTypeService } from "@/libs/services/atwAssessmentOlqTypeService";
 import { cadetService } from "@/libs/services/cadetService";
 import { atwInstructorAssignCadetService } from "@/libs/services/atwInstructorAssignCadetService";
+import { atwUserAssignService } from "@/libs/services/atwUserAssignService";
 import { useAuth } from "@/libs/hooks/useAuth";
 
 interface OlqResultFormProps {
@@ -56,7 +57,11 @@ export default function OlqResultForm({ initialData, onSubmit, onCancel, loading
   const [error, setError] = useState("");
 
   // Dropdown data
-  const [courses, setCourses] = useState<SystemCourse[]>([]);
+  const [allCourses, setAllCourses] = useState<SystemCourse[]>([]);
+  const [assignedOlqCourseIds, setAssignedOlqCourseIds] = useState<number[]>([]);
+  const courses = assignedOlqCourseIds.length > 0
+    ? allCourses.filter(c => assignedOlqCourseIds.includes(c.id))
+    : allCourses;
   const [semesters, setSemesters] = useState<SystemSemester[]>([]);
   const [programs, setPrograms] = useState<SystemProgram[]>([]);
   const [branches, setBranches] = useState<SystemBranch[]>([]);
@@ -77,17 +82,22 @@ export default function OlqResultForm({ initialData, onSubmit, onCancel, loading
     const loadDropdownData = async () => {
       try {
         setLoadingDropdowns(true);
-        const [commonData, olqTypesRes] = await Promise.all([
+        const [commonData, olqTypesRes, assignsData] = await Promise.all([
           commonService.getResultOptions(),
           atwAssessmentOlqTypeService.getAllTypes({ per_page: 100 }),
+          user?.id ? atwUserAssignService.getAll({ user_id: user.id }) : Promise.resolve(null),
         ]);
 
         if (commonData) {
-          setCourses(commonData.courses || []);
+          setAllCourses(commonData.courses || []);
           setPrograms(commonData.programs || []);
           setBranches(commonData.branches || []);
           setGroups(commonData.groups || []);
           setExams(commonData.exams || []);
+        }
+
+        if (assignsData && assignsData.olq.length > 0) {
+          setAssignedOlqCourseIds(assignsData.olq.map(a => a.course_id));
         }
 
         setAllOlqTypes(olqTypesRes.data.filter(t => t.is_active));
@@ -100,7 +110,7 @@ export default function OlqResultForm({ initialData, onSubmit, onCancel, loading
     };
 
     loadDropdownData();
-  }, []);
+  }, [user?.id]);
 
   // Fetch semesters whenever course changes
   useEffect(() => {

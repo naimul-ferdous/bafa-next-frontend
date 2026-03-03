@@ -15,7 +15,7 @@ export default function CreateUserPage() {
     try {
       const newUser = await userService.createUser(formData);
       if (newUser && selectedRoles.length > 0) {
-        await userService.syncRoles(newUser.id, selectedRoles);
+        await userService.syncRoles(newUser.id, selectedRoles, formData.wing_id, formData.sub_wing_id);
       }
       router.push("/users");
     } catch (err: any) {

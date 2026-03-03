@@ -13,8 +13,12 @@ export default function CreateResultPage() {
   const handleSubmit = async (data: any) => {
     setLoading(true);
     try {
-      await atwAssessmentPenpictureResultService.createResult(data);
-      router.push("/atw/assessments/penpicture/results");
+      if (Array.isArray(data)) {
+        await atwAssessmentPenpictureResultService.bulkCreate(data);
+      } else {
+        await atwAssessmentPenpictureResultService.createResult(data);
+      }
+      router.push("/atw/assessments/penpicture/results/view");
     } catch (err: any) {
       throw err;
     } finally {
@@ -23,7 +27,7 @@ export default function CreateResultPage() {
   };
 
   const handleCancel = () => {
-    router.push("/atw/assessments/penpicture/results");
+    router.push("/atw/assessments/penpicture/results/view");
   };
 
   return (

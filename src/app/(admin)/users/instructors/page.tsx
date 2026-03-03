@@ -22,6 +22,8 @@ import InstructorAssignModuleModal from "@/components/instructors/InstructorAssi
 import CtwInstructorAssignCadetModal from "@/components/instructors/CtwInstructorAssignCadetModal";
 import InstructorViewAssignedModulesModal from "@/components/instructors/InstructorViewAssignedModulesModal";
 import InstructorAssignRoleModal from "@/components/instructors/InstructorAssignRoleModal";
+import InstructorAssignAssessmentModal from "@/components/instructors/InstructorAssignAssessmentModal";
+import { atwUserAssignService } from "@/libs/services/atwUserAssignService";
 import UserAssignRankModal from "@/components/users/UserAssignRankModal";
 import UserSignatureModal from "@/components/users/UserSignatureModal";
 import type { User } from "@/libs/types/user";
@@ -69,6 +71,11 @@ function InstructorsPageContent() {
   const [assigningCtwCadetInstructor, setAssigningCtwCadetInstructor] = useState<InstructorBiodata | null>(null);
   const [viewModulesModalOpen, setViewModulesModalOpen] = useState(false);
   const [viewingModulesInstructor, setViewingModulesInstructor] = useState<InstructorBiodata | null>(null);
+
+  // Assign assessment modal state
+  const [assignAssessmentModalOpen, setAssignAssessmentModalOpen] = useState(false);
+  const [assignAssessmentInstructor, setAssignAssessmentInstructor] = useState<InstructorBiodata | null>(null);
+  const [instructorAssignMap, setInstructorAssignMap] = useState<Record<number, Record<string, string[]>>>({});
   const [approveModalOpen, setApproveModalOpen] = useState(false);
   const [approvingAssignment, setApprovingAssignment] = useState<{ assignmentId: number; instructor: InstructorBiodata } | null>(null);
   const [approveLoading, setApproveLoading] = useState(false);
@@ -149,6 +156,28 @@ function InstructorsPageContent() {
     window.addEventListener('instructorUpdated', handleInstructorUpdate);
     return () => window.removeEventListener('instructorUpdated', handleInstructorUpdate);
   }, [loadInstructors]);
+
+  const loadAssignMap = useCallback(async () => {
+    try {
+      const data = await atwUserAssignService.getAll();
+      const map: Record<number, Record<string, string[]>> = {};
+      const push = (userId: number | null | undefined, key: string, courseName: string) => {
+        if (!userId) return;
+        if (!map[userId]) map[userId] = {};
+        if (!map[userId][key]) map[userId][key] = [];
+        map[userId][key].push(courseName);
+      };
+      data.penpicture.forEach((a) => push(a.user_id, "penpicture", a.course?.name || `Course ${a.course_id}`));
+      data.counseling.forEach((a) => push(a.user_id, "counseling", a.course?.name || `Course ${a.course_id}`));
+      data.olq.forEach((a)        => push(a.user_id, "olq",        a.course?.name || `Course ${a.course_id}`));
+      data.warning.forEach((a)    => push(a.user_id, "warning",    a.course?.name || `Course ${a.course_id}`));
+      setInstructorAssignMap(map);
+    } catch (error) {
+      console.error("Failed to load instructor assign map:", error);
+    }
+  }, []);
+
+  useEffect(() => { loadAssignMap(); }, [loadAssignMap]);
 
   const handleAddInstructor = () => router.push('/users/instructors/create');
   const handleEditInstructor = (instructor: InstructorBiodata) => router.push(`/users/instructors/${instructor.id}/edit`);
@@ -247,6 +276,12 @@ function InstructorsPageContent() {
   const handleAssignCtwCadets = (instructor: InstructorBiodata) => {
     setAssigningCtwCadetInstructor(instructor);
     setAssignCtwCadetModalOpen(true);
+  };
+
+  // Handle assign assessments
+  const handleAssignAssessments = (instructor: InstructorBiodata) => {
+    setAssignAssessmentInstructor(instructor);
+    setAssignAssessmentModalOpen(true);
   };
 
   // Handle view assigned modules
@@ -363,7 +398,45 @@ function InstructorsPageContent() {
         )}
       </div>
     )},
-    { key: "date_of_commission", header: "Commission Date", className: "text-gray-700", render: (instructor) => instructor.date_of_commission ? new Date(instructor.date_of_commission).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : "—" },
+    {
+      key: "assigned_assessments",
+      header: "Assessments",
+      className: "text-center",
+      headerAlign: "center" as const,
+      render: (instructor: InstructorBiodata) => {
+        const assigns = instructorAssignMap[instructor.user_id] || {};
+        const CHIPS = [
+          { key: "penpicture", label: "PenPicture", color: "bg-purple-100 text-purple-700 border-purple-200" },
+          { key: "counseling", label: "Counseling", color: "bg-blue-100   text-blue-700   border-blue-200"   },
+          { key: "olq",        label: "OLQ",        color: "bg-green-100  text-green-700  border-green-200"  },
+          { key: "warning",    label: "Warning",    color: "bg-red-100    text-red-700    border-red-200"    },
+        ];
+        const chips = CHIPS.flatMap((c) =>
+          (assigns[c.key] || []).map((courseName, i) => ({ ...c, courseName, uid: `${c.key}-${i}` }))
+        );
+        return (
+          <div className="flex flex-col items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+            <div className="flex flex-wrap gap-1 justify-center">
+              {chips.map((c) => (
+                <span key={c.uid} className={`px-1.5 py-0.5 text-xs font-medium rounded border ${c.color}`}>
+                  {c.label}: {c.courseName}
+                </span>
+              ))}
+            </div>
+            {can('asign-assessments') && (
+              <button
+                onClick={() => handleAssignAssessments(instructor)}
+                className="px-2.5 py-0.5 text-xs font-medium bg-indigo-50 text-indigo-700 border border-indigo-200 rounded hover:bg-indigo-100 flex items-center gap-1"
+                title="Assign Assessments"
+              >
+                <Icon icon="hugeicons:plus-sign" className="w-3 h-3" />
+                Assign
+              </button>
+            )}
+          </div>
+        );
+      },
+    },
     { key: "user", header: "Roles", className: "text-gray-700", render: (instructor) => {
       const roleAssignments = instructor.user?.role_assignments || instructor.user?.roleAssignments || [];
       const activeRoles = roleAssignments.filter(ra => ra.is_active && ra.role);
@@ -707,11 +780,19 @@ function InstructorsPageContent() {
         onSuccess={() => loadInstructors()} 
       />
 
-      <UserSignatureModal 
-        isOpen={signatureModalOpen} 
-        onClose={() => { setSignatureModalOpen(false); setSigningUser(null); }} 
-        user={signingUser} 
-        onSuccess={() => loadInstructors()} 
+      <UserSignatureModal
+        isOpen={signatureModalOpen}
+        onClose={() => { setSignatureModalOpen(false); setSigningUser(null); }}
+        user={signingUser}
+        onSuccess={() => loadInstructors()}
+      />
+
+      <InstructorAssignAssessmentModal
+        isOpen={assignAssessmentModalOpen}
+        onClose={() => { setAssignAssessmentModalOpen(false); setAssignAssessmentInstructor(null); }}
+        onSuccess={() => { loadInstructors(); loadAssignMap(); }}
+        instructor={assignAssessmentInstructor}
+        courses={courses}
       />
     </div>
   );

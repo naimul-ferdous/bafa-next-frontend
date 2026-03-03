@@ -94,25 +94,55 @@ export default function CadetWarningDetailsPage({ params }: { params: Promise<{ 
 
   return (
     <div className="print-no-border bg-white rounded-lg border border-gray-200 min-h-screen">
-      <style>{`
-       @media print {
-          @page {
-            size: A3 landscape;
-            margin: 10mm;
-          }
+      <style jsx global>{`
+        @media print {
           .cv-content {
             width: 100% !important;
             max-width: none !important;
           }
-          table{
+          table {
             font-size: 14px !important;
           }
-          .print-div{
+          .print-div {
             max-width: 60vh !important;
             margin: 0 auto !important;
           }
+          .no-print {
+            display: none !important;
+          }
         }
       `}</style>
+
+      {/* Dynamic @page rules — overrides browser default header/footer with custom content */}
+      <style dangerouslySetInnerHTML={{ __html: `
+        @media print {
+          @page {
+            size: A3 landscape;
+            margin: 14mm 10mm 14mm 10mm;
+
+            @top-left   { content: ""; }
+            @top-center {
+              content: "${(selectedPrintType?.name ?? '').replace(/"/g, '\\"')}";
+              font-size: 10pt;
+              white-space: pre;
+              text-align: center;
+              text-transform: uppercase;
+            }
+            @top-right  { content: ""; }
+
+            @bottom-left   { content: ""; }
+            @bottom-center {
+              content: "${(selectedPrintType?.name ?? '').replace(/"/g, '\\"')}" "\\A" counter(page);
+              font-size: 10pt;
+              white-space: pre;
+              text-align: center;
+              text-transform: uppercase;
+            }
+            @bottom-right  { content: ""; }
+          }
+        }
+      ` }} />
+
       <div className="p-4 flex items-center justify-between no-print">
         <button
           onClick={() => router.push("/atw/assessments/counselings/results")}
@@ -133,14 +163,6 @@ export default function CadetWarningDetailsPage({ params }: { params: Promise<{ 
       </div>
 
       <div className="p-10 cv-content">
-
-        <div className="w-full flex justify-between mb-8 text-xs font-bold">
-          <div></div>
-          <div>
-            <p className="text-center font-medium text-gray-900 uppercase px-4">{selectedPrintType?.name}</p>
-          </div>
-          <div></div>
-        </div>
         <div className="flex justify-end mb-10">
           <div className="text-left space-y-0.5">
             <FullLogo />

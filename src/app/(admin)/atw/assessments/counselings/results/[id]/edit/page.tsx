@@ -6,7 +6,7 @@ import { atwAssessmentCounselingResultService } from "@/libs/services/atwAssessm
 import FullLogo from "@/components/ui/fulllogo";
 import ResultForm from "@/components/atw-assessment-counseling-results/ResultForm";
 import { Icon } from "@iconify/react";
-import type { AtwAssessmentCounselingResult } from "@/libs/types/system";
+import type { AtwAssessmentCounselingResult } from "@/libs/types/atwAssessmentCounseling";
 
 export default function EditResultPage() {
   const router = useRouter();
@@ -45,7 +45,7 @@ export default function EditResultPage() {
     setLoading(true);
     try {
       await atwAssessmentCounselingResultService.updateResult(parseInt(resultId), data);
-      router.push("/atw/assessments/counselings/results");
+      router.push("/atw/assessments/counselings/results/view");
     } catch (err: any) {
       throw err;
     } finally {
@@ -54,7 +54,7 @@ export default function EditResultPage() {
   };
 
   const handleCancel = () => {
-    router.push("/atw/assessments/counselings/results");
+    router.push("/atw/assessments/counselings/results/view");
   };
 
   if (loadingResult) {

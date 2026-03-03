@@ -45,7 +45,7 @@ export default function EditResultPage() {
     setLoading(true);
     try {
       await atwAssessmentPenpictureResultService.updateResult(parseInt(resultId), data);
-      router.push("/atw/assessments/penpicture/results");
+      router.push("/atw/assessments/penpicture/results/view");
     } catch (err: any) {
       throw err;
     } finally {
@@ -54,7 +54,7 @@ export default function EditResultPage() {
   };
 
   const handleCancel = () => {
-    router.push("/atw/assessments/penpicture/results");
+    router.push("/atw/assessments/penpicture/results/view");
   };
 
   if (loadingResult) {

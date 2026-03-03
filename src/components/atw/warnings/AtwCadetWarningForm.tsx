@@ -179,7 +179,7 @@ export default function AtwCadetWarningForm({ initialData, onSubmit, onCancel, l
             <FullLogo />
             <p className="font-bold">BAFA-110 (REVISED)</p>
             <p>BAF Academy</p>
-            <p>Cdts&apos; Trg Wg</p>
+            <p>Academic Training Wing</p>
             <p>Jashore</p>
             <p className="mt-1 text-xs text-gray-500">
               Tel: 02477762242 ext 5195
@@ -285,7 +285,7 @@ export default function AtwCadetWarningForm({ initialData, onSubmit, onCancel, l
             <p>
               {isEdit && initialData?.creator?.role ? initialData.creator.role : (user?.role?.name || "Sqn Cdr & Instr of no 1 Sqn")}
             </p>
-            <p>Cadets&apos; Training Wing</p>
+            <p>Academic Training Wing</p>
             <p>Bangladesh Air Force Academy</p>
           </div>
         </div>

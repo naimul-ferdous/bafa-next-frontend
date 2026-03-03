@@ -162,13 +162,17 @@ export const atwAssessmentCounselingResultService = {
   /**
    * Get results grouped by course and semester with pagination
    */
-  async getGroupedResults(params?: { instructor_id?: number; page?: number; per_page?: number; search?: string }): Promise<ResultPaginatedResponse & { data: any[] }> {
+  async getGroupedResults(params?: { instructor_id?: number; authority_id?: number; course_id?: number; semester_id?: number; page?: number; per_page?: number; search?: string; allData?: boolean }): Promise<ResultPaginatedResponse & { data: any[] }> {
     try {
       const query = new URLSearchParams();
       if (params?.instructor_id) query.append('instructor_id', params.instructor_id.toString());
+      if (params?.authority_id) query.append('authority_id', params.authority_id.toString());
+      if (params?.course_id) query.append('course_id', params.course_id.toString());
+      if (params?.semester_id) query.append('semester_id', params.semester_id.toString());
       if (params?.page) query.append('page', params.page.toString());
       if (params?.per_page) query.append('per_page', params.per_page.toString());
       if (params?.search) query.append('search', params.search);
+      if (params?.allData) query.append('allData', 'true');
 
       const endpoint = `/atw-assessment-counseling-results/grouped${query.toString() ? `?${query.toString()}` : ''}`;
       const token = getToken();

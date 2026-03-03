@@ -13,6 +13,10 @@ import UserAssignRankModal from "@/components/users/UserAssignRankModal";
 import UserSignatureModal from "@/components/users/UserSignatureModal";
 import InstructorAssignWingModal from "@/components/instructors/InstructorAssignWingModal";
 import CadetAssignWingModal from "@/components/users/CadetAssignWingModal";
+import InstructorAssignAssessmentModal from "@/components/instructors/InstructorAssignAssessmentModal";
+import { commonService } from "@/libs/services/commonService";
+import { atwUserAssignService } from "@/libs/services/atwUserAssignService";
+import type { SystemCourse } from "@/libs/types/system";
 import Image from "next/image";
 import { usePageContext, useCan } from "@/context/PagePermissionsContext";
 
@@ -22,8 +26,8 @@ export default function UsersPage() {
   const can = useCan();
 
   useEffect(() => {
-    console.log("Page permissions:", permissions);
-  }, [menu, permissions]);
+    console.log("can:", can);
+  }, [menu, can]);
 
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
@@ -58,6 +62,13 @@ export default function UsersPage() {
   const [assignCadetWingModalOpen, setAssignCadetWingModalOpen] = useState(false);
   const [assigningCadetWingUser, setAssigningCadetWingUser] = useState<User | null>(null);
 
+  // Assessment assignment modal state
+  const [assignAssessmentModalOpen, setAssignAssessmentModalOpen] = useState(false);
+  const [assignAssessmentUser, setAssignAssessmentUser] = useState<User | null>(null);
+
+  const [courses, setCourses] = useState<SystemCourse[]>([]);
+  const [userAssignMap, setUserAssignMap] = useState<Record<number, Record<string, string[]>>>({});
+
   const [searchTerm, setSearchTerm] = useState("");
   const [perPage, setPerPage] = useState(10);
   const [currentPage, setCurrentPage] = useState(1);
@@ -82,6 +93,34 @@ export default function UsersPage() {
     window.addEventListener('userUpdated', handleUserUpdate);
     return () => window.removeEventListener('userUpdated', handleUserUpdate);
   }, [loadUsers]);
+
+  useEffect(() => {
+    commonService.getResultOptions().then((options) => {
+      if (options?.courses) setCourses(options.courses);
+    });
+  }, []);
+
+  const loadAssignMap = useCallback(async () => {
+    try {
+      const data = await atwUserAssignService.getAll();
+      const map: Record<number, Record<string, string[]>> = {};
+      const push = (userId: number | null | undefined, key: string, courseName: string) => {
+        if (!userId) return;
+        if (!map[userId]) map[userId] = {};
+        if (!map[userId][key]) map[userId][key] = [];
+        map[userId][key].push(courseName);
+      };
+      data.penpicture.forEach((a) => push(a.user_id, "penpicture", a.course?.name || `Course ${a.course_id}`));
+      data.counseling.forEach((a) => push(a.user_id, "counseling", a.course?.name || `Course ${a.course_id}`));
+      data.olq.forEach((a)        => push(a.user_id, "olq",        a.course?.name || `Course ${a.course_id}`));
+      data.warning.forEach((a)    => push(a.user_id, "warning",    a.course?.name || `Course ${a.course_id}`));
+      setUserAssignMap(map);
+    } catch (error) {
+      console.error("Failed to load assign map:", error);
+    }
+  }, []);
+
+  useEffect(() => { loadAssignMap(); }, [loadAssignMap]);
 
   const handleAddUser = () => router.push('/users/create');
   const handleEditUser = (user: User) => router.push(`/users/${user.id}/edit`);
@@ -145,6 +184,8 @@ export default function UsersPage() {
       setUnblockLoading(false);
     }
   };
+
+  const handleAssignAssessments = (user: User) => { setAssignAssessmentUser(user); setAssignAssessmentModalOpen(true); };
 
   const handleExport = () => console.log("Export users");
   const handleSearchChange = (value: string) => { setSearchTerm(value); setCurrentPage(1); };
@@ -237,7 +278,7 @@ export default function UsersPage() {
     { key: "roles", header: "Roles", className: "text-gray-700", render: (user) => (
       <div className="flex flex-wrap items-center gap-1 max-w-xs">
         {user.roles && user.roles.length > 0 ? (
-          user.roles.map((role) => (
+          Array.from(new Map(user.roles.map((r) => [r.id, r])).values()).map((role) => (
             <span
               key={role.id}
               className={`inline-flex items-center px-2 py-0.5 text-xs font-medium rounded ${
@@ -252,7 +293,7 @@ export default function UsersPage() {
         ) : (
           <span className="text-gray-400 text-xs">No roles</span>
         )}
-        {can('edit') && (
+        {can('asign-role') && (
           <button
             onClick={(e) => { e.stopPropagation(); handleAssignRole(user); }}
             className="ml-1 p-0.5 text-blue-600 hover:bg-blue-50 rounded border border-blue-100"
@@ -263,18 +304,37 @@ export default function UsersPage() {
         )}
       </div>
     )},
-    { key: "is_active", header: "Status", className: "text-center", render: (user) => {
-      const isBlocked = !user.is_active && (user.failed_login_attempts ?? 0) >= 3;
+    { key: "assessments" as keyof User, header: "Assessments", className: "text-center", render: (user) => {
+      const assigns = userAssignMap[user.id] || {};
+      const CHIPS = [
+        { key: "penpicture", label: "PenPicture", color: "bg-purple-100 text-purple-700 border-purple-200" },
+        { key: "counseling", label: "Counseling", color: "bg-blue-100   text-blue-700   border-blue-200"   },
+        { key: "olq",        label: "OLQ",        color: "bg-green-100  text-green-700  border-green-200"  },
+        { key: "warning",    label: "Warning",    color: "bg-red-100    text-red-700    border-red-200"    },
+      ];
+      const chips = CHIPS.flatMap((c) =>
+        (assigns[c.key] || []).map((courseName, i) => ({ ...c, courseName, uid: `${c.key}-${i}` }))
+      );
       return (
-        <span className={`inline-flex items-center px-2.5 py-1 text-xs font-semibold rounded-full ${
-          user.is_active 
-            ? "bg-green-100 text-green-800" 
-            : isBlocked 
-              ? "bg-red-100 text-red-800 border border-red-200" 
-              : "bg-gray-100 text-gray-800"
-        }`}>
-          {user.is_active ? "Active" : isBlocked ? "Blocked" : "Inactive"}
-        </span>
+        <div className="flex flex-col items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+          <div className="flex flex-wrap gap-1 justify-center">
+            {chips.map((c) => (
+              <span key={c.uid} className={`px-1.5 py-0.5 text-xs font-medium rounded border ${c.color}`}>
+                {c.label}: {c.courseName}
+              </span>
+            ))}
+          </div>
+          {can('asign-assessments') && (
+            <button
+              onClick={() => handleAssignAssessments(user)}
+              className="px-2.5 py-0.5 text-xs font-medium bg-indigo-50 text-indigo-700 border border-indigo-200 rounded hover:bg-indigo-100 flex items-center gap-1"
+              title="Assign Assessments"
+            >
+              <Icon icon="hugeicons:plus-sign" className="w-3 h-3" />
+              Assign
+            </button>
+          )}
+        </div>
       );
     }},
     { key: "actions", header: "Actions", headerAlign: "center", className: "text-center no-print", render: (user) => (
@@ -282,7 +342,7 @@ export default function UsersPage() {
         {can('edit') && (
           <button onClick={() => handleEditUser(user)} className="p-1 text-yellow-600 hover:bg-yellow-50 rounded" title="Edit"><Icon icon="hugeicons:pencil-edit-01" className="w-4 h-4" /></button>
         )}
-        {can('edit') && (
+        {can('asign-wings') && (
           <button onClick={() => handleAssignWing(user)} className="p-1 text-green-600 hover:bg-green-50 rounded" title="Assign Wing"><Icon icon="hugeicons:hierarchy-square-01" className="w-4 h-4" /></button>
         )}
         {can('delete') && (
@@ -385,11 +445,19 @@ export default function UsersPage() {
         onSuccess={() => loadUsers()} 
       />
 
-      <CadetAssignWingModal 
-        isOpen={assignCadetWingModalOpen} 
-        onClose={() => { setAssignCadetWingModalOpen(false); setAssigningCadetWingUser(null); }} 
-        user={assigningCadetWingUser} 
-        onSuccess={() => loadUsers()} 
+      <CadetAssignWingModal
+        isOpen={assignCadetWingModalOpen}
+        onClose={() => { setAssignCadetWingModalOpen(false); setAssigningCadetWingUser(null); }}
+        user={assigningCadetWingUser}
+        onSuccess={() => loadUsers()}
+      />
+
+      <InstructorAssignAssessmentModal
+        isOpen={assignAssessmentModalOpen}
+        onClose={() => { setAssignAssessmentModalOpen(false); setAssignAssessmentUser(null); }}
+        onSuccess={() => { loadUsers(); loadAssignMap(); }}
+        user={assignAssessmentUser}
+        courses={courses}
       />
     </div>
   );

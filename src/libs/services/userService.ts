@@ -195,11 +195,15 @@ export const userService = {
     }
   },
 
-  async syncRoles(userId: number, roleIds: number[]): Promise<boolean> {
+  async syncRoles(userId: number, roleIds: number[], wingId?: number | string | null, subWingId?: number | string | null): Promise<boolean> {
     try {
       const token = getToken();
       if (!token) throw new Error('Authentication token not found.');
-      const result = await apiClient.post<UserActionApiResponse>(`/users/${userId}/sync-roles`, { role_ids: roleIds }, token);
+      const result = await apiClient.post<UserActionApiResponse>(`/users/${userId}/sync-roles`, { 
+        role_ids: roleIds,
+        wing_id: wingId || null,
+        sub_wing_id: subWingId || null
+      }, token);
       return result?.success || false;
     } catch (error) {
       console.error(`Failed to sync roles for user ${userId}:`, error);

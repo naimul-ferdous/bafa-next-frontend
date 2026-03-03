@@ -162,7 +162,7 @@ export default function AtwInstructorCoursesPage() {
                 <div className="text-center mb-4">
                     <div className="flex justify-center mb-4"><FullLogo /></div>
                     <h1 className="text-xl font-bold text-gray-900 uppercase tracking-wider">Bangladesh Air Force Academy</h1>
-                    <p className="font-medium text-gray-900 uppercase tracking-wider pb-2">My Assigned Subjects</p>
+                    <p className="font-medium text-gray-900 uppercase tracking-wider pb-2">My Assigned Course</p>
                 </div>
 
                 {loading ? (
@@ -179,7 +179,7 @@ export default function AtwInstructorCoursesPage() {
                         columns={columns}
                         data={subjectRows}
                         keyExtractor={(row) => row.assignment_id.toString()}
-                        onRowClick={(row) => router.push(`/atw/subjects/course/${row.subject_id}/cadets`)}
+                        onRowClick={(row) => router.push(`/atw/course/${row.subject_id}/cadets`)}
                         emptyMessage="No assigned subjects found"
                     />
                 )}

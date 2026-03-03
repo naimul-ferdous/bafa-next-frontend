@@ -88,25 +88,58 @@ export default function ResultDetailsPage({ params }: { params: Promise<{ id: st
 
   return (
     <div className="print-no-border bg-white rounded-lg border border-gray-200 min-h-screen">
-      <style>{`
+      <style jsx global>{`
         @media print {
-          @page {
-            size: A3 landscape;
-            margin: 10mm;
-          }
           .cv-content {
             width: 100% !important;
             max-width: none !important;
           }
-          table{
+          table {
             font-size: 14px !important;
           }
-          .print-div{
+          .print-div {
             max-width: 60vh !important;
             margin: 0 auto !important;
           }
+          .no-print {
+            display: none !important;
+          }
         }
       `}</style>
+
+      {/* Dynamic @page rules — overrides browser default header/footer with custom content */}
+      <style dangerouslySetInnerHTML={{ __html: `
+        @media print {
+          @page {
+            size: A3 landscape;
+            margin: 14mm 10mm 14mm 10mm;
+
+            @top-left   { content: ""; }
+            @top-center {
+              content: "${(selectedPrintType?.name ?? '').replace(/"/g, '\\"')}";
+              font-size: 10pt;
+              white-space: pre;
+              text-align: center;
+              text-transform: uppercase;
+            }
+            @top-right  {
+              content: "BAF - 102";
+              font-size: 10pt;
+              text-align: right;
+            }
+
+            @bottom-left   { content: ""; }
+            @bottom-center {
+              content: "${(selectedPrintType?.name ?? '').replace(/"/g, '\\"')}" "\\A" counter(page);
+              font-size: 10pt;
+              white-space: pre;
+              text-align: center;
+              text-transform: uppercase;
+            }
+            @bottom-right  { content: ""; }
+          }
+        }
+      ` }} />
       <div className="p-4 flex items-center justify-between no-print">
         <button
           onClick={() => router.push("/atw/assessments/counselings/results")}
@@ -126,18 +159,6 @@ export default function ResultDetailsPage({ params }: { params: Promise<{ id: st
         </div>
       </div>
       <div className="p-4 cv-content">
-
-        <div className="w-full flex justify-between mb-6 text-xs font-bold">
-          <div className="w-18">
-            <p className="text-center font-medium text-gray-900 uppercase tracking-wider"></p>
-          </div>
-          <div>
-            <p className="text-center font-medium text-gray-900 uppercase tracking-wider">{selectedPrintType?.name}</p>
-          </div>
-          <div>
-            <p className="text-center font-medium text-gray-900 tracking-wider">BAF - 102</p>
-          </div>
-        </div>
         <div className="text-center mb-10">
           <div className="flex justify-center mb-4">
             <FullLogo />
@@ -249,9 +270,6 @@ export default function ResultDetailsPage({ params }: { params: Promise<{ id: st
 
             </div>
           ))}
-        </div>
-        <div className="mt-16 text-center text-xs">
-          <p className="text-center font-medium text-gray-900 uppercase tracking-wider">{selectedPrintType?.name}</p>
         </div>
       </div>
       <PrintTypeModal

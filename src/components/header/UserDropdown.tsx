@@ -5,11 +5,13 @@ import React, { useState } from "react";
 import { Icon } from "@iconify/react";
 import { Dropdown } from "../ui/dropdown/Dropdown";
 import { DropdownItem } from "../ui/dropdown/DropdownItem";
+import { Modal } from "../ui/modal";
 import { useAuth } from "@/libs/hooks/useAuth";
 import { getImageUrl } from "@/libs/utils/formatter";
 
 export default function UserDropdown() {
   const [isOpen, setIsOpen] = useState(false);
+  const [logoutModalOpen, setLogoutModalOpen] = useState(false);
   const { user, logout, loading } = useAuth();
 
   function toggleDropdown(e: React.MouseEvent<HTMLButtonElement, MouseEvent>) {
@@ -21,8 +23,13 @@ export default function UserDropdown() {
     setIsOpen(false);
   }
 
-  const handleLogout = async () => {
+  const handleLogout = () => {
     closeDropdown();
+    setLogoutModalOpen(true);
+  };
+
+  const confirmLogout = async () => {
+    setLogoutModalOpen(false);
     await logout();
   };
 
@@ -189,13 +196,43 @@ export default function UserDropdown() {
           disabled={loading}
           className="flex items-center gap-3 px-3 py-2 mt-3 font-medium text-red-600 rounded-lg group text-sm hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-500/10 disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          <Icon
-            icon="hugeicons:logout-03"
-            className="w-5 h-5"
-          />
+          <Icon icon="hugeicons:logout-03" className="w-5 h-5" />
           {loading ? "Signing out..." : "Sign out"}
         </button>
       </Dropdown>
+
+      {/* Logout Confirmation Modal */}
+      <Modal
+        isOpen={logoutModalOpen}
+        onClose={() => setLogoutModalOpen(false)}
+        className="max-w-sm mx-4 p-6"
+        showCloseButton={false}
+      >
+        <div className="flex flex-col items-center text-center gap-4">
+          <div className="w-14 h-14 rounded-full bg-red-100 flex items-center justify-center">
+            <Icon icon="hugeicons:logout-03" className="w-7 h-7 text-red-600" />
+          </div>
+          <div>
+            <h3 className="text-lg font-bold text-gray-900 dark:text-white">Are you sure?</h3>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">You will be logged out of your account.</p>
+          </div>
+          <div className="flex gap-3 w-full">
+            <button
+              onClick={() => setLogoutModalOpen(false)}
+              className="flex-1 px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-xl hover:bg-gray-200 dark:text-gray-300 dark:bg-gray-800 dark:hover:bg-gray-700 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={confirmLogout}
+              disabled={loading}
+              className="flex-1 px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-xl hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              {loading ? "Signing out..." : "Yes, Logout"}
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

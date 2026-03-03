@@ -23,7 +23,9 @@ export default function EditAtwSubjectPage() {
     const loadSubject = async () => {
       try {
         setLoading(true);
-        const data = await atwSubjectService.getSubject(parseInt(subjectId));
+        const parsedId = parseInt(subjectId);
+        if (isNaN(parsedId)) { setError("Invalid subject ID"); setLoading(false); return; }
+        const data = await atwSubjectService.getSubject(parsedId);
         if (data) {
           setSubject(data);
         } else {
@@ -45,7 +47,7 @@ export default function EditAtwSubjectPage() {
   const handleSubmit = async (data: any) => {
     try {
       setSaveLoading(true);
-      await atwSubjectService.updateSubject(parseInt(subjectId), data);
+      await atwSubjectService.updateSubject(parseInt(subjectId, 10), data);
       router.push("/atw/subjects");
     } catch (error) {
       console.error("Failed to update ATW subject:", error);

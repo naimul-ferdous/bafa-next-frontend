@@ -305,7 +305,6 @@ function CadetsPageContent() {
         );
       }
     },
-    { key: "email", header: "Email", className: "text-gray-700", render: (cadet) => cadet.email || "—" },
     { key: "is_active", header: "Status", className: "text-center", render: (cadet) => (
       <span className={`inline-flex items-center px-2.5 py-1 text-xs font-semibold rounded-full ${cadet.is_active ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}`}>
         {cadet.is_active ? "Active" : "Inactive"}

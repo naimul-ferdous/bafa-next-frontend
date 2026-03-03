@@ -130,8 +130,8 @@ export default function AtwSubjectsPage() {
     }, [loadSubjects]);
 
     const handleAddSubject = () => router.push("/atw/subjects/create");
-    const handleEditSubject = (subject: AtwSubject) => router.push(`/atw/subjects/${subject.id}/edit`);
-    const handleViewSubject = (subject: AtwSubject) => router.push(`/atw/subjects/${subject.id}`);
+    const handleEditSubject = (subject: AtwSubject) => { if (subject.id) router.push(`/atw/subjects/${subject.id}/edit`); };
+    const handleViewSubject = (subject: AtwSubject) => { if (subject.id) router.push(`/atw/subjects/${subject.id}`); };
 
     const handleToggleStatus = (subject: AtwSubject) => {
         setStatusSubject(subject);
@@ -286,7 +286,7 @@ export default function AtwSubjectsPage() {
                     <button
                         onClick={(e) => {
                             e.stopPropagation();
-                            router.push(`/atw/subjects/${a.subject_id}`);
+                            if (a.subject_id) router.push(`/atw/subjects/${a.subject_id}`);
                         }}
                         className="px-3 py-1 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-1 mx-auto"
                     >
@@ -319,7 +319,7 @@ export default function AtwSubjectsPage() {
                         columns={instructorColumns}
                         data={instructorAssignments}
                         keyExtractor={(a) => a.id.toString()}
-                        onRowClick={(a) => router.push(`/atw/subjects/${a.subject_id}`)}
+                        onRowClick={(a) => { if (a.subject_id) router.push(`/atw/subjects/${a.subject_id}`); }}
                         emptyMessage="No subjects assigned"
                     />
                 )}

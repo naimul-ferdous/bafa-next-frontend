@@ -58,9 +58,14 @@ class ApiClient {
         // 1. { message: "...", errors: ... } (Standard Laravel 422)
         // 2. { error: "..." } (Our custom 401/403)
         // 3. { message: "..." } (Our custom 422)
-        
+
+        // Dispatch session displacement event so AuthContext can auto-logout
+        if (response.status === 401 && data.code === 'SESSION_DISPLACED' && typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('auth:session-displaced', { detail: { message: data.message } }));
+        }
+
         const errorMessage = data.error || data.message || 'Request failed';
-        
+
         const errorObj = {
           status: response.status,
           message: errorMessage,
@@ -69,7 +74,7 @@ class ApiClient {
           url,
           data: data // Keep full data for debugging
         };
-        
+
         console.error('[API Client] Request failed:', JSON.stringify(errorObj, null, 2));
         throw errorObj;
       }
