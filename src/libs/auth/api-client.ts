@@ -24,9 +24,13 @@ class ApiClient {
 
     // Use Record type for better type safety
     const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
       'Accept': 'application/json',
     };
+
+    // Only set Content-Type to application/json if body is not FormData
+    if (!(fetchOptions.body instanceof FormData)) {
+      headers['Content-Type'] = 'application/json';
+    }
 
     // Add existing headers from fetchOptions
     if (fetchOptions.headers) {
@@ -59,9 +63,9 @@ class ApiClient {
         // 2. { error: "..." } (Our custom 401/403)
         // 3. { message: "..." } (Our custom 422)
 
-        // Dispatch session displacement event so AuthContext can auto-logout
-        if (response.status === 401 && data.code === 'SESSION_DISPLACED' && typeof window !== 'undefined') {
-          window.dispatchEvent(new CustomEvent('auth:session-displaced', { detail: { message: data.message } }));
+        // Dispatch session expired event so AuthContext can auto-logout
+        if (response.status === 401 && typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('auth:session-expired', { detail: { message: data.message || 'Session expired. Please log in again.' } }));       
         }
 
         const errorMessage = data.error || data.message || 'Request failed';
@@ -105,7 +109,7 @@ class ApiClient {
   async post<T>(endpoint: string, data: any, token?: string): Promise<T> {
     return this.request<T>(endpoint, {
       method: 'POST',
-      body: JSON.stringify(data),
+      body: data instanceof FormData ? data : JSON.stringify(data),
       token,
     });
   }
@@ -113,15 +117,24 @@ class ApiClient {
   async patch<T>(endpoint: string, data: any, token?: string): Promise<T> {
     return this.request<T>(endpoint, {
       method: 'PATCH',
-      body: JSON.stringify(data),
+      body: data instanceof FormData ? data : JSON.stringify(data),
       token,
     });
   }
 
   async put<T>(endpoint: string, data: any, token?: string): Promise<T> {
+    // For Laravel, PUT with FormData sometimes doesn't work well due to PHP parsing.
+    // If it's FormData, we might need to send it as POST with _method=PUT.
+    // We'll pass it as is, and the caller should handle appending _method=PUT if it's FormData.
+    const isFormData = data instanceof FormData;
+    if (isFormData) {
+      data.append('_method', 'PUT');
+    }
+
     return this.request<T>(endpoint, {
-      method: 'PUT',
-      body: JSON.stringify(data),
+      method: isFormData ? 'POST' : 'PUT',
+      body: isFormData ? data : JSON.stringify(data),
+      headers: isFormData ? undefined : { 'Content-Type': 'application/json' },
       token,
     });
   }

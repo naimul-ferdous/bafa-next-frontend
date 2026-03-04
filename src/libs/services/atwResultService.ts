@@ -21,8 +21,6 @@ interface ResultQueryParams {
   course_id?: number;
   semester_id?: number;
   program_id?: number;
-  branch_id?: number;
-  group_id?: number;
   exam_type_id?: number;
   instructor_id?: number;
   atw_subject_id?: number;
@@ -103,12 +101,10 @@ export const atwResultService = {
       if (params?.course_id) query.append('course_id', params.course_id.toString());
       if (params?.semester_id) query.append('semester_id', params.semester_id.toString());
       if (params?.program_id) query.append('program_id', params.program_id.toString());
-      if (params?.branch_id) query.append('branch_id', params.branch_id.toString());
-      if (params?.group_id) query.append('group_id', params.group_id.toString());
       if (params?.exam_type_id) query.append('exam_type_id', params.exam_type_id.toString());
       if (params?.instructor_id) query.append('instructor_id', params.instructor_id.toString());
       if (params?.atw_subject_id) query.append('atw_subject_id', params.atw_subject_id.toString());
-      else if (params?.atw_subject_module_id) query.append('atw_subject_id', params.atw_subject_module_id.toString()); // Fallback for legacy
+      else if (params?.atw_subject_module_id) query.append('atw_subject_id', params.atw_subject_module_id.toString());
 
       const endpoint = `/atw-results${query.toString() ? `?${query.toString()}` : ''}`;
       const token = getToken();
@@ -142,9 +138,6 @@ export const atwResultService = {
       if (params.course_id) query.append('course_id', params.course_id.toString());
       if (params.semester_id) query.append('semester_id', params.semester_id.toString());
       if (params.program_id) query.append('program_id', params.program_id.toString());
-      if (params.branch_id) query.append('branch_id', params.branch_id.toString());
-      if (params.group_id) query.append('group_id', params.group_id.toString());
-      else query.append('group_id', 'null'); // Explicitly send null for group_id if not set
 
       if (params.exam_type_id) query.append('exam_type_id', params.exam_type_id.toString());
       if (params.instructor_id) query.append('instructor_id', params.instructor_id.toString());

@@ -57,12 +57,16 @@ interface SubjectMarkApiResponse {
 
 interface SubjectCreateData {
   atw_subjects_module_marksheet_id?: number;
+  semester_id?: number | null;
+  program_id?: number | null;
   subject_name: string;
   subject_code: string;
   subject_legend?: string;
   subject_period?: string;
   subjects_full_mark?: number;
   subjects_credit?: number;
+  is_current?: boolean;
+  syllabus_file?: File | null;
   is_active?: boolean;
 }
 
@@ -165,7 +169,23 @@ export const atwSubjectModuleService = {
         throw new Error('Authentication token not found. Please login again.');
       }
 
-      const result = await apiClient.post<SubjectActionApiResponse>('/atw-subject-modules', data, token);
+      let payload: any = data;
+
+      if (data.syllabus_file) {
+        const formData = new FormData();
+        Object.entries(data).forEach(([key, value]) => {
+          if (value !== undefined && value !== null) {
+            if (typeof value === 'boolean') {
+              formData.append(key, value ? '1' : '0');
+            } else {
+              formData.append(key, value as string | Blob);
+            }
+          }
+        });
+        payload = formData;
+      }
+
+      const result = await apiClient.post<SubjectActionApiResponse>('/atw-subject-modules', payload, token);
 
       if (!result || !result.success) {
         throw new Error(result?.message || 'Failed to create subject');
@@ -192,7 +212,23 @@ export const atwSubjectModuleService = {
         throw new Error('Authentication token not found. Please login again.');
       }
 
-      const result = await apiClient.put<SubjectActionApiResponse>(`/atw-subject-modules/${id}`, data, token);
+      let payload: any = data;
+
+      if (data.syllabus_file) {
+        const formData = new FormData();
+        Object.entries(data).forEach(([key, value]) => {
+          if (value !== undefined && value !== null) {
+            if (typeof value === 'boolean') {
+              formData.append(key, value ? '1' : '0');
+            } else {
+              formData.append(key, value as string | Blob);
+            }
+          }
+        });
+        payload = formData;
+      }
+
+      const result = await apiClient.put<SubjectActionApiResponse>(`/atw-subject-modules/${id}`, payload, token);
 
       if (!result || !result.success) {
         throw new Error(result?.message || 'Failed to update subject');

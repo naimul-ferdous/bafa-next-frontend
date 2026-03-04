@@ -8,19 +8,23 @@ import { Icon } from "@iconify/react";
 import FullLogo from "@/components/ui/fulllogo";
 import DataTable, { Column } from "@/components/ui/DataTable";
 import { atwInstructorAssignSubjectService } from "@/libs/services/atwInstructorAssignSubjectService";
-import { atwInstructorAssignCadetService } from "@/libs/services/atwInstructorAssignCadetService";
+import { cadetService } from "@/libs/services/cadetService";
 import type { AtwInstructorAssignSubject } from "@/libs/types/user";
 
-interface SubjectRow {
-    assignment_id: number;
-    subject_id: number;
+interface GroupedCourseRow {
+    id: string; // Unique key: course-semester-program
+    course_id: number;
+    semester_id: number;
+    program_id: number;
     course_name: string;
     course_code: string;
     semester_name: string;
     program_name: string;
-    branch_name: string;
-    subject_name: string;
-    subject_code: string;
+    subjects: {
+        id: number;
+        name: string;
+        code: string;
+    }[];
     cadet_count: number;
 }
 
@@ -31,7 +35,7 @@ export default function AtwInstructorCoursesPage() {
     const isInstructor = !!user?.instructor_biodata;
 
     const [assignments, setAssignments] = useState<AtwInstructorAssignSubject[]>([]);
-    const [cadetCounts, setCadetCounts] = useState<Map<number, number>>(new Map());
+    const [cadetCounts, setCadetCounts] = useState<Map<string, number>>(new Map());
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
@@ -41,44 +45,72 @@ export default function AtwInstructorCoursesPage() {
         }
         const fetchData = async () => {
             setLoading(true);
-            const [subjectData, cadetData] = await Promise.all([
-                atwInstructorAssignSubjectService.getByInstructor(user.id),
-                atwInstructorAssignCadetService.getAll({ instructor_id: user.id, per_page: 1000 }),
-            ]);
+            try {
+                const subjectData = await atwInstructorAssignSubjectService.getByInstructor(user.id);
+                setAssignments(subjectData);
 
-            setAssignments(subjectData);
+                // Fetch cadet counts for each unique Course/Semester/Program combination
+                const uniqueContexts = new Set<string>();
+                subjectData.forEach(a => {
+                    uniqueContexts.add(`${a.course_id}-${a.semester_id}-${a.program_id}`);
+                });
 
-            // Count unique cadets per subject_id
-            const counts = new Map<number, Set<number>>();
-            cadetData.data.forEach((c: any) => {
-                if (!counts.has(c.subject_id)) counts.set(c.subject_id, new Set());
-                counts.get(c.subject_id)!.add(c.cadet_id);
-            });
-            const finalCounts = new Map<number, number>();
-            counts.forEach((set, subjectId) => finalCounts.set(subjectId, set.size));
-            setCadetCounts(finalCounts);
-
-            setLoading(false);
+                const counts = new Map<string, number>();
+                await Promise.all(Array.from(uniqueContexts).map(async (ctx) => {
+                    const [courseId, semesterId, programId] = ctx.split('-').map(Number);
+                    const response = await cadetService.getAllCadets({
+                        course_id: courseId,
+                        semester_id: semesterId,
+                        program_id: programId,
+                        is_current: 1,
+                        per_page: 1 // We only need the total
+                    });
+                    counts.set(ctx, response.total);
+                }));
+                
+                setCadetCounts(counts);
+            } catch (error) {
+                console.error("Failed to fetch instructor course data:", error);
+            } finally {
+                setLoading(false);
+            }
         };
         fetchData();
     }, [user?.id, isInstructor]);
 
-    const subjectRows = useMemo<SubjectRow[]>(() => {
-        return assignments.map((a: any) => ({
-            assignment_id: a.id,
-            subject_id: a.subject_id,
-            course_name: a.course?.name ?? "—",
-            course_code: a.course?.code ?? "",
-            semester_name: a.semester?.name ?? "—",
-            program_name: a.program?.name ?? "—",
-            branch_name: a.branch?.name ?? "—",
-            subject_name: a.subject?.module?.subject_name ?? a.subject?.subject_name ?? "—",
-            subject_code: a.subject?.module?.subject_code ?? "",
-            cadet_count: cadetCounts.get(a.subject_id) ?? 0,
-        }));
+    const groupedRows = useMemo<GroupedCourseRow[]>(() => {
+        const groups = new Map<string, GroupedCourseRow>();
+
+        assignments.forEach((a: any) => {
+            const ctxKey = `${a.course_id}-${a.semester_id}-${a.program_id}`;
+            
+            if (!groups.has(ctxKey)) {
+                groups.set(ctxKey, {
+                    id: ctxKey,
+                    course_id: a.course_id,
+                    semester_id: a.semester_id,
+                    program_id: a.program_id,
+                    course_name: a.course?.name ?? "—",
+                    course_code: a.course?.code ?? "",
+                    semester_name: a.semester?.name ?? "—",
+                    program_name: a.program?.name ?? "—",
+                    subjects: [],
+                    cadet_count: cadetCounts.get(ctxKey) ?? 0,
+                });
+            }
+
+            const group = groups.get(ctxKey)!;
+            group.subjects.push({
+                id: a.subject_id,
+                name: a.subject?.subject_name ?? "—",
+                code: a.subject?.subject_code ?? "",
+            });
+        });
+
+        return Array.from(groups.values());
     }, [assignments, cadetCounts]);
 
-    const columns: Column<SubjectRow>[] = [
+    const columns: Column<GroupedCourseRow>[] = [
         {
             key: "sl",
             header: "SL.",
@@ -89,7 +121,7 @@ export default function AtwInstructorCoursesPage() {
         {
             key: "course",
             header: "Course",
-            className: "text-gray-800",
+            className: "text-gray-800 font-medium",
             render: (row) => row.course_name,
         },
         {
@@ -105,24 +137,35 @@ export default function AtwInstructorCoursesPage() {
             render: (row) => row.program_name,
         },
         {
-            key: "branch",
-            header: "Branch",
-            className: "text-gray-800",
-            render: (row) => row.branch_name,
-        },
-        {
             key: "cadet_count",
             header: "No of Cadets",
             headerAlign: "center",
             className: "text-center text-gray-800",
-            render: (row) => row.cadet_count,
+            render: (row) => (
+                <span className="bg-blue-50 text-blue-700 px-2 py-1 rounded-md font-bold text-xs">
+                    {row.cadet_count}
+                </span>
+            ),
         },
         {
-            key: "subject",
-            header: "Subject",
-            className: "text-gray-800",
+            key: "subjects",
+            header: "Subjects",
+            className: "text-gray-800 max-w-md",
             render: (row) => (
-                <div>{row.subject_name} ({row.subject_code})</div>
+                <div className="flex flex-wrap gap-2 py-1">
+                    {row.subjects.map((s, idx) => (
+                        <div 
+                            key={idx} 
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                router.push(`/atw/course/${s.id}/cadets`);
+                            }}
+                            className="bg-gray-50 border border-gray-200 hover:border-blue-400 hover:text-blue-600 px-3 py-1 rounded-lg text-xs font-medium cursor-pointer transition-colors"
+                        >
+                            {s.name} ({s.code})
+                        </div>
+                    ))}
+                </div>
             ),
         },
     ];
@@ -159,17 +202,17 @@ export default function AtwInstructorCoursesPage() {
             </div>
 
             <div className="p-4">
-                <div className="text-center mb-4">
+                <div className="text-center mb-6">
                     <div className="flex justify-center mb-4"><FullLogo /></div>
                     <h1 className="text-xl font-bold text-gray-900 uppercase tracking-wider">Bangladesh Air Force Academy</h1>
-                    <p className="font-medium text-gray-900 uppercase tracking-wider pb-2">My Assigned Course</p>
+                    <p className="font-medium text-gray-900 uppercase tracking-wider pb-2 border-b border-gray-100 inline-block px-8">My Assigned Courses</p>
                 </div>
 
                 {loading ? (
                     <div className="flex justify-center py-20">
                         <Icon icon="hugeicons:fan-01" className="w-10 h-10 animate-spin text-blue-500" />
                     </div>
-                ) : subjectRows.length === 0 ? (
+                ) : groupedRows.length === 0 ? (
                     <div className="flex flex-col items-center justify-center py-20 text-gray-400 gap-3">
                         <Icon icon="hugeicons:book-02" className="w-12 h-12" />
                         <p className="text-sm font-medium">No subjects assigned yet.</p>
@@ -177,10 +220,9 @@ export default function AtwInstructorCoursesPage() {
                 ) : (
                     <DataTable
                         columns={columns}
-                        data={subjectRows}
-                        keyExtractor={(row) => row.assignment_id.toString()}
-                        onRowClick={(row) => router.push(`/atw/course/${row.subject_id}/cadets`)}
-                        emptyMessage="No assigned subjects found"
+                        data={groupedRows}
+                        keyExtractor={(row) => row.id}
+                        emptyMessage="No assigned courses found"
                     />
                 )}
             </div>

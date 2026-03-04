@@ -69,6 +69,19 @@ class AuthService {
   }
 
   /**
+   * Switch primary role
+   */
+  async switchRole(roleId: number): Promise<{ success: boolean; message: string }> {
+    const token = this.getAuthToken();
+    const response = await apiClient.post<{ success: boolean; message: string }>(
+      '/auth/switch-role',
+      { role_id: roleId },
+      token
+    );
+    return response;
+  }
+
+  /**
    * Change user password
    */
   async changePassword(

@@ -5,8 +5,8 @@ import React, { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { Icon } from "@iconify/react";
 import { atwSubjectService } from "@/libs/services/atwSubjectService";
+import { atwSubjectModuleService } from "@/libs/services/atwSubjectModuleService";
 import FullLogo from "@/components/ui/fulllogo";
-import type { AtwSubject } from "@/libs/types/system";
 
 function InfoRow({ label, value }: { label: string; value?: React.ReactNode }) {
   return (
@@ -23,20 +23,46 @@ export default function AtwSubjectDetailsPage() {
   const params = useParams();
   const subjectId = params?.id as string;
 
-  const [subject, setSubject] = useState<AtwSubject | null>(null);
+  const [subject, setSubject] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
   useEffect(() => {
     const parsedId = parseInt(subjectId);
-    if (!subjectId || isNaN(parsedId)) { setError("Invalid subject ID"); setLoading(false); return; }
+    if (!subjectId || isNaN(parsedId)) {
+      setError("Invalid subject ID");
+      setLoading(false);
+      return;
+    }
+
     const load = async () => {
       try {
         setLoading(true);
-        const data = await atwSubjectService.getSubject(parsedId);
-        if (data) setSubject(data);
-        else setError("Subject not found");
-      } catch {
+        // Try fetching as a Grouped Subject first
+        let data: any = await atwSubjectService.getSubject(parsedId);
+
+        if (!data) {
+          // Fallback: Try fetching as a Subject Module directly
+          const moduleData = await atwSubjectModuleService.getSubject(parsedId);
+          if (moduleData) {
+            data = {
+              ...moduleData,
+              id: moduleData.id,
+              name: moduleData.subject_name,
+              code: moduleData.subject_code,
+              module: moduleData,
+              is_module_only: true
+            };
+          }
+        }
+
+        if (data) {
+          setSubject(data);
+        } else {
+          setError("Subject not found");
+        }
+      } catch (err) {
+        console.error("Failed to load subject:", err);
         setError("Failed to load subject data");
       } finally {
         setLoading(false);
@@ -68,23 +94,74 @@ export default function AtwSubjectDetailsPage() {
     );
   }
 
-  const mod = subject.module;
+  // Determine which module to show for the main details
+  const mod = subject.module || subject.groups?.[0]?.module || subject;
   const marks = mod?.marksheet?.marks ?? [];
-  const totalEstimate = marks.reduce((s, m) => s + Number(m.estimate_mark), 0);
-  const totalPercentage = marks.reduce((s, m) => s + Number(m.percentage), 0);
+  const totalEstimate = marks.reduce((s: number, m: any) => s + Number(m.estimate_mark), 0);
+  const totalPercentage = marks.reduce((s: number, m: any) => s + Number(m.percentage), 0);
+
+  // Deriving academic context
+  const semester = subject.semester || subject.groups?.[0]?.semester || mod?.semester;
+  const program = subject.program || subject.groups?.[0]?.program || mod?.program;
+  const course = subject.course || subject.groups?.[0]?.course;
 
   // Group marks by type for header display
-  const typeGroups: { type: string; marks: typeof marks }[] = [];
-  marks.forEach((m) => {
+  const typeGroups: { type: string; marks: any[] }[] = [];
+  marks.forEach((m: any) => {
     const type = m.type || "General";
     const existing = typeGroups.find((g) => g.type === type);
     if (existing) existing.marks.push(m);
     else typeGroups.push({ type, marks: [m] });
   });
 
+  const isGrouped = subject.groups && subject.groups.length > 0;
+
+  // Grouping logic for the architecture table
+  const groupsBySemester = subject.groups?.reduce((acc: any, g: any) => {
+    const semId = g.semester_id || "unknown";
+    if (!acc[semId]) {
+      acc[semId] = {
+        semester: g.semester,
+        programs: {}
+      };
+    }
+    const progId = g.program_id || "unknown";
+    if (!acc[semId].programs[progId]) {
+      acc[semId].programs[progId] = {
+        program: g.program,
+        modules: []
+      };
+    }
+    acc[semId].programs[progId].modules.push(g);
+    return acc;
+  }, {}) || {};
+
+  let semesterTree = Object.values(groupsBySemester).map((sem: any) => ({
+    ...sem,
+    programs: Object.values(sem.programs).map((prog: any) => ({
+      ...prog,
+      grandTotalPds: prog.modules.reduce((sum: number, m: any) => sum + (Number(m.module?.subject_period) || 0), 0)
+    }))
+  }));
+
+  // If not grouped (single subject/module only), synthesize a single entry for the tree
+  if (semesterTree.length === 0 && (mod || subject.is_module_only)) {
+    semesterTree = [{
+      semester: semester,
+      programs: [{
+        program: program,
+        modules: [{
+          id: subject.id,
+          module: mod,
+          atw_subject_module_id: mod?.id
+        }],
+        grandTotalPds: Number(mod?.subject_period || subject.subject_period) || 0
+      }]
+    }];
+  }
+
   return (
     <div className="print-no-border bg-white rounded-lg border border-gray-200">
-
       {/* Action bar */}
       <div className="p-4 flex items-center justify-between no-print">
         <button
@@ -92,7 +169,7 @@ export default function AtwSubjectDetailsPage() {
           className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 flex items-center gap-2"
         >
           <Icon icon="hugeicons:arrow-left-01" className="w-4 h-4" />
-          Back to List
+          Back
         </button>
         <button
           onClick={() => window.print()}
@@ -104,176 +181,103 @@ export default function AtwSubjectDetailsPage() {
       </div>
 
       <div className="p-8 space-y-8">
-
         {/* Header */}
         <div className="text-center">
           <div className="flex justify-center mb-4"><FullLogo /></div>
           <h1 className="text-xl font-bold text-gray-900 uppercase tracking-wider">Bangladesh Air Force Academy</h1>
-          <p className="font-medium text-gray-700 uppercase tracking-wider">ATW Subject Details</p>
+          <p className="font-medium text-gray-700 uppercase tracking-wider underline">Academic Training Wing</p>
+          <p className="font-bold text-gray-900 uppercase tracking-wider mt-2">
+            {subject.name} ({subject.code})
+          </p>
         </div>
 
-        {/* ── Academic Context ─────────────────────────────────────── */}
-        <section>
-          <h2 className="text-sm font-bold text-gray-900 uppercase tracking-widest pb-1 mb-4 border-b border-dashed border-gray-400">
-            Academic Context
-          </h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-3">
-            <InfoRow label="Course" value={`${subject.course?.name ?? "—"} (${subject.course?.code ?? ""})`} />
-            <InfoRow label="Semester" value={`${subject.semester?.name ?? "—"} (${subject.semester?.code ?? ""})`} />
-            <InfoRow label="Program" value={`${subject.program?.name ?? "—"} (${subject.program?.code ?? ""})`} />
-            <InfoRow label="Branch" value={subject.branch?.name} />
-            <InfoRow
-              label="Status"
-              value={
-                <span className={`font-bold ${subject.is_active ? "text-green-600" : "text-red-600"}`}>
-                  {subject.is_active ? "ACTIVE" : "INACTIVE"}
-                </span>
-              }
-            />
-            <InfoRow
-              label="Current Cycle"
-              value={
-                <span className={`font-bold ${subject.is_current ? "text-blue-600" : "text-gray-500"}`}>
-                  {subject.is_current ? "YES" : "NO"}
-                </span>
-              }
-            />
+        {/* ── Subject Mapping Overview ─────────────────────── */}
+        <section className="">
+          <div className="overflow-x-auto">
+            <table className="w-full border-collapse border border-black text-sm text-left">
+              <thead className="uppercase font-bold tracking-wider">
+                <tr>
+                  <th className="px-4 py-3 border border-black text-center">SL.</th>
+                  <th className="px-4 py-3 border border-black">Semester</th>
+                  <th className="px-4 py-3 border border-black">Program</th>
+                  <th className="px-4 py-3 border border-black">Subject Module</th>
+                  <th className="px-4 py-3 border border-black text-center">Total PDS</th>
+                  <th className="px-4 py-3 border border-black text-center">Grad Total PDS</th>
+                  <th className="px-4 py-3 border border-black text-center">Action</th>
+                </tr>
+              </thead>
+              <tbody className="bg-white">
+                {(() => {
+                  let globalIdx = 0;
+                  return semesterTree.map((sem: any, sIdx: number) => {
+                    const semRowSpan = sem.programs.reduce((acc: number, p: any) => acc + p.modules.length, 0);
+                    
+                    return sem.programs.map((prog: any, pIdx: number) => {
+                      const progRowSpan = prog.modules.length;
+                      
+                      return prog.modules.map((g: any, mIdx: number) => {
+                        globalIdx++;
+                        const isFirstInSem = pIdx === 0 && mIdx === 0;
+                        const isFirstInProg = mIdx === 0;
+
+                        return (
+                          <tr key={g.id || globalIdx} className="hover:bg-blue-50/30 transition-colors">
+                            <td className="px-4 py-3 border border-black text-center font-medium text-gray-500">{globalIdx}</td>
+                            
+                            {isFirstInSem && (
+                              <td rowSpan={semRowSpan} className="px-4 py-3 border border-black text-gray-700 font-medium align-middle">
+                                {sem.semester?.name || "—"}
+                              </td>
+                            )}
+
+                            {isFirstInProg && (
+                              <td rowSpan={progRowSpan} className="px-4 py-3 border border-black text-gray-900 font-bold align-middle">
+                                {prog.program?.name || "—"}
+                              </td>
+                            )}
+
+                            <td className="px-4 py-3 border border-black">
+                              <div className="flex flex-col">
+                                <span className="font-semibold text-gray-900">{g.module?.subject_name || subject.name}</span>
+                                <span className="text-xs text-gray-500 font-mono">{g.module?.subject_code || subject.code}</span>
+                              </div>
+                            </td>
+
+                            <td className="px-4 py-3 border border-black text-center font-medium">
+                              {g.module?.subject_period || mod?.subject_period || subject.subject_period || "—"}
+                            </td>
+
+                            {isFirstInProg && (
+                              <td rowSpan={progRowSpan} className="px-4 py-3 border border-black text-center font-bold text-blue-700 align-middle">
+                                {prog.grandTotalPds}
+                              </td>
+                            )}
+
+                            <td className="px-4 py-3 border border-black text-center align-middle">
+                              {g.atw_subject_module_id ? (
+                                <button 
+                                  onClick={() => router.push(`/atw/subjects/modules/${g.atw_subject_module_id}`)}
+                                  className="px-3 py-1 bg-blue-600 text-white rounded-lg text-xs hover:bg-blue-700 transition-all inline-flex items-center gap-1 shadow-sm font-semibold"
+                                >
+                                  <Icon icon="hugeicons:book-open-01" className="w-3.5 h-3.5" />
+                                  View
+                                </button>
+                              ) : "—"}
+                            </td>
+                          </tr>
+                        );
+                      });
+                    });
+                  });
+                })()}
+              </tbody>
+            </table>
           </div>
         </section>
-
-        {/* ── Subject Module ────────────────────────────────────────── */}
-        <section>
-          <h2 className="text-sm font-bold text-gray-900 uppercase tracking-widest pb-1 mb-4 border-b border-dashed border-gray-400">
-            Subject Module
-          </h2>
-          {mod ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-3">
-              <InfoRow label="Subject Name" value={<span className="font-semibold">{mod.subject_name}</span>} />
-              <InfoRow label="Subject Code" value={<span className="font-mono">{mod.subject_code}</span>} />
-              <InfoRow label="Type" value={<span className="capitalize">{mod.subject_type}</span>} />
-              <InfoRow label="Credit Hours" value={mod.subjects_credit} />
-              <InfoRow label="Full Mark" value={mod.subjects_full_mark} />
-              {mod.subject_period && <InfoRow label="Period" value={mod.subject_period} />}
-              {mod.subject_legend && <InfoRow label="Legend" value={mod.subject_legend} />}
-              <InfoRow
-                label="Module Status"
-                value={
-                  <span className={`font-bold ${mod.is_active ? "text-green-600" : "text-red-600"}`}>
-                    {mod.is_active ? "ACTIVE" : "INACTIVE"}
-                  </span>
-                }
-              />
-            </div>
-          ) : (
-            <p className="text-gray-400 text-sm">No module linked.</p>
-          )}
-        </section>
-
-        {/* ── Marks Distribution ────────────────────────────────────── */}
-        <section>
-          <h2 className="text-sm font-bold text-gray-900 uppercase tracking-widest pb-1 mb-4 border-b border-dashed border-gray-400">
-            Marks Distribution
-            {mod?.marksheet && (
-              <span className="ml-3 text-xs text-gray-500 normal-case font-normal tracking-normal">
-                Marksheet: {mod.marksheet.name} ({mod.marksheet.code})
-              </span>
-            )}
-          </h2>
-
-          {marks.length === 0 ? (
-            <p className="text-gray-400 text-sm">No marks distribution defined.</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full border-collapse border border-black text-sm">
-                <thead>
-                  {/* Row 1: type group headers */}
-                  {typeGroups.length > 1 && (
-                    <tr>
-                      <th className="border border-black px-3 py-2 text-center" rowSpan={2}>SL.</th>
-                      <th className="border border-black px-3 py-2 text-center" rowSpan={2}>Component</th>
-                      {typeGroups.map((g) => (
-                        <th
-                          key={g.type}
-                          colSpan={2}
-                          className="border border-black px-3 py-2 text-center capitalize text-gray-800"
-                        >
-                          {g.type}
-                        </th>
-                      ))}
-                      <th className="border border-black px-3 py-2 text-center" rowSpan={2}>Est. Mark</th>
-                      <th className="border border-black px-3 py-2 text-center" rowSpan={2}>%</th>
-                    </tr>
-                  )}
-                  <tr>
-                    {typeGroups.length === 1 && (
-                      <>
-                        <th className="border border-black px-3 py-2 text-center">SL.</th>
-                        <th className="border border-black px-3 py-2 text-center">Component</th>
-                      </>
-                    )}
-                    {typeGroups.length > 1 && typeGroups.flatMap((g) => [
-                      <th key={`${g.type}-est`} className="border border-black px-3 py-2 text-center text-xs">Est. Mark</th>,
-                      <th key={`${g.type}-pct`} className="border border-black px-3 py-2 text-center text-xs">%</th>,
-                    ])}
-                    {typeGroups.length === 1 && (
-                      <>
-                        <th className="border border-black px-3 py-2 text-center">Est. Mark</th>
-                        <th className="border border-black px-3 py-2 text-center">%</th>
-                      </>
-                    )}
-                  </tr>
-                </thead>
-                <tbody>
-                  {typeGroups.length === 1
-                    ? marks.map((mark, i) => (
-                        <tr key={mark.id} className="hover:bg-gray-50">
-                          <td className="border border-black px-3 py-2 text-center">{i + 1}</td>
-                          <td className="border border-black px-3 py-2">{mark.name}</td>
-                          <td className="border border-black px-3 py-2 text-center">{Number(mark.estimate_mark).toFixed(0)}</td>
-                          <td className="border border-black px-3 py-2 text-center">{Number(mark.percentage).toFixed(0)}</td>
-                        </tr>
-                      ))
-                    : typeGroups.map((g) =>
-                        g.marks.map((mark, i) => (
-                          <tr key={mark.id} className="hover:bg-gray-50">
-                            {i === 0 && (
-                              <>
-                                <td className="border border-black px-3 py-2 text-center" rowSpan={g.marks.length}>
-                                  {typeGroups.indexOf(g) + 1}
-                                </td>
-                                <td className="border border-black px-3 py-2 capitalize font-semibold" rowSpan={g.marks.length}>
-                                  {g.type}
-                                </td>
-                              </>
-                            )}
-                            <td className="border border-black px-3 py-2">{mark.name}</td>
-                            <td className="border border-black px-3 py-2 text-center">{Number(mark.estimate_mark).toFixed(0)}</td>
-                            <td className="border border-black px-3 py-2 text-center">{Number(mark.percentage).toFixed(0)}</td>
-                          </tr>
-                        ))
-                      )}
-                  {/* Totals row */}
-                  <tr className="font-bold bg-gray-50">
-                    <td
-                      className="border border-black px-3 py-2 text-right"
-                      colSpan={typeGroups.length === 1 ? 2 : 2}
-                    >
-                      Total
-                    </td>
-                    <td className="border border-black px-3 py-2 text-center">{totalEstimate.toFixed(0)}</td>
-                    <td className="border border-black px-3 py-2 text-center">{totalPercentage.toFixed(0)}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          )}
-        </section>
-
         {/* Footer */}
         <div className="text-center text-xs text-gray-400 uppercase tracking-widest pt-4">
           Generated on: {new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}
         </div>
-
       </div>
     </div>
   );

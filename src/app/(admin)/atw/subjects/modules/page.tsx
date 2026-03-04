@@ -191,7 +191,7 @@ export default function AtwSubjectModulesPage() {
       render: (subject, index) => (pagination.from || 0) + (index)
     },
     { key: "subject_name", header: "Subject Name", className: "font-medium text-gray-900" },
-    { key: "subject_code", header: "Code", className: "text-gray-700 font-mono text-sm" },
+    { key: "subject_code", header: "Code", className: "text-gray-700 font-mono text-sm whitespace-pre" },
     {
       key: "subject_type",
       header: "Type",
@@ -217,12 +217,19 @@ export default function AtwSubjectModulesPage() {
       className: "text-gray-700 text-center",
       render: (subject) => subject.subjects_full_mark
     },
-    {
+     {
       key: "subjects_credit",
       header: "Credit",
       headerAlign: "center",
       className: "text-gray-700 text-center",
       render: (subject) => subject.subjects_credit
+    },
+    {
+      key: "subject_period",
+      header: "Period",
+      headerAlign: "center",
+      className: "text-gray-700 text-center",
+      render: (subject) => subject.subject_period
     },
     {
       key: "marksheet",
@@ -302,7 +309,7 @@ export default function AtwSubjectModulesPage() {
       <div className="text-center mb-8">
         <div className="flex justify-center mb-4"><FullLogo /></div>
         <h1 className="text-xl font-bold text-gray-900 uppercase">Bangladesh Air Force Academy</h1>
-        <h2 className="text-md font-semibold text-gray-700 mt-2 uppercase">ATW Subject Modules</h2>
+        <h2 className="text-md font-semibold text-gray-700 mt-2 uppercase">ATW Modules</h2>
       </div>
 
       <div className="flex items-center justify-between gap-4 mb-6">
@@ -335,7 +342,7 @@ export default function AtwSubjectModulesPage() {
           {!isInstructor && (
             <button onClick={handleAddSubject} className="px-4 py-2 rounded-lg text-white flex items-center gap-1 bg-blue-600 hover:bg-blue-700">
               <Icon icon="hugeicons:add-circle" className="w-4 h-4 mr-2" />
-              Add Subject Module
+              Add Module
             </button>
           )}
         </div>

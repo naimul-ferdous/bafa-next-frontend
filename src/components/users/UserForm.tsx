@@ -112,8 +112,8 @@ export default function UserForm({ initialData, onSubmit, onCancel, loading: ext
       setSelectedRoles(roleIds);
 
       // Set image previews
-      if (initialData.profile_photo) setProfilePhotoPreview(getImageUrl(initialData.profile_photo));
-      if (initialData.signature) setSignaturePreview(getImageUrl(initialData.signature));
+      if (initialData.profile_photo) setProfilePhotoPreview(initialData.profile_photo);
+      if (initialData.signature) setSignaturePreview(initialData.signature);
     }
   }, [initialData]);
 

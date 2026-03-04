@@ -7,10 +7,11 @@ import { cadetService } from "@/libs/services/cadetService";
 import { commonService } from "@/libs/services/commonService";
 import { atwResultService } from "@/libs/services/atwResultService";
 import { atwSubjectService } from "@/libs/services/atwSubjectService";
-import { atwInstructorAssignCadetService } from "@/libs/services/atwInstructorAssignCadetService";
+import { atwInstructorAssignSubjectService } from "@/libs/services/atwInstructorAssignSubjectService";
+import { atwSubjectGroupService } from "@/libs/services/atwSubjectGroupService";
 import { useAuth } from "@/libs/hooks/useAuth";
 import { Icon } from "@iconify/react";
-import type { SystemCourse, SystemSemester, SystemProgram, SystemBranch, SystemExam, AtwSubjectsModuleMarksheetMark, AtwSubject } from "@/libs/types/system";
+import type { SystemCourse, SystemSemester, SystemProgram, SystemExam, AtwSubjectsModuleMarksheetMark, AtwSubjectModule } from "@/libs/types/system";
 import type { AtwResult } from "@/libs/types/atwResult";
 import Link from "next/link";
 
@@ -49,9 +50,8 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
     course_id: 0,
     semester_id: 0,
     program_id: 0,
-    branch_id: 0,
     exam_type_id: 0,
-    atw_subject_id: 0, // Store the mapping ID
+    atw_subject_id: 0, // This will store the Subject Module ID
     instructor_id: 0,
     is_active: true,
   });
@@ -76,7 +76,6 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
         formData.course_id &&
         formData.semester_id &&
         formData.program_id &&
-        formData.branch_id &&
         formData.exam_type_id &&
         formData.atw_subject_id &&
         formData.instructor_id
@@ -86,9 +85,8 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
             course_id: formData.course_id,
             semester_id: formData.semester_id,
             program_id: formData.program_id,
-            branch_id: formData.branch_id,
             exam_type_id: formData.exam_type_id,
-            atw_subject_id: formData.atw_subject_id,
+            atw_subject_id: formData.atw_subject_id, // This is the module ID
             instructor_id: formData.instructor_id
           });
 
@@ -121,7 +119,6 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
     formData.course_id,
     formData.semester_id,
     formData.program_id,
-    formData.branch_id,
     formData.exam_type_id,
     formData.atw_subject_id,
     formData.instructor_id,
@@ -133,33 +130,14 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
   const [courses, setCourses] = useState<SystemCourse[]>([]);
   const [semesters, setSemesters] = useState<SystemSemester[]>([]);
   const [programs, setPrograms] = useState<SystemProgram[]>([]);
-  const [branches, setBranches] = useState<SystemBranch[]>([]);
   const [exams, setExams] = useState<SystemExam[]>([]);
-  const [subjectMappings, setSubjectMappings] = useState<AtwSubject[]>([]);
+  const [subjectMappings, setSubjectMappings] = useState<AtwSubjectModule[]>([]);
   const [loadingDropdowns, setLoadingDropdowns] = useState(true);
   const [loadingCadets, setLoadingCadets] = useState(false);
   const [loadingSemesters, setLoadingSemesters] = useState(false);
 
-  // Filter branches based on selected program
-  const filteredBranches = useMemo(() => {
-    if (!formData.program_id) return [];
-    return branches.filter(branch => Number(branch.program_id) === Number(formData.program_id));
-  }, [branches, formData.program_id]);
-
-  // Reset branch if it's not in the filtered list
-  useEffect(() => {
-    if (formData.branch_id && filteredBranches.length > 0) {
-      const isValid = filteredBranches.some(b => b.id === formData.branch_id);
-      if (!isValid) {
-        setFormData(prev => ({ ...prev, branch_id: 0 }));
-      }
-    } else if (!formData.program_id) {
-      setFormData(prev => ({ ...prev, branch_id: 0 }));
-    }
-  }, [formData.program_id, filteredBranches, formData.branch_id]);
-
   // Selected subject for marks
-  const [selectedSubjectMapping, setSelectedSubjectMapping] = useState<AtwSubject | null>(null);
+  const [selectedSubjectMapping, setSelectedSubjectMapping] = useState<AtwSubjectModule | null>(null);
   const [markGroups, setMarkGroups] = useState<MarkGroup[]>([]);
 
   // Load dropdown data
@@ -170,9 +148,34 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
         const options = await commonService.getResultOptions();
 
         if (options) {
-          setCourses(options.courses);
+          let coursesList = options.courses;
+
+          if (!userIsSystemAdmin && user?.id) {
+            // Fetch UNIQUE courses from instructor assignments
+            try {
+              const res = await atwInstructorAssignSubjectService.getAll({
+                instructor_id: user.id,
+                per_page: 1000
+              });
+              
+              if (res && res.data && res.data.length > 0) {
+                const assignedCourseIds = new Set(res.data.map((as: any) => Number(as.course_id)));
+                coursesList = options.courses.filter(c => assignedCourseIds.has(Number(c.id)));
+              } else {
+                // Try alternate method
+                const instructorAssignments = await atwInstructorAssignSubjectService.getByInstructor(user.id);
+                if (instructorAssignments && instructorAssignments.length > 0) {
+                  const assignedCourseIds = new Set(instructorAssignments.map((as: any) => Number(as.course_id)));
+                  coursesList = options.courses.filter(c => assignedCourseIds.has(Number(c.id)));
+                }
+              }
+            } catch (err) {
+              console.error("Failed to fetch instructor assignments for course filtering:", err);
+            }
+          }
+
+          setCourses(coursesList);
           setPrograms(options.programs);
-          setBranches(options.branches);
           setExams(options.exams);
         }
       } catch (err) {
@@ -184,7 +187,7 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
     };
 
     loadDropdownData();
-  }, []);
+  }, [user, userIsSystemAdmin]);
 
   // Logic to load subject mappings based on context
   const loadSubjects = useCallback(async () => {
@@ -195,35 +198,51 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
 
     try {
       if (userIsSystemAdmin) {
-        // Admin: Load all mapped subjects for this context
-        const response = await atwSubjectService.getAllSubjects({
+        // Admin: Load subjects available for this Semester + Program
+        const response = await atwSubjectGroupService.getAllSubjectGroups({
+          semester_id: formData.semester_id,
+          program_id: formData.program_id,
+          per_page: 500,
+        });
+
+        const modules: AtwSubjectModule[] = response.data
+          .map(g => g.module)
+          .filter((m): m is AtwSubjectModule => !!m && !!m.id);
+
+        const uniqueModules = modules.filter((v, i, a) => a.findIndex(t => t.id === v.id) === i);
+        setSubjectMappings(uniqueModules);
+      } else if (user?.id) {
+        // Instructor: Load assigned subjects from service
+        const response = await atwInstructorAssignSubjectService.getAll({
+          instructor_id: user.id,
           course_id: formData.course_id,
           semester_id: formData.semester_id,
           program_id: formData.program_id,
-          branch_id: formData.branch_id || undefined,
-          per_page: 100
+          per_page: 500
         });
 
-        setSubjectMappings(response.data);
-      } else if (user?.atw_assigned_subjects) {
-        // Instructor: Filter from assigned subjects
-        const filteredAssignments = user.atw_assigned_subjects.filter((as: any) =>
-          Number(as.course_id) === Number(formData.course_id) &&
-          Number(as.semester_id) === Number(formData.semester_id) &&
-          Number(as.program_id) === Number(formData.program_id) &&
-          (formData.branch_id === 0 || Number(as.branch_id) === Number(formData.branch_id))
-        );
+        let modules: AtwSubjectModule[] = response.data
+          .map((as: any) => as.subject || as.module || (as.subject_id ? { id: as.subject_id, ...as.subject } : null))
+          .filter((m: any) => m && m.id && (m.subject_name || m.name));
 
-        const mappedSubjects: AtwSubject[] = filteredAssignments
-          .filter((as: any) => as.subject && as.subject.id)
-          .map((as: any) => as.subject);
+        // Fallback to user object if service returns empty
+        if (modules.length === 0 && (user as any).atw_assigned_subjects) {
+          modules = (user as any).atw_assigned_subjects
+            .filter((as: any) => 
+              Number(as.course_id) === Number(formData.course_id) &&
+              Number(as.semester_id) === Number(formData.semester_id) &&
+              Number(as.program_id) === Number(formData.program_id)
+            )
+            .map((as: any) => as.subject || as.module)
+            .filter((m: any) => m && m.id && (m.subject_name || m.name));
+        }
 
-        setSubjectMappings(mappedSubjects);
+        setSubjectMappings(modules);
       }
     } catch (err) {
       console.error("Failed to load subjects:", err);
     }
-  }, [formData.course_id, formData.semester_id, formData.program_id, formData.branch_id, userIsSystemAdmin, user?.atw_assigned_subjects]);
+  }, [formData.course_id, formData.semester_id, formData.program_id, userIsSystemAdmin, user]);
 
   useEffect(() => {
     loadSubjects();
@@ -231,26 +250,26 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
 
   useEffect(() => {
     if (formData.atw_subject_id) {
-      const mapping = subjectMappings.find(s => s.id === formData.atw_subject_id);
-      setSelectedSubjectMapping(mapping || null);
+      const module = subjectMappings.find(s => s.id === formData.atw_subject_id);
+      setSelectedSubjectMapping(module || null);
       
-      if (mapping?.module?.marksheet?.marks) {
+      if (module?.marksheet?.marks) {
         const groups: { [key: string]: AtwSubjectsModuleMarksheetMark[] } = {};
-        mapping.module.marksheet.marks.forEach(mark => {
+        module.marksheet.marks.forEach(mark => {
           const type = mark.type || "Other";
           if (!groups[type]) groups[type] = [];
           groups[type].push(mark);
         });
         setMarkGroups(Object.entries(groups).map(([type, marks]) => ({ type, marks })));
-        setFormData(prev => ({ ...prev, atw_subject_module_id: mapping.atw_subject_module_id }));
+        setFormData(prev => ({ ...prev, atw_subject_module_id: module.id } as any));
       } else {
         setMarkGroups([]);
-        setFormData(prev => ({ ...prev, atw_subject_module_id: 0 }));
+        setFormData(prev => ({ ...prev, atw_subject_module_id: 0 } as any));
       }
     } else {
       setSelectedSubjectMapping(null);
       setMarkGroups([]);
-      setFormData(prev => ({ ...prev, atw_subject_module_id: 0 }));
+      setFormData(prev => ({ ...prev, atw_subject_module_id: 0 } as any));
     }
   }, [formData.atw_subject_id, subjectMappings]);
 
@@ -258,59 +277,31 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
   useEffect(() => {
     const loadCadets = async () => {
       // Only load if required filters are selected
-      if (!formData.course_id || !formData.semester_id || !formData.program_id || !formData.branch_id || !formData.atw_subject_id) {
+      if (!formData.course_id || !formData.semester_id || !formData.program_id || !formData.atw_subject_id) {
         setCadetRows([]);
         return;
       }
 
       try {
         setLoadingCadets(true);
-        let cadetsList: any[] = [];
-        // Resolve branch name from the already-loaded branches state (most reliable)
-        const selectedBranchName = branches.find((b: any) => b.id === formData.branch_id)?.name || "";
 
-        if (!userIsSystemAdmin && user?.instructor_biodata && formData.atw_subject_id) {
-          // Use atw_subject_id (mapping) to fetch instructor assigned cadets
-          const assignedCadetsRes = await atwInstructorAssignCadetService.getAll({
-            per_page: 500,
-            course_id: formData.course_id,
-            semester_id: formData.semester_id,
-            program_id: formData.program_id,
-            branch_id: formData.branch_id,
-            subject_id: formData.atw_subject_id, // Pass Mapping ID
-            instructor_id: user.id,
-            is_active: true
-          });
-
-          if (assignedCadetsRes.data.length > 0) {
-            // Carry the assignment's branch along so it isn't lost when extracting as.cadet
-            cadetsList = assignedCadetsRes.data.map((as: any) => ({
-              ...as.cadet,
-              _assignmentBranch: as.branch,
-            }));
-          } else {
-            cadetsList = [];
-          }
-        } else {
-          // Fallback for admins
-          const cadetsRes = await cadetService.getAllCadets({
-            per_page: 500,
-            course_id: formData.course_id,
-            semester_id: formData.semester_id,
-            program_id: formData.program_id,
-            branch_id: formData.branch_id,
-          });
-          cadetsList = cadetsRes.data;
-        }
+        // Get ALL cadets assigned to this course, semester, program where is_current is true
+        const cadetsRes = await cadetService.getAllCadets({
+          per_page: 500,
+          course_id: formData.course_id,
+          semester_id: formData.semester_id,
+          program_id: formData.program_id,
+          is_current: 1
+        });
+        
+        const cadetsList = cadetsRes.data;
 
         // Create cadet rows
         const rows: CadetRow[] = cadetsList.filter(c => c).map(cadet => {
-          const currentRank = cadet.assigned_ranks?.find((ar: any) => ar.rank)?.rank;
+          const currentRank = cadet.assigned_ranks?.find((ar: any) => ar.is_current || ar.rank)?.rank;
           const branchName =
-            cadet._assignmentBranch?.name ||
             cadet.assigned_branchs?.find((ab: any) => ab.is_current)?.branch?.name ||
             cadet.assigned_branchs?.[0]?.branch?.name ||
-            selectedBranchName ||
             "N/A";
           return {
             cadet_id: cadet.id,
@@ -338,7 +329,7 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
     if (!initialData) {
       loadCadets();
     }
-  }, [formData.course_id, formData.semester_id, formData.program_id, formData.branch_id, formData.atw_subject_id, user, userIsSystemAdmin, initialData]);
+  }, [formData.course_id, formData.semester_id, formData.program_id, formData.atw_subject_id, initialData]);
 
   // Populate form with initial data
   useEffect(() => {
@@ -347,9 +338,8 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
         course_id: initialData.course_id,
         semester_id: initialData.semester_id,
         program_id: initialData.program_id,
-        branch_id: initialData.branch_id || 0,
         exam_type_id: initialData.exam_type_id,
-        atw_subject_id: initialData.atw_subject_id || 0,
+        atw_subject_id: initialData.atw_subject_module_id || 0,
         instructor_id: initialData.instructor_id || 0,
         is_active: initialData.is_active,
       });
@@ -441,15 +431,16 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
       return;
     }
 
-    const moduleId = selectedSubjectMapping?.atw_subject_module_id;
+    const moduleId = selectedSubjectMapping?.id;
     if (!moduleId) {
-      setError("Critical Error: Linked module not found for this subject mapping.");
+      setError("Critical Error: Linked module not found for this subject.");
       return;
     }
 
     try {
       const submitData = {
         ...formData,
+        atw_subject_module_id: moduleId, // Ensure module ID is sent
         cadets: cadetRows.filter(c => c.cadet_id > 0).map(c => ({
           cadet_id: c.cadet_id,
           cadet_bd_no: c.cadet_bd_no,
@@ -471,7 +462,7 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
     }
   };
 
-  const filtersSelected = formData.course_id && formData.semester_id && formData.program_id && formData.branch_id;
+  const filtersSelected = formData.course_id && formData.semester_id && formData.program_id;
   const subjectSelected = formData.atw_subject_id > 0;
 
   if (loadingDropdowns) {
@@ -545,20 +536,6 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
             </div>
 
             <div>
-              <Label>Branch <span className="text-red-500">*</span></Label>
-              <select
-                value={formData.branch_id}
-                onChange={(e) => handleChange("branch_id", parseInt(e.target.value))}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
-                required
-                disabled={isEdit || !formData.program_id}
-              >
-                <option value={0}>{!formData.program_id ? "Select Program First" : "Select Branch"}</option>
-                {filteredBranches.map(branch => (<option key={branch.id} value={branch.id}>{branch.name} ({branch.code})</option>))}
-              </select>
-            </div>
-
-            <div>
               <Label>Exam Type <span className="text-red-500">*</span></Label>
               <select value={formData.exam_type_id} onChange={(e) => handleChange("exam_type_id", parseInt(e.target.value))} className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed" required disabled={isEdit}>
                 <option value={0}>Select Exam Type</option>
@@ -566,11 +543,11 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
               </select>
             </div>
 
-            <div>
+            <div className="md:col-span-2">
               <Label>Subject <span className="text-red-500">*</span></Label>
               <select value={formData.atw_subject_id} onChange={(e) => handleChange("atw_subject_id", parseInt(e.target.value))} className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 font-semibold disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed" required disabled={isEdit}>
                 <option value={0}>Select Subject</option>
-                {subjectMappings.map(s => (<option key={s.id} value={s.id}>{s.module?.subject_name} ({s.module?.subject_code})</option>))}
+                {subjectMappings.map(s => (<option key={s.id} value={s.id}>{s.subject_name || (s as any).name} ({s.subject_code || (s as any).code})</option>))}
               </select>
             </div>
           </div>
@@ -581,9 +558,9 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
           <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
             <Icon icon="hugeicons:note-edit" className="w-5 h-5 text-blue-500" />
             Result Marks Entry
-            {selectedSubjectMapping?.module && (
+            {selectedSubjectMapping && (
               <span className="text-sm font-normal text-gray-500 ml-2">
-                ~ {selectedSubjectMapping.module.subject_name} ({selectedSubjectMapping.module.subject_code})
+                ~ {selectedSubjectMapping.subject_name || (selectedSubjectMapping as any).name} ({selectedSubjectMapping.subject_code || (selectedSubjectMapping as any).code})
               </span>
             )}
           </h3>
@@ -591,7 +568,7 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
           {!filtersSelected ? (
             <div className="text-center py-12 text-gray-500">
               <Icon icon="hugeicons:filter" className="w-10 h-10 mx-auto mb-2" />
-              <p>Please select Course, Semester, Program, and Branch to load cadets</p>
+              <p>Please select Course, Semester, and Program to load cadets</p>
             </div>
           ) : !subjectSelected ? (
             <div className="text-center py-12 text-gray-500">

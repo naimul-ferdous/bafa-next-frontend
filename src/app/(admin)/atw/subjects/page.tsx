@@ -249,27 +249,27 @@ export default function AtwSubjectsPage() {
                 key: "subject_code",
                 header: "Subject Code",
                 className: "text-gray-800 font-mono text-sm",
-                render: (a) => (a.subject as any)?.module?.subject_code ?? "—",
+                render: (a) => a.subject?.subject_code ?? "—",
             },
             {
                 key: "subject_name",
                 header: "Subject Name",
                 className: "text-gray-800 font-medium",
-                render: (a) => (a.subject as any)?.module?.subject_name ?? "—",
+                render: (a) => a.subject?.subject_name ?? "—",
             },
             {
                 key: "credit",
                 header: "Credit",
                 headerAlign: "center",
                 className: "text-center text-gray-800",
-                render: (a) => (a.subject as any)?.module?.subjects_credit ?? "—",
+                render: (a) => a.subject?.subjects_credit ?? "—",
             },
             {
                 key: "total_mark",
                 header: "Total Mark",
                 headerAlign: "center",
                 className: "text-center text-gray-800",
-                render: (a) => (a.subject as any)?.module?.subjects_full_mark ?? "—",
+                render: (a) => a.subject?.subjects_full_mark ?? "—",
             },
             {
                 key: "semester",
@@ -359,51 +359,107 @@ export default function AtwSubjectsPage() {
             key: "id",
             header: "SL.",
             headerAlign: "center",
-            className: "text-center text-gray-900",
+            className: "text-center text-gray-900 w-12",
             render: (subject, index) => (pagination.from || 0) + (index)
         },
         {
-            key: "module",
-            header: "Subject Name",
-            className: "font-medium text-gray-900",
-            render: (subject) => (
-                <div>
-                    <div>{subject.module?.subject_name}</div>
-                    <div className="text-[10px] text-gray-500 font-mono">{subject.module?.subject_code}</div>
-                </div>
-            )
+            key: "name",
+            header: "Group Name",
+            className: "font-bold text-gray-900 min-w-[150px]",
+            render: (subject) => subject.name
         },
         {
-            key: "course",
-            header: "Course",
-            render: (subject) => (
-                <div className="max-w-[150px] truncate" title={subject.course?.name}>
-                    {subject.course?.name || "—"}
-                </div>
-            )
+            key: "code",
+            header: "Code",
+            className: "font-mono text-xs text-gray-600 w-20",
+            render: (subject) => subject.code
         },
         {
-            key: "semester",
-            header: "Semester",
-            render: (subject) => subject.semester?.name || "—"
+            key: "semesters",
+            header: "Semesters",
+            className: "min-w-[100px]",
+            render: (subject) => {
+                const names = Array.from(new Set(subject.groups?.map(g => g.semester?.name).filter(Boolean)));
+                return (
+                    <div className="flex flex-wrap gap-1">
+                        {names.map(name => (
+                            <span key={name as string} className="px-1.5 py-0.5 bg-blue-50 text-blue-700 rounded text-[10px] font-medium border border-blue-100">
+                                {name as string}
+                            </span>
+                        ))}
+                        {names.length === 0 && "—"}
+                    </div>
+                );
+            }
         },
         {
-            key: "program",
-            header: "Program",
-            render: (subject) => subject.program?.name || "—"
+            key: "programs",
+            header: "Programs",
+            className: "min-w-[120px]",
+            render: (subject) => {
+                const names = Array.from(new Set(subject.groups?.map(g => g.program?.name).filter(Boolean)));
+                return (
+                    <div className="flex flex-wrap gap-1">
+                        {names.map(name => (
+                            <span key={name as string} className="px-1.5 py-0.5 bg-purple-50 text-purple-700 rounded text-[10px] font-medium border border-purple-100">
+                                {name as string}
+                            </span>
+                        ))}
+                        {names.length === 0 && "—"}
+                    </div>
+                );
+            }
         },
         {
-            key: "branch",
-            header: "Branch",
-            render: (subject) => subject.branch?.name || "—"
+            key: "subjects",
+            header: "Subjects",
+            className: "max-w-[300px]",
+            render: (subject) => {
+                const modules = subject.groups?.map(g => g.module).filter(Boolean) || [];
+                if (modules.length === 0) return "—";
+                
+                const hasMore = modules.length > 5;
+                const displayLimit = hasMore ? 4 : 5;
+                const visibleModules = modules.slice(0, displayLimit);
+                const remainingCount = modules.length - displayLimit;
+
+                return (
+                    <div className="flex flex-wrap gap-1.5 py-1">
+                        {visibleModules.map((m, idx) => (
+                            <span 
+                                key={idx} 
+                                className="px-2 py-0.5 bg-gray-100 text-gray-700 rounded-full text-[10px] font-medium border border-gray-200"
+                                title={`${m?.subject_name} (${m?.subject_code})`}
+                            >
+                                {m?.subject_name}
+                            </span>
+                        ))}
+                        {hasMore && (
+                            <span className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded-full text-[10px] font-bold border border-blue-100">
+                                + {remainingCount} more
+                            </span>
+                        )}
+                    </div>
+                );
+            }
+        },
+        {
+            key: "total_period",
+            header: "Total Period",
+            headerAlign: "center",
+            className: "text-center font-bold text-gray-900 w-24",
+            render: (subject) => {
+                const total = subject.groups?.reduce((acc, g) => acc + (Number(g.module?.subject_period) || 0), 0);
+                return total || 0;
+            }
         },
         {
             key: "is_current",
-            header: "Current",
+            header: "Current Status",
             headerAlign: "center",
-            className: "text-center",
+            className: "text-center w-28",
             render: (subject) => (
-                <span className={`inline-flex items-center px-2.5 py-1 text-[10px] font-bold rounded-full ${subject.is_current ? "bg-blue-100 text-blue-800" : "bg-gray-100 text-gray-800"}`}>
+                <span className={`inline-flex items-center px-2 py-0.5 text-[10px] font-bold rounded-full ${subject.is_current ? "bg-blue-100 text-blue-800" : "bg-gray-100 text-gray-800"}`}>
                     {subject.is_current ? "CURRENT" : "NOT CURRENT"}
                 </span>
             ),
@@ -412,18 +468,18 @@ export default function AtwSubjectsPage() {
             key: "is_active",
             header: "Status",
             headerAlign: "center",
-            className: "text-center",
+            className: "text-center w-24",
             render: (subject) => (
-                <span className={`inline-flex items-center px-2.5 py-1 text-[10px] font-bold rounded-full ${subject.is_active ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}`}>
+                <span className={`inline-flex items-center px-2 py-0.5 text-[10px] font-bold rounded-full ${subject.is_active ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}`}>
                     {subject.is_active ? "ACTIVE" : "INACTIVE"}
                 </span>
             ),
         },
         {
             key: "actions",
-            header: "Actions",
+            header: "Action",
             headerAlign: "center",
-            className: "text-center no-print",
+            className: "text-center no-print w-28",
             render: (subject: AtwSubject) => (
                 <div className="flex items-center justify-center gap-1" onClick={(e) => e.stopPropagation()}>
                     {can('edit') ? (
@@ -597,7 +653,7 @@ export default function AtwSubjectsPage() {
                                 )}
                                 <button
                                     onClick={() => setSelectedIds(new Set())}
-                                    className="px-3 py-1.5 text-sm border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-100 transition-colors"
+                                    className="px-3 py-1.5 text-sm border border-gray-300 text-gray-600 rounded-lg hover:bg-100 transition-colors"
                                 >
                                     Deselect All
                                 </button>
@@ -658,7 +714,7 @@ export default function AtwSubjectsPage() {
                 onClose={() => setStatusModalOpen(false)}
                 onConfirm={confirmToggleStatus}
                 title={statusSubject?.is_active ? "Deactivate Mapping" : "Activate Mapping"}
-                message={`Are you sure you want to ${statusSubject?.is_active ? "deactivate" : "activate"} the subject mapping for "${statusSubject?.module?.subject_name}"?`}
+                message={`Are you sure you want to ${statusSubject?.is_active ? "deactivate" : "activate"} the subject mapping for "${statusSubject?.name}"?`}
                 confirmText={statusSubject?.is_active ? "Deactivate" : "Activate"}
                 cancelText="Cancel"
                 loading={statusLoading}
@@ -670,7 +726,7 @@ export default function AtwSubjectsPage() {
                 onClose={() => setCurrentModalOpen(false)}
                 onConfirm={confirmToggleCurrent}
                 title={currentSubject?.is_current ? "Unset Current" : "Set as Current"}
-                message={`Are you sure you want to set "${currentSubject?.module?.subject_name}" as ${currentSubject?.is_current ? "not current" : "current"}?`}
+                message={`Are you sure you want to set "${currentSubject?.name}" as ${currentSubject?.is_current ? "not current" : "current"}?`}
                 confirmText={currentSubject?.is_current ? "Unset" : "Set Current"}
                 cancelText="Cancel"
                 loading={currentLoading}

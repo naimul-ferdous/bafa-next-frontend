@@ -15,8 +15,6 @@ interface AssignSubjectQueryParams {
   course_id?: number;
   semester_id?: number;
   program_id?: number;
-  branch_id?: number;
-  group_id?: number;
   subject_id?: number;
   is_active?: boolean;
 }
@@ -37,7 +35,6 @@ interface AssignSubjectApiResponse {
   data: AtwInstructorAssignSubject[];
   pagination?: {
     current_page: number;
-    last_page: number;
     per_page: number;
     total: number;
     last_page: number;
@@ -123,8 +120,6 @@ export const atwInstructorAssignSubjectService = {
     course_id: number;
     semester_id: number;
     program_id: number;
-    branch_id: number;
-    group_id?: number;
     subject_ids: number[];
   }): Promise<BulkAssignResponse['data'] | null> {
     try {

@@ -34,7 +34,7 @@ interface Cadet {
     bd_no: string;
     rank: string | null;
     branch: string | null;
-    marks: Record<number, number>;
+    marks: Record<number, Record<number, number>>; // New scoped structure: [subjectId][markId]
     result_ids: Record<number, number>;
     total_achieved: number;
     total_estimated: number;
@@ -153,20 +153,13 @@ export default function AtwCourseSemesterProgramResultsPage() {
         if (!data) return;
         setProgramForwardModal(prev => ({ ...prev, loading: true, error: '' }));
         try {
-            const branchIds = [...new Set(
-                (data.atw_result_subject_approvals ?? [])
-                    .filter(sa => sa.approved_by)
-                    .map(sa => sa.branch_id)
-            )];
-            for (const branchId of branchIds) {
-                await atwApprovalService.approveProgram({
-                    course_id: parseInt(courseId),
-                    semester_id: parseInt(semesterId),
-                    program_id: parseInt(programId),
-                    branch_id: branchId,
-                    status: 'approved',
-                });
-            }
+            // Updated to not use branch_id as it is dropped from schema
+            await atwApprovalService.approveProgram({
+                course_id: parseInt(courseId),
+                semester_id: parseInt(semesterId),
+                program_id: parseInt(programId),
+                status: 'approved',
+            });
             setProgramForwardModal({ open: false, loading: false, error: '' });
             await loadResults();
         } catch (err: any) {
@@ -207,8 +200,11 @@ export default function AtwCourseSemesterProgramResultsPage() {
 
     const calculateSubjectTotal = useCallback((cadet: Cadet, subject: Subject) => {
         let hasAnyMark = false;
+        const subMarks = cadet.marks[subject.mapping_id];
+        if (!subMarks) return null;
+
         const total = subject.components.reduce((acc, comp) => {
-            const inputMark = cadet.marks[comp.id];
+            const inputMark = subMarks[comp.id];
             if (inputMark !== undefined) {
                 hasAnyMark = true;
                 const markVal = Number(inputMark) || 0;
@@ -227,11 +223,11 @@ export default function AtwCourseSemesterProgramResultsPage() {
     }, []);
 
     // Breakdown helpers
-    const getCompMark = (cadet: Cadet, compId: number) =>
-        parseFloat(String(cadet.marks[compId] || 0));
+    const getCompMark = (cadet: Cadet, subjectId: number, compId: number) =>
+        parseFloat(String(cadet.marks[subjectId]?.[compId] || 0));
 
-    const getWeightedCompMark = (cadet: Cadet, comp: SubjectComponent) => {
-        const obtained = getCompMark(cadet, comp.id);
+    const getWeightedCompMark = (cadet: Cadet, subjectId: number, comp: SubjectComponent) => {
+        const obtained = getCompMark(cadet, subjectId, comp.id);
         const estimate = parseFloat(String(comp.estimate_mark || 0));
         const percentage = parseFloat(String(comp.percentage || 0));
         if (estimate === 0) return 0;
@@ -381,7 +377,7 @@ export default function AtwCourseSemesterProgramResultsPage() {
                             {data.course_details?.name} ({data.program_details?.name})
                         </p>
                         <p className="text-center font-medium text-gray-900 uppercase underline tracking-wider">
-                            {data.semester_details?.name} Exam : {new Date().toLocaleDateString("en-GB", { month: "short", year: "numeric" })}
+                            {data.semester_details?.name} Exam : Mar 2026
                         </p>
                         <p className="text-center font-medium text-gray-900 uppercase underline tracking-wider">
                             {activeTab === 'consolidated' ? '(Academics Result)' : '(Subject Breakdown)'}
@@ -689,19 +685,19 @@ export default function AtwCourseSemesterProgramResultsPage() {
 
                                                                 {subject.components.map(comp => {
                                                                     const diff = isCompDiff(comp);
-                                                                    const hasMark = cadet.marks[comp.id] !== undefined;
+                                                                    const hasMark = cadet.marks[subject.mapping_id]?.[comp.id] !== undefined;
                                                                     return diff ? (
                                                                         <React.Fragment key={comp.id}>
                                                                             <td className="border border-black px-2 py-2 text-center">
-                                                                                {hasMark ? getCompMark(cadet, comp.id).toFixed(2) : "—"}
+                                                                                {hasMark ? getCompMark(cadet, subject.mapping_id, comp.id).toFixed(2) : "—"}
                                                                             </td>
                                                                             <td className="border border-black px-2 py-2 text-center font-medium">
-                                                                                {hasMark ? getWeightedCompMark(cadet, comp).toFixed(2) : "—"}
+                                                                                {hasMark ? getWeightedCompMark(cadet, subject.mapping_id, comp).toFixed(2) : "—"}
                                                                             </td>
                                                                         </React.Fragment>
                                                                     ) : (
                                                                         <td key={comp.id} className="border border-black px-2 py-2 text-center">
-                                                                            {hasMark ? getCompMark(cadet, comp.id).toFixed(2) : "—"}
+                                                                            {hasMark ? getCompMark(cadet, subject.mapping_id, comp.id).toFixed(2) : "—"}
                                                                         </td>
                                                                     );
                                                                 })}
@@ -763,7 +759,7 @@ export default function AtwCourseSemesterProgramResultsPage() {
                 )}
 
                 <div className="flex justify-center items-center text-[10px] text-gray-400 no-print pt-6">
-                    <div>Generated on: {new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}</div>
+                    <div>Generated on: Mar 2026</div>
                 </div>
             </div>
 

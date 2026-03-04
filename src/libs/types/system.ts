@@ -141,6 +141,8 @@ export interface AtwSubjectsModuleMarksheet {
 export interface AtwSubjectModule {
   id: number;
   atw_subjects_module_marksheet_id?: number;
+  semester_id?: number;
+  program_id?: number;
   subject_name: string;
   subject_code: string;
   subject_legend?: string;
@@ -148,31 +150,46 @@ export interface AtwSubjectModule {
   subject_type: 'academic' | 'professional';
   subjects_full_mark: number;
   subjects_credit: number;
+  is_current: boolean;
+  syllabus?: string;
+  syllabus_file?: File;
   is_active: boolean;
   created_by?: number;
   created_at?: string;
   updated_at?: string;
   marksheet?: AtwSubjectsModuleMarksheet;
+  semester?: SystemSemester;
+  program?: SystemProgram;
 }
 
-export interface AtwSubject {
+export interface AtwSubjectGroup {
   id: number;
-  course_id: number;
+  atw_subject_id: number;
   semester_id: number;
   program_id: number;
-  branch_id?: number;
   atw_subject_module_id: number;
   is_current: boolean;
   is_active: boolean;
   created_by?: number;
   created_at?: string;
   updated_at?: string;
-  course?: SystemCourse;
   semester?: SystemSemester;
   program?: SystemProgram;
-  branch?: SystemBranch;
   module?: AtwSubjectModule;
+}
+
+export interface AtwSubject {
+  id: number;
+  name: string;
+  code: string;
+  slug?: string;
+  is_current: boolean;
+  is_active: boolean;
+  created_by?: number;
+  created_at?: string;
+  updated_at?: string;
   creator?: User;
+  groups?: AtwSubjectGroup[];
 }
 
 export interface AtwAssessmentPenpictureGrade {

@@ -46,19 +46,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   /**
-   * Listen for session displacement (logged in from another device)
+   * Listen for session expiration or displacement (logged in from another device)
    */
   useEffect(() => {
-    const handleSessionDisplaced = (e: Event) => {
+    const handleSessionExpired = (e: Event) => {
       const detail = (e as CustomEvent).detail;
       removeToken();
       setUser(null);
       setMenus([]);
-      setError(detail?.message || 'You have been logged out because another device logged into your account.');
+      setError(detail?.message || 'Your session has expired. Please log in again.');
       router.push('/signin');
     };
-    window.addEventListener('auth:session-displaced', handleSessionDisplaced);
-    return () => window.removeEventListener('auth:session-displaced', handleSessionDisplaced);
+    window.addEventListener('auth:session-expired', handleSessionExpired);
+    return () => window.removeEventListener('auth:session-expired', handleSessionExpired);
   }, [router]);
 
   /**
@@ -79,8 +79,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     } catch (err) {
       console.error('Failed to load user:', err);
+      // Ensure token is removed and user is redirected on 401/error
+      await removeToken();
       setUser(null);
       setMenus([]);
+      router.push('/signin');
     } finally {
       setLoading(false);
     }

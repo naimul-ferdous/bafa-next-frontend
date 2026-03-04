@@ -17,7 +17,6 @@ import InstructorFormModal from "@/components/instructors/InstructorFormModal";
 import ConfirmationModal from "@/components/ui/modal/ConfirmationModal";
 import InstructorAssignWingModal from "@/components/instructors/InstructorAssignWingModal";
 import InstructorAssignSubjectModal from "@/components/instructors/InstructorAssignSubjectModal";
-import InstructorAssignCadetModal from "@/components/instructors/InstructorAssignCadetModal";
 import InstructorAssignModuleModal from "@/components/instructors/InstructorAssignModuleModal";
 import CtwInstructorAssignCadetModal from "@/components/instructors/CtwInstructorAssignCadetModal";
 import InstructorViewAssignedModulesModal from "@/components/instructors/InstructorViewAssignedModulesModal";
@@ -65,8 +64,6 @@ function InstructorsPageContent() {
   const [assigningSubjectInstructor, setAssigningSubjectInstructor] = useState<InstructorBiodata | null>(null);
   const [assignModuleModalOpen, setAssignModuleModalOpen] = useState(false);
   const [assigningModuleInstructor, setAssigningModuleInstructor] = useState<InstructorBiodata | null>(null);
-  const [assignCadetModalOpen, setAssignCadetModalOpen] = useState(false);
-  const [assigningCadetInstructor, setAssigningCadetInstructor] = useState<InstructorBiodata | null>(null);
   const [assignCtwCadetModalOpen, setAssignCtwCadetModalOpen] = useState(false);
   const [assigningCtwCadetInstructor, setAssigningCtwCadetInstructor] = useState<InstructorBiodata | null>(null);
   const [viewModulesModalOpen, setViewModulesModalOpen] = useState(false);
@@ -264,12 +261,6 @@ function InstructorsPageContent() {
   const handleAssignModules = (instructor: InstructorBiodata) => {
     setAssigningModuleInstructor(instructor);
     setAssignModuleModalOpen(true);
-  };
-
-  // Handle assign cadets
-  const handleAssignCadets = (instructor: InstructorBiodata) => {
-    setAssigningCadetInstructor(instructor);
-    setAssignCadetModalOpen(true);
   };
 
   // Handle assign CTW cadets
@@ -503,22 +494,18 @@ function InstructorsPageContent() {
       render: (instructor: InstructorBiodata) => {
         if (isItATWingUser) {
           const assignedSubjects = instructor.user?.atw_assigned_subjects?.filter(s => s.is_active) || [];
-          const assignedCadets = instructor.user?.atw_assigned_cadets?.filter(c => c.is_active) || [];
-
+          
           if (assignedSubjects.length === 0) return <span className="text-gray-400">No subjects</span>;
 
           return (
             <div className="flex flex-wrap gap-1">
               {assignedSubjects.slice(0, 3).map((as) => {
-                // Count cadets assigned to this specific subject mapping for this instructor
-                const cadetCount = assignedCadets.filter(c => Number(c.subject_id) === Number(as.subject_id)).length;
-
-                // as.subject is now an AtwSubject (mapping) which has a .module relationship
-                const subjectModule = as.subject?.module;
+                // as.subject is now an AtwSubjectModule relationship
+                const subjectModule = as.subject;
 
                 return (
                   <span key={as.id} className="px-2 py-0.5 text-xs rounded-full bg-blue-100 text-blue-700 font-medium" title={`${subjectModule?.subject_name || 'Subject'} (${as.course?.code || ''} - ${as.semester?.name || ''})`}>
-                    {subjectModule?.subject_code || subjectModule?.subject_name || 'Sub'}: {cadetCount} Cadets
+                    {subjectModule?.subject_code || subjectModule?.subject_name || 'Sub'}
                   </span>
                 );
               })}
@@ -607,7 +594,6 @@ function InstructorsPageContent() {
                 {isItATWingUser && (
                   <>
                     <button onClick={() => handleAssignSubjects(instructor)} className="p-1 text-purple-600 hover:bg-purple-50 rounded" title="Assign Subjects"><Icon icon="hugeicons:book-02" className="w-4 h-4" /></button>
-                    <button onClick={() => handleAssignCadets(instructor)} className="p-1 text-blue-600 hover:bg-blue-50 rounded" title="Assign Cadets"><Icon icon="hugeicons:user-group" className="w-4 h-4" /></button>
                   </>
                 )}
                 {isItCTWingUser && (
@@ -768,7 +754,6 @@ function InstructorsPageContent() {
       <InstructorAssignRoleModal isOpen={assignRoleModalOpen} onClose={() => { setAssignRoleModalOpen(false); setAssigningRoleInstructor(null); }} instructor={assigningRoleInstructor} onSuccess={() => loadInstructors()} />
       <InstructorAssignWingModal isOpen={assignWingModalOpen} onClose={() => { setAssignWingModalOpen(false); setAssigningInstructor(null); }} instructor={assigningInstructor} onSuccess={() => loadInstructors()} />
       <InstructorAssignSubjectModal isOpen={assignSubjectModalOpen} onClose={() => { setAssignSubjectModalOpen(false); setAssigningSubjectInstructor(null); }} instructor={assigningSubjectInstructor} onSuccess={() => loadInstructors()} />
-      <InstructorAssignCadetModal isOpen={assignCadetModalOpen} onClose={() => { setAssignCadetModalOpen(false); setAssigningCadetInstructor(null); }} instructor={assigningCadetInstructor} onSuccess={() => loadInstructors()} />
       <InstructorAssignModuleModal isOpen={assignModuleModalOpen} onClose={() => { setAssignModuleModalOpen(false); setAssigningModuleInstructor(null); }} instructor={assigningModuleInstructor} onSuccess={() => loadInstructors()} />
       <CtwInstructorAssignCadetModal isOpen={assignCtwCadetModalOpen} onClose={() => { setAssignCtwCadetModalOpen(false); setAssigningCtwCadetInstructor(null); }} instructor={assigningCtwCadetInstructor} onSuccess={() => loadInstructors()} />
       <InstructorViewAssignedModulesModal isOpen={viewModulesModalOpen} onClose={() => { setViewModulesModalOpen(false); setViewingModulesInstructor(null); }} instructor={viewingModulesInstructor} />

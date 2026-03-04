@@ -650,7 +650,11 @@ export default function ResultDetailsPage() {
                           {cadet.cadet?.assigned_ranks?.[0]?.rank?.short_name || "-"}
                         </td>
                         <td className="border border-black px-2 py-2 font-medium">{cadet.cadet?.name || "N/A"}</td>
-                        <td className="border border-black px-2 py-2 text-center">{result.branch?.name || "N/A"}</td>
+                        <td className="border border-black px-2 py-2 text-center">
+                          {cadet.cadet?.assigned_branchs?.find((b: any) => b.is_current)?.branch?.name || 
+                           cadet.cadet?.assigned_branchs?.[0]?.branch?.name || 
+                           "N/A"}
+                        </td>
 
                         {groupKeys.map(key =>
                           markGroups[key].map(sm => {

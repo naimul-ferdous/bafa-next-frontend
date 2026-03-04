@@ -587,7 +587,7 @@ export interface InstructorAssignWing {
   instructor?: User;
 }
 
-import type { AtwSubject } from './system';
+import type { AtwSubjectModule } from './system';
 
 export interface AtwInstructorAssignSubject {
   id: number;
@@ -595,19 +595,15 @@ export interface AtwInstructorAssignSubject {
   course_id: number;
   semester_id: number;
   program_id: number;
-  branch_id: number;
-  group_id?: number | null;
   subject_id: number;
   is_active: boolean;
   created_at: string;
   updated_at: string;
   instructor?: User;
-  subject?: AtwSubject;
+  subject?: AtwSubjectModule;
   course?: SystemCourse;
   semester?: SystemSemester;
   program?: SystemProgram;
-  branch?: SystemBranch;
-  group?: SystemGroup;
 }
 
 export interface AtwInstructorAssignCadet {
@@ -623,7 +619,7 @@ export interface AtwInstructorAssignCadet {
   is_active: boolean;
   instructor?: User;
   cadet?: User;
-  subject?: AtwSubject;
+  subject?: AtwSubjectModule;
 }
 
 export interface CtwInstructorAssignModule {

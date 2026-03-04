@@ -294,12 +294,6 @@ export default function AtwViewResultsPage() {
       render: (result) => result.program?.name || "N/A",
     },
     {
-      key: "branch",
-      header: "Branch",
-      className: "text-gray-700",
-      render: (result) => result.branch?.name || "N/A",
-    },
-    {
       key: "total_entry",
       header: "No of Cadets",
       headerAlign: "center",
@@ -439,14 +433,6 @@ export default function AtwViewResultsPage() {
       render: (res) => {
         const items = Array.from(new Set(res.all_results?.map((r: any) => r.program?.name).filter(Boolean))) as string[];
         return <RenderChips items={items} color="purple" />;
-      }
-    },
-    {
-      key: "branch",
-      header: "Branch",
-      render: (res) => {
-        const items = Array.from(new Set(res.all_results?.map((r: any) => r.branch?.name).filter(Boolean))) as string[];
-        return <RenderChips items={items} color="blue" />;
       }
     },
     {

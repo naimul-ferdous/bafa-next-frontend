@@ -17,6 +17,7 @@ interface CadetQueryParams {
   branch_id?: number;
   group_id?: number;
   rank_id?: number;
+  is_current?: number | boolean;
 }
 
 interface CadetPaginatedResponse {
@@ -90,6 +91,7 @@ export const cadetService = {
       if (params?.branch_id) query.append('branch_id', params.branch_id.toString());
       if (params?.group_id) query.append('group_id', params.group_id.toString());
       if (params?.rank_id) query.append('rank_id', params.rank_id.toString());
+      if (params?.is_current !== undefined) query.append('is_current', (params.is_current ? 1 : 0).toString());
 
       const endpoint = `/cadets${query.toString() ? `?${query.toString()}` : ''}`;
       const token = getToken();

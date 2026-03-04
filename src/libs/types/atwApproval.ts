@@ -23,7 +23,7 @@ export interface AtwApprovalActionData {
   course_id: number;
   semester_id: number;
   program_id: number;
-  branch_id: number;
+  branch_id?: number;
   group_id?: number;
   subject_id?: number;
   instructor_id?: number;
