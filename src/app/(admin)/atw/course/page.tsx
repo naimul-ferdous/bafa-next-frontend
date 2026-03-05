@@ -30,9 +30,9 @@ interface GroupedCourseRow {
 
 export default function AtwInstructorCoursesPage() {
     const router = useRouter();
-    const { user } = useAuth();
+    const { user, userIsInstructor } = useAuth();
 
-    const isInstructor = !!user?.instructor_biodata;
+    const isInstructor = userIsInstructor;
 
     const [assignments, setAssignments] = useState<AtwInstructorAssignSubject[]>([]);
     const [cadetCounts, setCadetCounts] = useState<Map<string, number>>(new Map());

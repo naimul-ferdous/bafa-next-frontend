@@ -218,9 +218,9 @@ const NoticesPanel = () => {
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 export default function AtwAssessmentCounselingResultsPage() {
-  const { user } = useAuth();
+  const { user, userIsInstructor } = useAuth();
 
-  const isInstructor = !!user?.instructor_biodata;
+  const isInstructor = userIsInstructor;
   const instructorId = user?.id;
 
   const [stats, setStats] = useState({ subjects: 0, cadets: 0, results: 0 });

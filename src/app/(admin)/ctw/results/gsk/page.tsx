@@ -16,8 +16,8 @@ const GSK_MODULE_CODE = "gsk";
 
 export default function CtwGskResultsPage() {
     const router = useRouter();
-    const { user } = useAuth();
-    const isInstructor = !!user?.instructor_biodata;
+    const { user, userIsInstructor } = useAuth();
+    const isInstructor = userIsInstructor;
 
     const [results, setResults] = useState<CtwGskResult[]>([]);
     const [loading, setLoading] = useState(true);

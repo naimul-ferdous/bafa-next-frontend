@@ -16,8 +16,8 @@ const FOOT_DRILL_MODULE_CODE = "foot_drill";
 
 export default function CtwFootDrillResultsPage() {
   const router = useRouter();
-  const { user } = useAuth();
-  const isInstructor = !!user?.instructor_biodata;
+  const { user, userIsInstructor } = useAuth();
+  const isInstructor = userIsInstructor;
 
   const [results, setResults] = useState<CtwFootDrillResult[]>([]);
   const [loading, setLoading] = useState(true);

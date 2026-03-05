@@ -16,8 +16,8 @@ const SWORD_DRILL_MODULE_CODE = "sword_drill";
 
 export default function CtwSwordDrillResultsPage() {
   const router = useRouter();
-  const { user } = useAuth();
-  const isInstructor = !!user?.instructor_biodata;
+  const { user, userIsInstructor } = useAuth();
+  const isInstructor = userIsInstructor;
 
   const [results, setResults] = useState<CtwSwordDrillResult[]>([]);
   const [loading, setLoading] = useState(true);

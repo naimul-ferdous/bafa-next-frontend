@@ -16,8 +16,8 @@ const THREE_KM_MODULE_CODE = "3_km";
 
 export default function CtwThreeKmResultsPage() {
   const router = useRouter();
-  const { user } = useAuth();
-  const isInstructor = !!user?.instructor_biodata;
+  const { user, userIsInstructor } = useAuth();
+  const isInstructor = userIsInstructor;
 
   const [results, setResults] = useState<CtwOneMileResult[]>([]);
   const [loading, setLoading] = useState(true);

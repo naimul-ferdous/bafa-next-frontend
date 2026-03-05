@@ -33,7 +33,7 @@ interface GroupedResult {
 
 export default function AtwViewResultsPage() {
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, userIsInstructor } = useAuth();
   const can = useCan("/atw/results");
 
   const [results, setResults] = useState<AtwResult[]>([]);
@@ -62,7 +62,7 @@ export default function AtwViewResultsPage() {
     error: string;
   }>({ open: false, result: null, loading: false, error: "" });
 
-  const isInstructor = !!user?.instructor_biodata;
+  const isInstructor = userIsInstructor;
   const instructorId = isInstructor ? user?.id : undefined;
 
   // Check if current user can do initial forward (has is_initial_cadet_approve authority)

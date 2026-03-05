@@ -16,8 +16,8 @@ const GAMES_MODULE_CODE = "games";
 
 export default function CtwGamesResultsPage() {
   const router = useRouter();
-  const { user } = useAuth();
-  const isInstructor = !!user?.instructor_biodata;
+  const { user, userIsInstructor } = useAuth();
+  const isInstructor = userIsInstructor;
 
   const [results, setResults] = useState<CtwGamesResult[]>([]);
   const [loading, setLoading] = useState(true);

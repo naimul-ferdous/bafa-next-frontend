@@ -15,7 +15,7 @@ import { useCan } from "@/context/PagePermissionsContext";
 
 export default function AtwSubjectModulesPage() {
   const router = useRouter();
-  const { user, userIsSystemAdmin } = useAuth();
+  const { user, userIsSystemAdmin, userIsInstructor } = useAuth();
   const can = useCan();
   const [subjects, setSubjects] = useState<AtwSubjectModule[]>([]);
   const [loading, setLoading] = useState(true);
@@ -41,7 +41,7 @@ export default function AtwSubjectModulesPage() {
   const [bulkDisableModalOpen, setBulkDisableModalOpen] = useState(false);
   const [bulkDisableLoading, setBulkDisableLoading] = useState(false);
 
-  const isInstructor = !!user?.instructor_biodata && !userIsSystemAdmin;
+  const isInstructor = userIsInstructor && !userIsSystemAdmin;
 
   const allSelected = subjects.length > 0 && subjects.every(s => selectedIds.has(s.id));
   const someSelected = subjects.some(s => selectedIds.has(s.id));

@@ -16,8 +16,8 @@ const WRITTEN_MODULE_CODE = "written";
 
 export default function CtwWrittenResultsPage() {
   const router = useRouter();
-  const { user } = useAuth();
-  const isInstructor = !!user?.instructor_biodata;
+  const { user, userIsInstructor } = useAuth();
+  const isInstructor = userIsInstructor;
 
   const [results, setResults] = useState<CtwWrittenResult[]>([]);
   const [loading, setLoading] = useState(true);

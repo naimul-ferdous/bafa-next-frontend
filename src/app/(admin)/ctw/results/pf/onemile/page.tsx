@@ -16,8 +16,8 @@ const ONE_MILE_MODULE_CODE = "one_mile";
 
 export default function CtwOneMileResultsPage() {
   const router = useRouter();
-  const { user } = useAuth();
-  const isInstructor = !!user?.instructor_biodata;
+  const { user, userIsInstructor } = useAuth();
+  const isInstructor = userIsInstructor;
 
   const [results, setResults] = useState<CtwOneMileResult[]>([]);
   const [loading, setLoading] = useState(true);

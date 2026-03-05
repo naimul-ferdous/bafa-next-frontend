@@ -16,8 +16,8 @@ const TWO_KM_MODULE_CODE = "2_km";
 
 export default function Ctw2kmResultsPage() {
   const router = useRouter();
-  const { user } = useAuth();
-  const isInstructor = !!user?.instructor_biodata;
+  const { user, userIsInstructor } = useAuth();
+  const isInstructor = userIsInstructor;
 
   const [results, setResults] = useState<Ctw2kmResult[]>([]);
   const [loading, setLoading] = useState(true);

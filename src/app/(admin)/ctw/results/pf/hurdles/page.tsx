@@ -16,8 +16,8 @@ const HURDLES_MODULE_CODE = "hurdle_test";
 
 export default function CtwHurdlesResultsPage() {
   const router = useRouter();
-  const { user } = useAuth();
-  const isInstructor = !!user?.instructor_biodata;
+  const { user, userIsInstructor } = useAuth();
+  const isInstructor = userIsInstructor;
 
   const [results, setResults] = useState<CtwHurdlesResult[]>([]);
   const [loading, setLoading] = useState(true);

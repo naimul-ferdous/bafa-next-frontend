@@ -26,7 +26,7 @@ import { getImageUrl } from "@/libs/utils/formatter";
 
 function CadetsPageContent() {
   const router = useRouter();
-  const { user, userIsSystemAdmin } = useAuth();
+  const { user, userIsSystemAdmin, userIsInstructor } = useAuth();
   const [cadets, setCadets] = useState<CadetProfile[]>([]);
   const [loading, setLoading] = useState(true);
   
@@ -57,7 +57,7 @@ function CadetsPageContent() {
   const [pagination, setPagination] = useState({ current_page: 1, last_page: 1, per_page: 10, total: 0, from: 0, to: 0 });
   const [showFilters, setShowFilters] = useState(false);
 
-  const isInstructor = !!user?.instructor_biodata;
+  const isInstructor = userIsInstructor;
 
   // Filter states
   const [filters, setFilters] = useState({

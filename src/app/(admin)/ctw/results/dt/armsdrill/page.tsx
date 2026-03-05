@@ -16,8 +16,8 @@ const ARMS_DRILL_MODULE_CODE = "arms_drill";
 
 export default function CtwArmsDrillResultsPage() {
   const router = useRouter();
-  const { user } = useAuth();
-  const isInstructor = !!user?.instructor_biodata;
+  const { user, userIsInstructor } = useAuth();
+  const isInstructor = userIsInstructor;
 
   const [results, setResults] = useState<CtwArmsDrillResult[]>([]);
   const [loading, setLoading] = useState(true);

@@ -187,6 +187,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     !!user?.roles?.some(role => role.slug === 'cptc') ||
     !!user?.roleAssignments?.some(ra => ra.wing?.code === 'CPTC');
 
+  const userIsInstructor = !!user?.roles?.some(role => 
+    role.slug === 'instructor' && role.pivot?.is_primary
+  ) || !!user?.roleAssignments?.some(ra => 
+    ra.role?.slug === 'instructor' && ra.is_primary
+  ) || !!user?.role_assignments?.some(ra => 
+    ra.role?.slug === 'instructor' && ra.is_primary
+  );
+
   const value: AuthContextType = {
     user,
     loading,
@@ -199,6 +207,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     menus,
     userIsSuperAdmin,
     userIsSystemAdmin,
+    userIsInstructor,
   };
 
   return (

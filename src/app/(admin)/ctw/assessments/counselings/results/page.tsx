@@ -13,8 +13,8 @@ import ConfirmationModal from "@/components/ui/modal/ConfirmationModal";
 
 export default function CtwAssessmentCounselingResultsPage() {
   const router = useRouter();
-  const { user } = useAuth();
-  const isInstructor = !!user?.instructor_biodata;
+  const { user, userIsInstructor } = useAuth();
+  const isInstructor = userIsInstructor;
 
   const [results, setResults] = useState<CtwAssessmentCounselingResult[]>([]);
   const [loading, setLoading] = useState(true);

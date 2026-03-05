@@ -16,8 +16,8 @@ const CAMPING_MODULE_CODE = "camping";
 
 export default function CtwCampingDrillResultsPage() {
   const router = useRouter();
-  const { user } = useAuth();
-  const isInstructor = !!user?.instructor_biodata;
+  const { user, userIsInstructor } = useAuth();
+  const isInstructor = userIsInstructor;
 
   const [results, setResults] = useState<CtwDrillResult[]>([]);
   const [loading, setLoading] = useState(true);

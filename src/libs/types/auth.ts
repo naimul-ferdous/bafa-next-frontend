@@ -197,4 +197,5 @@ export interface AuthContextType {
   menus: Menu[];
   userIsSuperAdmin: boolean;
   userIsSystemAdmin: boolean;
+  userIsInstructor: boolean;
 }

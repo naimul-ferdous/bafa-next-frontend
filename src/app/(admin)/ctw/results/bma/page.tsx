@@ -16,8 +16,8 @@ const BMA_MODULE_CODE = "bma";
 
 export default function CtwBmaResultsPage() {
     const router = useRouter();
-    const { user } = useAuth();
-    const isInstructor = !!user?.instructor_biodata;
+    const { user, userIsInstructor } = useAuth();
+    const isInstructor = userIsInstructor;
 
     const [results, setResults] = useState<CtwBmaResult[]>([]);
     const [loading, setLoading] = useState(true);

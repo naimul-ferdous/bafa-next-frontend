@@ -15,8 +15,8 @@ const GSTO_ASSESSMENT_MODULE_CODE = "gsto_assessment";
 
 export default function CtwGstoAssessmentResultsPage() {
   const router = useRouter();
-  const { user } = useAuth();
-  const isInstructor = !!user?.instructor_biodata;
+  const { user, userIsInstructor } = useAuth();
+  const isInstructor = userIsInstructor;
 
   const [results, setResults] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);

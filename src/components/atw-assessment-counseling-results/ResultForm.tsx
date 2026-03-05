@@ -27,8 +27,8 @@ interface ResultFormProps {
 }
 
 export default function ResultForm({ initialData, onSubmit, onCancel, loading, isEdit = false }: ResultFormProps) {
-  const { user } = useAuth();
-  const isInstructor = !!user?.instructor_biodata;
+  const { user, userIsInstructor } = useAuth();
+  const isInstructor = userIsInstructor;
   const [formData, setFormData] = useState({
     course_id: 0,
     semester_id: 0,

@@ -18,8 +18,8 @@ import type { AtwInstructorAssignSubject } from "@/libs/types/user";
 
 export default function AtwSubjectsPage() {
     const router = useRouter();
-    const { user } = useAuth();
-    const isInstructor = !!user?.instructor_biodata;
+    const { user, userIsInstructor } = useAuth();
+    const isInstructor = userIsInstructor;
     const [subjects, setSubjects] = useState<AtwSubject[]>([]);
     const [loading, setLoading] = useState(true);
     const can = useCan();

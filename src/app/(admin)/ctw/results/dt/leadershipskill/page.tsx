@@ -16,8 +16,8 @@ const LEADERSHIP_SKILL_MODULE_CODE = "leadership_skill";
 
 export default function CtwLeadershipSkillResultsPage() {
   const router = useRouter();
-  const { user } = useAuth();
-  const isInstructor = !!user?.instructor_biodata;
+  const { user, userIsInstructor } = useAuth();
+  const isInstructor = userIsInstructor;
 
   const [results, setResults] = useState<CtwLeadershipSkillResult[]>([]);
   const [loading, setLoading] = useState(true);

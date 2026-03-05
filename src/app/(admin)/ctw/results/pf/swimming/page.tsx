@@ -16,8 +16,8 @@ const SWIMMING_MODULE_CODE = "Swimming";
 
 export default function CtwSwimmingResultsPage() {
   const router = useRouter();
-  const { user } = useAuth();
-  const isInstructor = !!user?.instructor_biodata;
+  const { user, userIsInstructor } = useAuth();
+  const isInstructor = userIsInstructor;
 
   const [results, setResults] = useState<CtwSwimmingResult[]>([]);
   const [loading, setLoading] = useState(true);

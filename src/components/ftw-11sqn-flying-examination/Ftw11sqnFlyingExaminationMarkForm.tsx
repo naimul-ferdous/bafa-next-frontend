@@ -50,9 +50,9 @@ interface BulkFormProps {
 }
 
 export default function Ftw11sqnFlyingExaminationMarkForm({ onSubmit, onCancel, loading, isEdit = false, initialData }: BulkFormProps) {
-  const { user, userIsSuperAdmin, userIsSystemAdmin } = useAuth();
+  const { user, userIsSuperAdmin, userIsSystemAdmin, userIsInstructor } = useAuth();
 
-  const isInstructor = !!user?.instructor_biodata;
+  const isInstructor = userIsInstructor;
   const defaultInstructorId = isInstructor && user ? user.id : 0;
 
   const [formData, setFormData] = useState({

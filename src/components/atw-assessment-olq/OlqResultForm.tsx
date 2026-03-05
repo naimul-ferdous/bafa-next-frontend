@@ -39,8 +39,8 @@ interface CadetRow {
 }
 
 export default function OlqResultForm({ initialData, onSubmit, onCancel, loading, isEdit = false }: OlqResultFormProps) {
-  const { user } = useAuth();
-  const isInstructor = !!user?.instructor_biodata;
+  const { user, userIsInstructor } = useAuth();
+  const isInstructor = userIsInstructor;
   const [formData, setFormData] = useState({
     course_id: 0,
     semester_id: 0,

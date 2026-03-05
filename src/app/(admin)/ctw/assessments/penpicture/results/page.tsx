@@ -12,10 +12,10 @@ import { useCan } from "@/context/PagePermissionsContext";
 
 export default function CtwAssessmentPenpictureResultsPage() {
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, userIsInstructor } = useAuth();
   const can = useCan();
 
-  const isInstructor = !!user?.instructor_biodata;
+  const isInstructor = userIsInstructor;
 
   const [results, setResults] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);

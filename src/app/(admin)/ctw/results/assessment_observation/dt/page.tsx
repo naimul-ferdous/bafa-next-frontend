@@ -15,8 +15,8 @@ const DT_ASSESSMENT_MODULE_CODE = "dt_assessment";
 
 export default function CtwDtAssessmentResultsPage() {
   const router = useRouter();
-  const { user } = useAuth();
-  const isInstructor = !!user?.instructor_biodata;
+  const { user, userIsInstructor } = useAuth();
+  const isInstructor = userIsInstructor;
 
   const [results, setResults] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
