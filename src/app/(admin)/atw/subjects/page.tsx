@@ -15,6 +15,7 @@ import { useCan } from "@/context/PagePermissionsContext";
 import { useAuth } from "@/libs/hooks/useAuth";
 import { atwInstructorAssignSubjectService } from "@/libs/services/atwInstructorAssignSubjectService";
 import type { AtwInstructorAssignSubject } from "@/libs/types/user";
+import { cadetService } from "@/libs/services/cadetService";
 
 export default function AtwSubjectsPage() {
     const router = useRouter();
@@ -27,6 +28,8 @@ export default function AtwSubjectsPage() {
     // Instructor-specific state
     const [instructorAssignments, setInstructorAssignments] = useState<AtwInstructorAssignSubject[]>([]);
     const [instructorLoading, setInstructorLoading] = useState(false);
+    const [cadetCounts, setCadetCounts] = useState<Record<string, number>>({});
+    const [loadingCadets, setLoadingCadets] = useState(false);
 
     // Filter options
     const [filterOptions, setFilterOptions] = useState<{
@@ -74,11 +77,48 @@ export default function AtwSubjectsPage() {
     // Load instructor assignments when user is an instructor
     useEffect(() => {
         if (!isInstructor || !user?.id) return;
-        setInstructorLoading(true);
-        atwInstructorAssignSubjectService.getByInstructor(user.id).then(data => {
-            setInstructorAssignments(data);
-            setInstructorLoading(false);
-        });
+        const loadInstructorData = async () => {
+            setInstructorLoading(true);
+            try {
+                const data = await atwInstructorAssignSubjectService.getByInstructor(user.id);
+                setInstructorAssignments(data);
+                
+                // Fetch cadet counts for unique semester + program combinations
+                setLoadingCadets(true);
+                const counts: Record<string, number> = {};
+                const uniqueContexts = new Set<string>();
+                data.forEach(a => {
+                    if (a.semester_id && a.program_id) {
+                        uniqueContexts.add(`${a.semester_id}-${a.program_id}`);
+                    }
+                });
+
+                const countPromises = Array.from(uniqueContexts).map(async (context) => {
+                    const [semId, progId] = context.split('-').map(Number);
+                    try {
+                        const res = await cadetService.getAllCadets({
+                            semester_id: semId,
+                            program_id: progId,
+                            is_current: 1,
+                            per_page: 1
+                        });
+                        counts[context] = res.total || 0;
+                    } catch (err) {
+                        console.error(`Failed to fetch cadets for ${context}:`, err);
+                        counts[context] = 0;
+                    }
+                });
+
+                await Promise.all(countPromises);
+                setCadetCounts(counts);
+            } catch (error) {
+                console.error("Failed to load instructor assignments:", error);
+            } finally {
+                setInstructorLoading(false);
+                setLoadingCadets(false);
+            }
+        };
+        loadInstructorData();
     }, [isInstructor, user?.id]);
 
     // Load filter options once
@@ -237,72 +277,37 @@ export default function AtwSubjectsPage() {
 
     // ── Instructor view ──────────────────────────────────────────────────────
     if (isInstructor) {
-        const instructorColumns: Column<AtwInstructorAssignSubject>[] = [
-            {
-                key: "sl",
-                header: "SL.",
-                headerAlign: "center",
-                className: "text-center w-12 text-gray-800",
-                render: (_, index) => index + 1,
-            },
-            {
-                key: "subject_code",
-                header: "Subject Code",
-                className: "text-gray-800 font-mono text-sm",
-                render: (a) => a.subject?.subject_code ?? "—",
-            },
-            {
-                key: "subject_name",
-                header: "Subject Name",
-                className: "text-gray-800 font-medium",
-                render: (a) => a.subject?.subject_name ?? "—",
-            },
-            {
-                key: "credit",
-                header: "Credit",
-                headerAlign: "center",
-                className: "text-center text-gray-800",
-                render: (a) => a.subject?.subjects_credit ?? "—",
-            },
-            {
-                key: "total_mark",
-                header: "Total Mark",
-                headerAlign: "center",
-                className: "text-center text-gray-800",
-                render: (a) => a.subject?.subjects_full_mark ?? "—",
-            },
-            {
-                key: "semester",
-                header: "Semester",
-                className: "text-gray-800",
-                render: (a) => a.semester?.name ?? "—",
-            },
-            {
-                key: "syllabus",
-                header: "Syllabus",
-                headerAlign: "center",
-                className: "text-center",
-                render: (a) => (
-                    <button
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            if (a.subject_id) router.push(`/atw/subjects/${a.subject_id}`);
-                        }}
-                        className="px-3 py-1 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-1 mx-auto"
-                    >
-                        <Icon icon="hugeicons:book-open-01" className="w-3.5 h-3.5" />
-                        View
-                    </button>
-                ),
-            },
-        ];
+        // Group assignments by Semester and Program for rowspans
+        const semMap: Record<string, { semester: any, progMap: Record<string, { program: any, assignments: AtwInstructorAssignSubject[] }> }> = {};
+        
+        instructorAssignments.forEach(a => {
+            const sKey = String(a.semester_id);
+            if (!semMap[sKey]) semMap[sKey] = { semester: a.semester, progMap: {} };
+            const pKey = String(a.program_id);
+            if (!semMap[sKey].progMap[pKey]) semMap[sKey].progMap[pKey] = { program: a.program, assignments: [] };
+            semMap[sKey].progMap[pKey].assignments.push(a);
+        });
+
+        const semTree = Object.values(semMap).map(s => {
+            const programs = Object.values(s.progMap).map(p => ({
+                program: p.program,
+                assignments: p.assignments,
+                totalPds: p.assignments.reduce((sum, a) => sum + (Number(a.subject?.subject_period) || 0), 0),
+                totalCredit: p.assignments.reduce((sum, a) => sum + (Number(a.subject?.subjects_credit) || 0), 0),
+                cadetCount: cadetCounts[`${s.semester?.id}-${p.program?.id}`] || 0
+            }));
+            const rowSpan = programs.reduce((sum, p) => sum + p.assignments.length, 0);
+            return { semester: s.semester, programs, rowSpan };
+        });
+
+        let globalIdx = 0;
 
         return (
             <div className="bg-white p-6 rounded-lg border border-gray-200 space-y-6 shadow-sm">
                 <div className="text-center mb-8">
                     <div className="flex justify-center mb-4"><FullLogo /></div>
                     <h1 className="text-xl font-bold text-gray-900 uppercase tracking-tight">Bangladesh Air Force Academy</h1>
-                    <h2 className="text-md font-semibold text-gray-700 mt-1 uppercase">My Assigned Subjects</h2>
+                    <h2 className="text-md font-semibold text-gray-700 mt-1 uppercase">Subject Detailment - {user?.name}</h2>
                 </div>
 
                 {instructorLoading ? (
@@ -315,13 +320,114 @@ export default function AtwSubjectsPage() {
                         <p className="text-sm font-medium">No subjects assigned yet.</p>
                     </div>
                 ) : (
-                    <DataTable
-                        columns={instructorColumns}
-                        data={instructorAssignments}
-                        keyExtractor={(a) => a.id.toString()}
-                        onRowClick={(a) => { if (a.subject_id) router.push(`/atw/subjects/${a.subject_id}`); }}
-                        emptyMessage="No subjects assigned"
-                    />
+                    <div className="overflow-x-auto">
+                        <table className="w-full border-collapse border border-black text-sm text-left">
+                            <thead className="uppercase font-bold tracking-wider bg-gray-50">
+                                <tr>
+                                    <th className="px-3 py-3 border border-black text-center w-12">SL.</th>
+                                    <th className="px-4 py-3 border border-black">Semester</th>
+                                    <th className="px-4 py-3 border border-black">Program</th>
+                                    <th className="px-4 py-3 border border-black">Subject</th>
+                                    <th className="px-3 py-3 border border-black text-center">Subject PD</th>
+                                    <th className="px-3 py-3 border border-black text-center">Credit Hour</th>
+                                    <th className="px-3 py-3 border border-black text-center">Full Mark</th>
+                                    <th className="px-3 py-3 border border-black text-center">Total PDS</th>
+                                    <th className="px-3 py-3 border border-black text-center">Total Credit</th>
+                                    <th className="px-3 py-3 border border-black text-center">Cadets</th>
+                                    <th className="px-4 py-3 border border-black text-center">Syllabus</th>
+                                </tr>
+                            </thead>
+                            <tbody className="bg-white">
+                                {semTree.map((semNode) => 
+                                    semNode.programs.map((progNode, pIdx) => 
+                                        progNode.assignments.map((a, aIdx) => {
+                                            globalIdx++;
+                                            const isFirstInSem = pIdx === 0 && aIdx === 0;
+                                            const isFirstInProg = aIdx === 0;
+
+                                            return (
+                                                <tr 
+                                                    key={a.id} 
+                                                    onClick={() => a.subject_id && router.push(`/atw/subjects/${a.subject_id}`)}
+                                                    className="hover:bg-blue-50/40 transition-colors cursor-pointer group"
+                                                >
+                                                    <td className="px-3 py-3 border border-black text-center font-medium text-gray-500 group-hover:text-blue-600 transition-colors">{globalIdx}</td>
+                                                    
+                                                    {isFirstInSem && (
+                                                        <td 
+                                                            rowSpan={semNode.rowSpan} 
+                                                            className="px-4 py-3 border border-black text-gray-700 font-medium align-middle bg-white cursor-default"
+                                                            onClick={(e) => e.stopPropagation()}
+                                                        >
+                                                            {semNode.semester?.name || "—"}
+                                                        </td>
+                                                    )}
+
+                                                    {isFirstInProg && (
+                                                        <td 
+                                                            rowSpan={progNode.assignments.length} 
+                                                            className="px-4 py-3 border border-black text-gray-900 font-bold align-middle bg-white cursor-default"
+                                                            onClick={(e) => e.stopPropagation()}
+                                                        >
+                                                            {progNode.program?.name || "—"}
+                                                        </td>
+                                                    )}
+
+                                                    <td className="px-4 py-3 border border-black font-medium text-gray-900 group-hover:text-blue-700 transition-colors">
+                                                        <div className="flex flex-col">
+                                                            <span>{a.subject?.subject_name}</span>
+                                                            <span className="text-xs text-gray-500 font-mono">{a.subject?.subject_code}</span>
+                                                        </div>
+                                                    </td>
+
+                                                    <td className="px-3 py-3 border border-black text-center text-gray-700">
+                                                        {a.subject?.subject_period || "—"}
+                                                    </td>
+
+                                                    <td className="px-3 py-3 border border-black text-center text-gray-700">
+                                                        {a.subject?.subjects_credit || "—"}
+                                                    </td>
+
+                                                    <td className="px-3 py-3 border border-black text-center text-gray-700">
+                                                        {a.subject?.subjects_full_mark || "—"}
+                                                    </td>
+
+                                                    {isFirstInProg && (
+                                                        <>
+                                                            <td rowSpan={progNode.assignments.length} className="px-3 py-3 border border-black text-center font-bold text-gray-900 align-middle">
+                                                                {progNode.totalPds}
+                                                            </td>
+                                                            <td rowSpan={progNode.assignments.length} className="px-3 py-3 border border-black text-center font-bold text-gray-900 align-middle">
+                                                                {progNode.totalCredit}
+                                                            </td>
+                                                            <td rowSpan={progNode.assignments.length} className="px-3 py-3 border border-black text-center font-bold text-blue-700 align-middle">
+                                                                {loadingCadets ? (
+                                                                    <Icon icon="hugeicons:fan-01" className="w-4 h-4 animate-spin mx-auto" />
+                                                                ) : progNode.cadetCount}
+                                                            </td>
+                                                        </>
+                                                    )}
+
+                                                    <td className="px-4 py-3 border border-black text-center align-middle">
+                                                        <button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                if (a.subject_id) router.push(`/atw/subjects/${a.subject_id}`);
+                                                            }}
+                                                            className="px-3 py-1 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-1 mx-auto shadow-sm"
+                                                        >
+                                                            <Icon icon="hugeicons:book-open-01" className="w-3.5 h-3.5" />
+                                                            View
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })
+                                    )
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
                 )}
             </div>
         );
@@ -535,7 +641,7 @@ export default function AtwSubjectsPage() {
                     Bangladesh Air Force Academy
                 </h1>
                 <h2 className="text-md font-semibold text-gray-700 mt-1 uppercase">
-                    ATW Subject Management
+                    ATW Subject Group Management
                 </h2>
             </div>
 
@@ -572,7 +678,7 @@ export default function AtwSubjectsPage() {
                     {can('add') ? (
                         <button onClick={handleAddSubject} className="px-4 py-2 rounded-lg text-white flex items-center gap-1 bg-blue-600 hover:bg-blue-700 transition-all shadow-md active:scale-95 font-medium">
                             <Icon icon="hugeicons:add-circle" className="w-4 h-4 mr-2" />
-                            New Subject
+                            Add New Subject Group
                         </button>
                     ) : null}
                 </div>

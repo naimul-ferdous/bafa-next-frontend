@@ -18,7 +18,6 @@ const getUserSubWing = (user: any): { code: string; name: string } | null => {
   return null;
 };
 
-// ─── Status Card ──────────────────────────────────────────────────────────────
 interface StatusCardProps {
   title: string;
   subtitle: string;
@@ -42,21 +41,20 @@ const StatusCard = ({ title, subtitle, href, icon, accentColor, bgImage }: Statu
         <Icon icon={icon} className="w-6 h-6 sm:w-7 sm:h-7 lg:w-8 lg:h-8 text-white" />
       </div>
       <div className="mt-4 sm:mt-5 lg:mt-6">
-        <h3 className="text-base sm:text-lg lg:text-xl font-black text-slate-900 group-hover:text-blue-700 transition-colors leading-tight">{title}</h3>
-        <p className="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-[0.15em] sm:tracking-[0.2em] mt-1.5 flex items-center gap-2">
-          <span className="w-4 h-[2px] bg-slate-200 group-hover:w-8 group-hover:bg-blue-500 transition-all duration-500" />
+        <h3 className="text-base sm:text-lg lg:text-xl font-bold group-hover:text-blue-700 transition-colors">{title}</h3>
+        <p className="text-[9px] sm:text-[10px] font-bold uppercase mt-1.5 flex items-center gap-2">
+          <span className="w-4 h-[2px] group-hover:w-8 group-hover:bg-blue-500 transition-all duration-500" />
           {subtitle}
         </p>
       </div>
     </div>
     <div className="relative z-10 flex items-center gap-2 text-blue-600 opacity-0 group-hover:opacity-100 transition-all duration-500 transform translate-y-4 group-hover:translate-y-0 mt-3">
-      <span className="text-[9px] sm:text-[10px] font-black uppercase tracking-tighter">Enter Module</span>
+      <span className="text-[9px] sm:text-[10px] font-bold uppercase">Enter Module</span>
       <Icon icon="hugeicons:arrow-right-02" className="w-3.5 h-3.5" />
     </div>
   </Link>
 );
 
-// ─── Notices Panel ────────────────────────────────────────────────────────────
 interface NoticeItem {
   id: number; title: string; body: string; timestamp: string;
   tag: string; tagColor: string; icon: string; iconBg: string; isNew?: boolean;
@@ -84,14 +82,14 @@ const NoticesPanel = () => {
               <Icon icon="hugeicons:notification-02" className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
             </div>
             <div>
-              <h2 className="text-xs sm:text-sm font-black text-slate-900 uppercase tracking-widest leading-none">Notices</h2>
-              <p className="text-[8px] sm:text-[9px] font-bold text-slate-400 uppercase tracking-wider mt-0.5">Official Board</p>
+              <h2 className="text-xs sm:text-sm font-bold uppercase">Notices</h2>
+              <p className="text-[8px] sm:text-[9px] font-bold mt-0.5">Official Board</p>
             </div>
           </div>
           {newCount > 0 && (
             <div className="flex items-center gap-1.5 bg-red-50 border border-red-100 px-2 sm:px-2.5 py-1 rounded-full">
               <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
-              <span className="text-[9px] sm:text-[10px] font-black text-red-500 uppercase tracking-wider">{newCount} New</span>
+              <span className="text-[9px] sm:text-[10px] font-black text-red-500 uppercase">{newCount} New</span>
             </div>
           )}
         </div>
@@ -106,17 +104,17 @@ const NoticesPanel = () => {
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap mb-1">
                 <span className={`text-[8px] sm:text-[9px] font-black uppercase tracking-widest px-1.5 sm:px-2 py-0.5 rounded-full ${notice.tagColor}`}>{notice.tag}</span>
-                <span className="text-[8px] sm:text-[9px] text-slate-300 font-bold uppercase tracking-wider">{notice.timestamp}</span>
+                <span className="text-[8px] sm:text-[9px] font-bold uppercase">{notice.timestamp}</span>
               </div>
-              <p className="text-[11px] sm:text-xs font-black text-slate-800 leading-snug group-hover:text-blue-700 transition-colors">{notice.title}</p>
-              <p className="text-[9px] sm:text-[10px] text-slate-400 font-medium leading-relaxed mt-0.5 sm:mt-1 line-clamp-2">{notice.body}</p>
+              <p className="text-[11px] sm:text-xs font-bold group-hover:text-blue-700 transition-colors">{notice.title}</p>
+              <p className="text-[9px] sm:text-[10px] font-medium leading-relaxed mt-0.5 sm:mt-1 line-clamp-2">{notice.body}</p>
             </div>
           </div>
         ))}
       </div>
       <div className="px-4 sm:px-6 py-3 sm:py-4 border-t border-slate-100">
         <Link href="/notices" className="group flex items-center justify-center gap-2 w-full py-2 sm:py-2.5 rounded-xl bg-slate-50 hover:bg-blue-50 border border-slate-100 hover:border-blue-200 transition-all duration-300">
-          <span className="text-[9px] sm:text-[10px] font-black uppercase tracking-widest text-slate-500 group-hover:text-blue-600 transition-colors">View All Notices</span>
+          <span className="text-[9px] sm:text-[10px] font-bold uppercase group-hover:text-blue-600 transition-colors">View All Notices</span>
           <Icon icon="hugeicons:arrow-right-02" className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-slate-400 group-hover:text-blue-500 transition-colors" />
         </Link>
       </div>
@@ -124,60 +122,42 @@ const NoticesPanel = () => {
   );
 };
 
-// ─── FTW Landing View ─────────────────────────────────────────────────────────
 function FTWLandingView() {
   const statusCards: StatusCardProps[] = [
     { title: "Results", subtitle: "Wing Overview", href: "/ftw/results", icon: "hugeicons:notebook", accentColor: "from-blue-600 to-indigo-700", bgImage: "corner-1.png" },
     { title: "Instructors", subtitle: "Staff Directory", href: "/ftw/instructors", icon: "hugeicons:teacher", accentColor: "from-slate-600 to-slate-800", bgImage: "corner-2.png" },
     { title: "Cadets", subtitle: "Trainee Roster", href: "/ftw/cadets", icon: "hugeicons:user-multiple", accentColor: "from-indigo-500 to-violet-700", bgImage: "corner-1.png" },
   ];
-
-  // Triangle layout using SVG positioning
-  // Canvas: 560w × 520h
-  // FTW hub: top center  → (280, 130)
-  // 11 SQN:  bottom left → (110, 370)
-  // 12 SQN:  bottom right→ (450, 370)
   const W = 560; const H = 520;
-  const hub   = { x: 280, y: 130 };
+  const hub = { x: 280, y: 130 };
   const sqn11 = { x: 110, y: 370 };
   const sqn12 = { x: 450, y: 370 };
-
-  const hubR   = 130; // FTW hub radius px (in SVG coords)
-  const nodeR  =  100; // squadron circle radius px (in SVG coords)
+  const hubR = 130;
+  const nodeR = 100;
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-4 xl:grid-cols-5 gap-4 sm:gap-6 animate-in fade-in duration-700">
-
-      {/* ── Triangle Orbit Column ── */}
       <div className="lg:col-span-3 flex items-center justify-center overflow-hidden">
-
-        {/* Desktop */}
         <div className="hidden sm:flex w-full items-center justify-center py-4">
           <div
             className="relative w-full"
             style={{ maxWidth: `${W}px`, aspectRatio: `${W}/${H}` }}
           >
-            {/* SVG: lines + dashed arcs */}
             <svg
               className="absolute inset-0 w-full h-full pointer-events-none"
               viewBox={`0 0 ${W} ${H}`}
             >
-              {/* Spoke: hub → 11 SQN */}
               <line x1={hub.x} y1={hub.y} x2={sqn11.x} y2={sqn11.y} stroke="#cbd5e1" strokeWidth="2" strokeDasharray="5 5" />
-              {/* Spoke: hub → 12 SQN */}
               <line x1={hub.x} y1={hub.y} x2={sqn12.x} y2={sqn12.y} stroke="#cbd5e1" strokeWidth="2" strokeDasharray="5 5" />
-              {/* Bottom connector: 11 SQN → 12 SQN */}
               <line x1={sqn11.x} y1={sqn11.y} x2={sqn12.x} y2={sqn12.y} stroke="#e2e8f0" strokeWidth="1.5" strokeDasharray="4 6" />
             </svg>
-
-            {/* ── FTW Center Hub (top) ── */}
             <div
               className="absolute z-30 rounded-full bg-white border-2 border-slate-900 shadow-[0_0_50px_rgba(0,0,0,0.10)] flex items-center justify-center group hover:scale-105 transition-transform duration-500 overflow-hidden"
               style={{
-                width:  `${hubR * 2}px`,
+                width: `${hubR * 2}px`,
                 height: `${hubR * 2}px`,
                 left: `${(hub.x / W) * 100}%`,
-                top:  `${(hub.y / H) * 100}%`,
+                top: `${(hub.y / H) * 100}%`,
                 transform: "translate(-50%, -50%)",
               }}
             >
@@ -185,23 +165,20 @@ function FTWLandingView() {
                 <Image src="/images/bg/corner-2.png" alt="" fill className="object-cover object-right-top" priority />
               </div>
               <div className="relative z-10 flex flex-col items-center px-4">
-                <h1 className="text-3xl font-black text-slate-900 tracking-tight">FTW</h1>
-                <div className="h-1.5 w-12 bg-slate-800 rounded-full mt-1.5" />
-                <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest mt-1.5 text-center leading-tight">
+                <h1 className="text-xl font-bold">FTW</h1>
+                <p className="font-bold uppercase text-center leading-tight">
                   Flying<br />Training Wing
                 </p>
               </div>
             </div>
-
-            {/* ── 11 SQN (bottom left) ── */}
             <Link
               href="/ftw/11sqn"
               className="absolute z-20 rounded-full bg-white border-2 border-slate-200 shadow-xl flex items-center justify-center transition-all duration-500 hover:shadow-2xl hover:scale-110 hover:border-orange-400 overflow-hidden group"
               style={{
-                width:  `${nodeR * 2}px`,
+                width: `${nodeR * 2}px`,
                 height: `${nodeR * 2}px`,
                 left: `${(sqn11.x / W) * 100}%`,
-                top:  `${(sqn11.y / H) * 100}%`,
+                top: `${(sqn11.y / H) * 100}%`,
                 transform: "translate(-50%, -50%)",
               }}
             >
@@ -210,26 +187,25 @@ function FTWLandingView() {
                 <div className="absolute inset-0 bg-white/20 group-hover:bg-transparent transition-colors" />
               </div>
               <div className="relative z-10 flex flex-col items-center gap-1.5 text-center px-2">
-                <div className="w-10 h-10 rounded-xl bg-white/90 backdrop-blur-sm flex items-center justify-center group-hover:bg-orange-600 transition-all duration-300 shadow-md border border-slate-100">
-                  <Icon icon="hugeicons:airplane-01" className="w-5 h-5 text-orange-600 group-hover:text-white transition-colors" />
+                <Icon icon="hugeicons:airplane-01" className="w-8 h-8 text-orange-600 transition-colors" />
+                <div>
+                  <h1 className="text-lg font-bold group-hover:text-orange-700 transition-colors">11 SQN</h1>
+                  <p className="text-xs font-semibold uppercase text-center">11 Squadron</p>
                 </div>
-                <p className="font-black text-slate-900 group-hover:text-orange-700 tracking-tight transition-colors leading-none">11 SQN</p>
                 <div className="flex items-center gap-1 text-orange-600 opacity-0 group-hover:opacity-100 transition-all duration-300 transform translate-y-1 group-hover:translate-y-0">
-                  <span className="text-[8px] font-black uppercase tracking-tighter">Enter</span>
+                  <span className="text-[8px] font-bold uppercase">Enter</span>
                   <Icon icon="hugeicons:arrow-right-02" className="w-3 h-3" />
                 </div>
               </div>
             </Link>
-
-            {/* ── 12 SQN (bottom right) ── */}
             <Link
               href="/ftw/12sqn"
               className="absolute z-20 rounded-full bg-white border-2 border-slate-200 shadow-xl flex items-center justify-center transition-all duration-500 hover:shadow-2xl hover:scale-110 hover:border-rose-400 overflow-hidden group"
               style={{
-                width:  `${nodeR * 2}px`,
+                width: `${nodeR * 2}px`,
                 height: `${nodeR * 2}px`,
                 left: `${(sqn12.x / W) * 100}%`,
-                top:  `${(sqn12.y / H) * 100}%`,
+                top: `${(sqn12.y / H) * 100}%`,
                 transform: "translate(-50%, -50%)",
               }}
             >
@@ -238,20 +214,19 @@ function FTWLandingView() {
                 <div className="absolute inset-0 bg-white/20 group-hover:bg-transparent transition-colors" />
               </div>
               <div className="relative z-10 flex flex-col items-center gap-1.5 text-center px-2">
-                <div className="w-10 h-10 rounded-xl bg-white/90 backdrop-blur-sm flex items-center justify-center group-hover:bg-rose-600 transition-all duration-300 shadow-md border border-slate-100">
-                  <Icon icon="hugeicons:airplane-02" className="w-5 h-5 text-rose-600 group-hover:text-white transition-colors" />
+                <Icon icon="hugeicons:airplane-02" className="w-8 h-8 text-rose-600 transition-colors" />
+                <div>
+                  <h1 className="text-lg font-bold group-hover:text-orange-700 transition-colors">12 SQN</h1>
+                  <p className="text-xs font-semibold uppercase text-center">12 Squadron</p>
                 </div>
-                <p className="font-black text-slate-900 group-hover:text-rose-700 tracking-tight transition-colors leading-none">12 SQN</p>
-                <div className="flex items-center gap-1 text-rose-600 opacity-0 group-hover:opacity-100 transition-all duration-300 transform translate-y-1 group-hover:translate-y-0">
-                  <span className="text-[8px] font-black uppercase tracking-tighter">Enter</span>
+                <div className="flex items-center gap-1 text-orange-600 opacity-0 group-hover:opacity-100 transition-all duration-300 transform translate-y-1 group-hover:translate-y-0">
+                  <span className="text-[8px] font-bold uppercase">Enter</span>
                   <Icon icon="hugeicons:arrow-right-02" className="w-3 h-3" />
                 </div>
               </div>
             </Link>
           </div>
         </div>
-
-        {/* Mobile stacked */}
         <div className="sm:hidden w-full space-y-5 py-4">
           <div className="text-center relative py-8 rounded-2xl overflow-hidden">
             <div className="absolute inset-0 -z-10">
@@ -259,7 +234,7 @@ function FTWLandingView() {
             </div>
             <h1 className="text-5xl font-black text-slate-900">FTW</h1>
             <div className="h-1.5 w-16 bg-slate-800 rounded-full mt-2 mx-auto" />
-            <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mt-2">Flying Training Wing</p>
+            <p className="text-[9px] font-bold uppercase mt-2">Flying Training Wing</p>
           </div>
           <div className="grid grid-cols-2 gap-4">
             {[

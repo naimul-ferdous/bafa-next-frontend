@@ -35,7 +35,7 @@ function InstructorsPageContent() {
   const can = useCan();
   const [instructors, setInstructors] = useState<InstructorBiodata[]>([]);
   const [loading, setLoading] = useState(true);
-  
+
   // Block modal state
   const [blockModalOpen, setBlockModalOpen] = useState(false);
   const [blockingInstructor, setBlockingInstructor] = useState<InstructorBiodata | null>(null);
@@ -100,11 +100,11 @@ function InstructorsPageContent() {
 
   // Check if user has any wing/subwing assigned (not a system-level user)
   const userHasWingAssigned = userWingIds.length > 0 || userSubWingIds.length > 0;
-  
+
   // Determine if we should show system-level management view or wing-specific view
   // CPTC is same as Super Admin (System Level)
   const showSystemView = userIsSystemAdmin || !userHasWingAssigned;
-  
+
   const isItATWingUser = !userIsSystemAdmin && user?.role_assignments?.some(ra => ra.is_active && ra.wing?.code === 'ATW');
   const isItCTWingUser = !userIsSystemAdmin && user?.role_assignments?.some(ra => ra.is_active && ra.wing?.code === 'CTW');
   const isItFTWingUser = !userIsSystemAdmin && user?.role_assignments?.some(ra => ra.is_active && ra.wing?.code === 'FTW');
@@ -166,8 +166,8 @@ function InstructorsPageContent() {
       };
       data.penpicture.forEach((a) => push(a.user_id, "penpicture", a.course?.name || `Course ${a.course_id}`));
       data.counseling.forEach((a) => push(a.user_id, "counseling", a.course?.name || `Course ${a.course_id}`));
-      data.olq.forEach((a)        => push(a.user_id, "olq",        a.course?.name || `Course ${a.course_id}`));
-      data.warning.forEach((a)    => push(a.user_id, "warning",    a.course?.name || `Course ${a.course_id}`));
+      data.olq.forEach((a) => push(a.user_id, "olq", a.course?.name || `Course ${a.course_id}`));
+      data.warning.forEach((a) => push(a.user_id, "warning", a.course?.name || `Course ${a.course_id}`));
       setInstructorAssignMap(map);
     } catch (error) {
       console.error("Failed to load instructor assign map:", error);
@@ -184,7 +184,7 @@ function InstructorsPageContent() {
   const handleAssignRole = (instructor: InstructorBiodata) => { setAssigningRoleInstructor(instructor); setAssignRoleModalOpen(true); };
   const handleAssignWing = (instructor: InstructorBiodata) => { setAssigningInstructor(instructor); setAssignWingModalOpen(true); };
   const handleApproveWing = (assignmentId: number, instructor: InstructorBiodata) => { setApprovingAssignment({ assignmentId, instructor }); setApproveModalOpen(true); };
-  
+
   const handleAssignRank = (instructor: InstructorBiodata) => {
     setRankingUser(instructor.user ?? null);
     setAssignRankModalOpen(true);
@@ -311,7 +311,7 @@ function InstructorsPageContent() {
 
   const columns: Column<InstructorBiodata>[] = [
     { key: "id", header: "SL.", className: "text-center text-gray-900", render: (_instructor, index) => (pagination.from || 0) + (index) },
-    { key: "user", header: "BD Number", className: "font-mono text-sm text-gray-700", render: (instructor) => instructor.user?.service_number || "—" },
+    { key: "user", header: "BD/No", className: "font-mono text-sm text-gray-700", render: (instructor) => instructor.user?.service_number || "—" },
     { key: "user", header: "Name", className: "font-medium text-gray-900", render: (instructor) => instructor.user?.name || "—" },
     {
       key: "profile_picture", header: "Profile", className: "text-center", render: (instructor) => (
@@ -336,71 +336,80 @@ function InstructorsPageContent() {
       )
     },
     {
-      key: "signature", header: "Signature", className: "text-center", render: (instructor) => (
-        instructor.user?.signature ? (
-          <div className="flex justify-center">
-            <div
-              className={`relative w-20 h-10 bg-gray-50 rounded border border-gray-100 overflow-hidden ${can('edit') ? 'cursor-pointer hover:bg-gray-100' : ''}`}
-              onClick={can('edit') ? (e) => { e.stopPropagation(); handleUpdateSignature(instructor); } : undefined}
-              title={can('edit') ? "Update Signature" : undefined}
-            >
-              <Image src={instructor.user.signature} alt="Signature" fill className="object-contain" />
-            </div>
-          </div>
-        ) : (
-          can('edit') ? (
-            <button
-              onClick={(e) => { e.stopPropagation(); handleUpdateSignature(instructor); }}
-              className="p-1 text-blue-600 hover:bg-blue-50 rounded-full border border-blue-100"
-              title="Add Signature"
-            >
-              <Icon icon="hugeicons:plus-sign" className="w-4 h-4" />
-            </button>
-          ) : <span className="text-gray-400 text-xs">—</span>
-        )
-      )
-    },
-    { key: "user", header: "Rank", className: "text-gray-700", render: (instructor) => (
-      <div className="flex items-center gap-2">
-        {instructor.user?.rank ? (
-          <>
-            <span className="flex-1">{instructor.user.rank.name}</span>
-            {can('edit') && (
-              <button
-                onClick={(e) => { e.stopPropagation(); handleAssignRank(instructor); }}
-                className="p-0.5 text-blue-600 hover:bg-blue-50 rounded border border-blue-100"
-                title="Update Rank"
+      key: "signature", header: "Signature", className: "text-center", render: (instructor) => {
+        const isApprovedForUserWing = hasApprovedWingForUser(instructor);
+        return (
+          instructor.user?.signature ? (
+            <div className="flex justify-center">
+              <div
+                className={`relative w-20 h-10 bg-gray-50 rounded border border-gray-100 overflow-hidden ${can('edit') ? 'cursor-pointer hover:bg-gray-100' : ''}`}
+                onClick={(isApprovedForUserWing && can('edit')) ? (e) => { e.stopPropagation(); handleUpdateSignature(instructor); } : undefined}
+                title={can('edit') ? "Update Signature" : undefined}
               >
-                <Icon icon="hugeicons:pencil-edit-01" className="w-3.5 h-3.5" />
+                <Image src={instructor.user.signature} alt="Signature" fill className="object-contain" />
+              </div>
+            </div>
+          ) : (
+            (isApprovedForUserWing && can('edit')) ? (
+              <button
+                onClick={(e) => { e.stopPropagation(); handleUpdateSignature(instructor); }}
+                className="p-1 text-blue-600 hover:bg-blue-50 rounded-full border border-blue-100"
+                title="Add Signature"
+              >
+                <Icon icon="hugeicons:plus-sign" className="w-4 h-4" />
               </button>
+            ) : <span className="text-gray-400 text-xs">—</span>
+          )
+        )
+      }
+    },
+    {
+      key: "user", header: "Rank", className: "text-gray-700", render: (instructor) => {
+        const isApprovedForUserWing = hasApprovedWingForUser(instructor);
+        return (
+          <div className="flex items-center gap-2">
+            {instructor.user?.rank ? (
+              <>
+                <span className="flex-1">{instructor.user.rank.name}</span>
+                {isApprovedForUserWing && can('edit') && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handleAssignRank(instructor); }}
+                    className="p-0.5 text-blue-600 hover:bg-blue-50 rounded border border-blue-100"
+                    title="Update Rank"
+                  >
+                    <Icon icon="hugeicons:pencil-edit-01" className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </>
+            ) : (
+              (isApprovedForUserWing && can('edit')) ? (
+                <button
+                  onClick={(e) => { e.stopPropagation(); handleAssignRank(instructor); }}
+                  className="p-1 text-blue-600 hover:bg-blue-50 rounded border border-blue-100 flex items-center gap-1"
+                  title="Assign Rank"
+                >
+                  <Icon icon="hugeicons:plus-sign" className="w-3.5 h-3.5" />
+                  <span className="text-xs font-medium">Add Rank</span>
+                </button>
+              ) : <span className="text-gray-400 text-xs">—</span>
             )}
-          </>
-        ) : (
-          can('edit') ? (
-            <button
-              onClick={(e) => { e.stopPropagation(); handleAssignRank(instructor); }}
-              className="p-1 text-blue-600 hover:bg-blue-50 rounded border border-blue-100 flex items-center gap-1"
-              title="Assign Rank"
-            >
-              <Icon icon="hugeicons:plus-sign" className="w-3.5 h-3.5" />
-              <span className="text-xs font-medium">Add Rank</span>
-            </button>
-          ) : <span className="text-gray-400 text-xs">—</span>
-        )}
-      </div>
-    )},
+          </div>
+        )
+      }
+    },
     {
       key: "assigned_assessments",
       header: "Assessments",
       className: "text-center",
       headerAlign: "center" as const,
       render: (instructor: InstructorBiodata) => {
+        const isApprovedForUserWing = hasApprovedWingForUser(instructor);
         const assigns = instructorAssignMap[instructor.user_id] || {};
         const CHIPS = [
           { key: "penpicture", label: "PenPicture", color: "bg-purple-100 text-purple-700 border-purple-200" },
-          { key: "counseling", label: "Counseling", color: "bg-blue-100   text-blue-700   border-blue-200"   },
-          { key: "olq",        label: "OLQ",        color: "bg-green-100  text-green-700  border-green-200"  },
-          { key: "warning",    label: "Warning",    color: "bg-red-100    text-red-700    border-red-200"    },
+          { key: "counseling", label: "Counseling", color: "bg-blue-100   text-blue-700   border-blue-200" },
+          { key: "olq", label: "OLQ", color: "bg-green-100  text-green-700  border-green-200" },
+          { key: "warning", label: "Warning", color: "bg-red-100    text-red-700    border-red-200" },
         ];
         const chips = CHIPS.flatMap((c) =>
           (assigns[c.key] || []).map((courseName, i) => ({ ...c, courseName, uid: `${c.key}-${i}` }))
@@ -414,7 +423,7 @@ function InstructorsPageContent() {
                 </span>
               ))}
             </div>
-            {can('asign-assessments') && (
+            {/* {isApprovedForUserWing && can('asign-assessments') && (
               <button
                 onClick={() => handleAssignAssessments(instructor)}
                 className="px-2.5 py-0.5 text-xs font-medium bg-indigo-50 text-indigo-700 border border-indigo-200 rounded hover:bg-indigo-100 flex items-center gap-1"
@@ -423,41 +432,44 @@ function InstructorsPageContent() {
                 <Icon icon="hugeicons:plus-sign" className="w-3 h-3" />
                 Assign
               </button>
-            )}
+            )} */}
           </div>
         );
       },
     },
-    { key: "user", header: "Roles", className: "text-gray-700", render: (instructor) => {
-      const roleAssignments = instructor.user?.role_assignments || instructor.user?.roleAssignments || [];
-      const activeRoles = roleAssignments.filter(ra => ra.is_active && ra.role);
-      return (
-        <div className="flex flex-wrap items-center gap-1">
-          {activeRoles.length > 0 ? (
-            activeRoles.map(ra => (
-              <span
-                key={ra.id}
-                className={`px-2 py-0.5 text-xs rounded-full font-medium ${ra.is_primary ? "bg-blue-100 text-blue-700" : "bg-gray-100 text-gray-600"}`}
-                title={ra.role?.description || ra.role?.name}
+    {
+      key: "user", header: "Roles", className: "text-gray-700", render: (instructor) => {
+        const isApprovedForUserWing = hasApprovedWingForUser(instructor);
+        const roleAssignments = instructor.user?.role_assignments || instructor.user?.roleAssignments || [];
+        const activeRoles = roleAssignments.filter(ra => ra.is_active && ra.role);
+        return (
+          <div className="flex flex-wrap items-center gap-1">
+            {activeRoles.length > 0 ? (
+              activeRoles.map(ra => (
+                <span
+                  key={ra.id}
+                  className={`px-2 py-0.5 text-xs rounded-full font-medium ${ra.is_primary ? "bg-blue-100 text-blue-700" : "bg-gray-100 text-gray-600"}`}
+                  title={ra.role?.description || ra.role?.name}
+                >
+                  {ra.role?.name}
+                </span>
+              ))
+            ) : (
+              <span className="text-gray-400 text-xs">No roles</span>
+            )}
+            {isApprovedForUserWing && can('edit') && (
+              <button
+                onClick={(e) => { e.stopPropagation(); handleAssignRole(instructor); }}
+                className="ml-1 p-0.5 text-purple-600 hover:bg-purple-50 rounded border border-purple-100"
+                title="Manage Roles"
               >
-                {ra.role?.name}
-              </span>
-            ))
-          ) : (
-            <span className="text-gray-400 text-xs">No roles</span>
-          )}
-          {can('edit') && (
-            <button
-              onClick={(e) => { e.stopPropagation(); handleAssignRole(instructor); }}
-              className="ml-1 p-0.5 text-purple-600 hover:bg-purple-50 rounded border border-purple-100"
-              title="Manage Roles"
-            >
-              <Icon icon="hugeicons:plus-sign-circle" className="w-3.5 h-3.5" />
-            </button>
-          )}
-        </div>
-      );
-    }},
+                <Icon icon="hugeicons:plus-sign-circle" className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+        );
+      }
+    },
     // Show Assigned Wings column if system-level user (Super Admin or CPTC)
     ...(showSystemView ? [{
       key: "assign_wings", header: `Assigned Wings`, className: "text-gray-700", render: (instructor: InstructorBiodata) => {
@@ -494,13 +506,12 @@ function InstructorsPageContent() {
       render: (instructor: InstructorBiodata) => {
         if (isItATWingUser) {
           const assignedSubjects = instructor.user?.atw_assigned_subjects?.filter(s => s.is_active) || [];
-          
+
           if (assignedSubjects.length === 0) return <span className="text-gray-400">No subjects</span>;
 
           return (
-            <div className="flex flex-wrap gap-1">
+            <div className="flex flex-wrap gap-1 cursor-pointer" onClick={(e) => { e.stopPropagation(); router.push(`/users/instructors/${instructor.id}?tab=subjects`); }}>
               {assignedSubjects.slice(0, 3).map((as) => {
-                // as.subject is now an AtwSubjectModule relationship
                 const subjectModule = as.subject;
 
                 return (
@@ -564,20 +575,21 @@ function InstructorsPageContent() {
         return <span className="text-gray-400">—</span>;
       }
     }] : []),
-    { key: "is_active", header: "Status", className: "text-center", render: (instructor) => {
-      const isBlocked = instructor.user && !instructor.user.is_active && (instructor.user.failed_login_attempts ?? 0) >= 3;
-      return (
-        <span className={`inline-flex items-center px-2.5 py-1 text-xs font-semibold rounded-full ${
-          instructor.user?.is_active 
-            ? "bg-green-100 text-green-800" 
-            : isBlocked 
-              ? "bg-red-100 text-red-800 border border-red-200" 
-              : "bg-gray-100 text-gray-800"
-        }`}>
-          {instructor.user?.is_active ? "Active" : isBlocked ? "Blocked" : "Inactive"}
-        </span>
-      );
-    }},
+    {
+      key: "is_active", header: "Status", className: "text-center", render: (instructor) => {
+        const isBlocked = instructor.user && !instructor.user.is_active && (instructor.user.failed_login_attempts ?? 0) >= 3;
+        return (
+          <span className={`inline-flex items-center px-2.5 py-1 text-xs font-semibold rounded-full ${instructor.user?.is_active
+              ? "bg-green-100 text-green-800"
+              : isBlocked
+                ? "bg-red-100 text-red-800 border border-red-200"
+                : "bg-gray-100 text-gray-800"
+            }`}>
+            {instructor.user?.is_active ? "Active" : isBlocked ? "Blocked" : "Inactive"}
+          </span>
+        );
+      }
+    },
     {
       key: "actions", header: "Actions", headerAlign: "center" as const, className: "text-center no-print", render: (instructor: InstructorBiodata) => {
         const pendingAssignment = getPendingAssignmentForUserWing(instructor);
@@ -624,6 +636,27 @@ function InstructorsPageContent() {
         <h1 className="text-xl font-bold text-gray-900 uppercase">Bangladesh Air Force Academy</h1>
         <h2 className="text-md font-semibold text-gray-700 mt-2 uppercase">All Instructors List</h2>
       </div>
+
+      {/* Unapproved instructors warning */}
+      {(() => {
+        if (showSystemView) return null;
+        const pendingInstructors = instructors.filter(i => {
+          const assignWings = i.user?.assign_wings || [];
+          return assignWings.some(aw =>
+            aw.status === 'pending' &&
+            (userWingIds.includes(aw.wing_id) || (aw.subwing_id && userSubWingIds.includes(aw.subwing_id)))
+          );
+        });
+        if (pendingInstructors.length === 0) return null;
+        return (
+          <div className="mb-4 px-4 py-3 bg-orange-50 border border-orange-200 rounded-lg flex items-center gap-3">
+            <Icon icon="hugeicons:alert-02" className="w-5 h-5 text-orange-500 shrink-0" />
+            <p className="text-sm text-orange-700">
+              You have <span className="font-bold">{pendingInstructors.length}</span> unapproved instructor{pendingInstructors.length > 1 ? 's' : ''} in your wing assigned from CPTC. Please approve them.
+            </p>
+          </div>
+        );
+      })()}
 
       <div className="flex items-center justify-between gap-4 mb-4">
         <div className="flex items-center gap-3">
@@ -725,29 +758,29 @@ function InstructorsPageContent() {
       </div>
 
       <InstructorFormModal />
-      
-      <ConfirmationModal 
-        isOpen={blockModalOpen} 
-        onClose={() => setBlockModalOpen(false)} 
-        onConfirm={confirmBlock} 
-        title="Block Instructor" 
-        message={`Are you sure you want to block/deactivate "${blockingInstructor?.user?.name}"? They will not be able to login.`} 
-        confirmText="Block" 
-        cancelText="Cancel" 
-        loading={blockLoading} 
-        variant="danger" 
+
+      <ConfirmationModal
+        isOpen={blockModalOpen}
+        onClose={() => setBlockModalOpen(false)}
+        onConfirm={confirmBlock}
+        title="Block Instructor"
+        message={`Are you sure you want to block/deactivate "${blockingInstructor?.user?.name}"? They will not be able to login.`}
+        confirmText="Block"
+        cancelText="Cancel"
+        loading={blockLoading}
+        variant="danger"
       />
-      
-      <ConfirmationModal 
-        isOpen={unblockModalOpen} 
-        onClose={() => setUnblockModalOpen(false)} 
-        onConfirm={confirmUnblock} 
-        title="Unblock Instructor" 
-        message={`Are you sure you want to activate/unblock "${unblockingInstructor?.user?.name}"? This will reset failed login attempts.`} 
-        confirmText="Unblock" 
-        cancelText="Cancel" 
-        loading={unblockLoading} 
-        variant="success" 
+
+      <ConfirmationModal
+        isOpen={unblockModalOpen}
+        onClose={() => setUnblockModalOpen(false)}
+        onConfirm={confirmUnblock}
+        title="Unblock Instructor"
+        message={`Are you sure you want to activate/unblock "${unblockingInstructor?.user?.name}"? This will reset failed login attempts.`}
+        confirmText="Unblock"
+        cancelText="Cancel"
+        loading={unblockLoading}
+        variant="success"
       />
 
       <ConfirmationModal isOpen={approveModalOpen} onClose={() => { setApproveModalOpen(false); setApprovingAssignment(null); }} onConfirm={confirmApprove} title="Approve Wing Assignment" message={`Are you sure you want to approve wing assignment for ${approvingAssignment?.instructor?.user?.name || 'this instructor'}?`} confirmText="Approve" cancelText="Cancel" loading={approveLoading} variant="success" />
@@ -757,12 +790,12 @@ function InstructorsPageContent() {
       <InstructorAssignModuleModal isOpen={assignModuleModalOpen} onClose={() => { setAssignModuleModalOpen(false); setAssigningModuleInstructor(null); }} instructor={assigningModuleInstructor} onSuccess={() => loadInstructors()} />
       <CtwInstructorAssignCadetModal isOpen={assignCtwCadetModalOpen} onClose={() => { setAssignCtwCadetModalOpen(false); setAssigningCtwCadetInstructor(null); }} instructor={assigningCtwCadetInstructor} onSuccess={() => loadInstructors()} />
       <InstructorViewAssignedModulesModal isOpen={viewModulesModalOpen} onClose={() => { setViewModulesModalOpen(false); setViewingModulesInstructor(null); }} instructor={viewingModulesInstructor} />
-      
-      <UserAssignRankModal 
-        isOpen={assignRankModalOpen} 
-        onClose={() => { setAssignRankModalOpen(false); setRankingUser(null); }} 
-        user={rankingUser} 
-        onSuccess={() => loadInstructors()} 
+
+      <UserAssignRankModal
+        isOpen={assignRankModalOpen}
+        onClose={() => { setAssignRankModalOpen(false); setRankingUser(null); }}
+        user={rankingUser}
+        onSuccess={() => loadInstructors()}
       />
 
       <UserSignatureModal

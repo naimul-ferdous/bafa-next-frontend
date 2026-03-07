@@ -6,6 +6,9 @@ import Image from "next/image";
 import { Icon } from "@iconify/react";
 import { useAuth } from "@/context/AuthContext";
 import { atwInstructorStatsService } from "@/libs/services/atwInstructorStatsService";
+import { atwUserAssignService } from "@/libs/services/atwUserAssignService";
+import { Modal } from "@/components/ui/modal";
+import FullLogo from "@/components/ui/fulllogo";
 
 interface NoticeItem {
   id: number;
@@ -74,8 +77,8 @@ const demoNotices: NoticeItem[] = [
 ];
 
 // ─── Circle Node ──────────────────────────────────────────────────────────────
-const OrbitCircle = ({ title, href, icon }: { title: string; href: string; icon: string }) => (
-  <Link href={href} className="group block">
+const OrbitCircle = ({ title, href, icon, onClick }: { title: string; href?: string; icon: string; onClick?: (e: React.MouseEvent) => void }) => {
+  const content = (
     <div className="w-38 h-38 rounded-full bg-white border-2 border-slate-200 group-hover:border-blue-400 shadow-[0_8px_32px_rgba(0,0,0,0.10)] group-hover:shadow-[0_8px_40px_rgba(59,130,246,0.20)] transition-all duration-500 flex flex-col items-center justify-center gap-2 overflow-hidden relative">
       <div className="absolute inset-0 transition-transform duration-700 group-hover:scale-110">
         <Image src="/images/bg/corner-1.png" alt="" fill className="object-cover object-right-top" priority />
@@ -89,8 +92,22 @@ const OrbitCircle = ({ title, href, icon }: { title: string; href: string; icon:
         </span>
       </div>
     </div>
-  </Link>
-);
+  );
+
+  if (onClick && !href) {
+    return (
+      <button type="button" onClick={onClick} className="group block cursor-pointer outline-none border-none bg-transparent p-0 m-0">
+        {content}
+      </button>
+    );
+  }
+
+  return (
+    <Link href={href || "#"} onClick={onClick} className="group block">
+      {content}
+    </Link>
+  );
+};
 
 const StatCard = ({ label, value, icon, accentColor, bgImage, loading }: StatCardProps) => (
   <div className="relative bg-white rounded-[1.5rem] sm:rounded-[2rem] border border-slate-100 shadow-sm p-5 sm:p-6 overflow-hidden min-h-[160px] sm:min-h-[180px] flex flex-col justify-between">
@@ -114,12 +131,6 @@ const StatCard = ({ label, value, icon, accentColor, bgImage, loading }: StatCar
     </div>
   </div>
 );
-
-// ─── Nodes config ─────────────────────────────────────────────────────────────
-const nodes = [
-  { title: "Input Result", href: "/atw/assessments/olq/results/create", icon: "hugeicons:pencil-edit-01" },
-  { title: "View Result", href: "/atw/assessments/olq/results/view", icon: "hugeicons:notebook" },
-];
 
 // ─── Tree layout constants (px) ───────────────────────────────────────────────
 const W = 560;
@@ -219,168 +230,255 @@ export default function AtwAssessmentOlqResultsPage() {
 
   const [stats, setStats] = useState({ subjects: 0, cadets: 0, results: 0 });
   const [statsLoading, setStatsLoading] = useState(false);
+  const [hasOlqAssignment, setHasOlqAssignment] = useState<boolean | null>(null);
+  const [loadingAssigns, setLoadingAssigns] = useState(true);
+  const [showWarningModal, setShowWarningModal] = useState(false);
 
   useEffect(() => {
-    if (!isInstructor || !instructorId) return;
-    setStatsLoading(true);
-    atwInstructorStatsService.getStats(instructorId)
+    if (!instructorId) {
+      setLoadingAssigns(false);
+      return;
+    }
+
+    if (isInstructor) {
+      setStatsLoading(true);
+      atwInstructorStatsService.getStats(instructorId)
+        .then((data) => {
+          setStats({
+            subjects: data.total_subjects,
+            cadets: data.total_cadets,
+            results: data.total_results,
+          });
+        }).catch(console.error)
+        .finally(() => setStatsLoading(false));
+    }
+
+    // Fetch OLQ assignments for any user to check eligibility
+    setLoadingAssigns(true);
+    atwUserAssignService.getAll({ user_id: instructorId })
       .then((data) => {
-        setStats({
-          subjects: data.total_subjects,
-          cadets: data.total_cadets,
-          results: data.total_results,
-        });
-      }).catch(console.error)
-      .finally(() => setStatsLoading(false));
+        setHasOlqAssignment(data.olq.length > 0);
+      })
+      .catch((err) => {
+        console.error("Failed to fetch OLQ assignments:", err);
+        setHasOlqAssignment(false);
+      })
+      .finally(() => setLoadingAssigns(false));
   }, [isInstructor, instructorId]);
 
+  const handleInputResultClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setShowWarningModal(true);
+  };
+
+  const canInput = hasOlqAssignment === true && isInstructor;
+
+  const dynamicNodes = [
+    { 
+      title: "Input Result", 
+      href: canInput ? "/atw/assessments/olq/results/create" : undefined, 
+      icon: "hugeicons:pencil-edit-01",
+      onClick: canInput ? undefined : handleInputResultClick
+    },
+    { title: "View Result", href: "/atw/assessments/olq/results/view", icon: "hugeicons:notebook" },
+  ];
+
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-4 xl:grid-cols-5 gap-4 sm:gap-6 animate-in fade-in duration-700">
-      <div className="lg:col-span-3 flex justify-center items-center mx-auto px-3 sm:px-4 md:px-6 lg:px-0 animate-in fade-in duration-700">
-        <div className="flex items-center justify-center overflow-hidden relative">
+    <>
+      <div className="grid grid-cols-1 lg:grid-cols-4 xl:grid-cols-5 gap-4 sm:gap-6 animate-in fade-in duration-700">
+        <div className="lg:col-span-3 flex justify-center items-center mx-auto px-3 sm:px-4 md:px-6 lg:px-0 animate-in fade-in duration-700">
+          <div className="flex items-center justify-center overflow-hidden relative">
 
-          {/* Desktop / Tablet — Binary Tree */}
-          <div className="hidden sm:flex w-full items-center justify-center py-8">
-            <div
-              className="relative sm:scale-[0.68] md:scale-[0.82] lg:scale-[0.92] xl:scale-100 transition-transform origin-top"
-              style={{ width: `${W}px`, height: `${H}px` }}
-            >
-              {/* SVG tree connectors */}
-              <svg
-                className="absolute inset-0 w-full h-full pointer-events-none"
-                viewBox={`0 0 ${W} ${H}`}
-              >
-                {/* Vertical stem: root bottom → branch */}
-                <line
-                  x1={rootCx} y1={rootDiam}
-                  x2={rootCx} y2={branchY}
-                  stroke="#94a3b8" strokeWidth="2" strokeDasharray="6 5"
-                />
-                {/* Horizontal branch bar */}
-                <line
-                  x1={childCx[0]} y1={branchY}
-                  x2={childCx[1]} y2={branchY}
-                  stroke="#94a3b8" strokeWidth="2" strokeDasharray="6 5"
-                />
-                {/* Drop to left child */}
-                <line
-                  x1={childCx[0]} y1={branchY}
-                  x2={childCx[0]} y2={childTopY}
-                  stroke="#94a3b8" strokeWidth="2" strokeDasharray="6 5"
-                />
-                {/* Drop to right child */}
-                <line
-                  x1={childCx[1]} y1={branchY}
-                  x2={childCx[1]} y2={childTopY}
-                  stroke="#94a3b8" strokeWidth="2" strokeDasharray="6 5"
-                />
-                {/* Junction dots */}
-                <circle cx={rootCx} cy={branchY} r="5" fill="#64748b" />
-                <circle cx={childCx[0]} cy={branchY} r="4" fill="#94a3b8" />
-                <circle cx={childCx[1]} cy={branchY} r="4" fill="#94a3b8" />
-                {/* Child top dots */}
-                <circle cx={childCx[0]} cy={childTopY} r="3" fill="#cbd5e1" />
-                <circle cx={childCx[1]} cy={childTopY} r="3" fill="#cbd5e1" />
-              </svg>
-
-              {/* Root Hub — top center */}
+            {/* Desktop / Tablet — Binary Tree */}
+            <div className="hidden sm:flex w-full items-center justify-center py-8">
               <div
-                className="absolute"
-                style={{ left: `${rootCx}px`, top: "0", transform: "translateX(-50%)" }}
+                className="relative sm:scale-[0.68] md:scale-[0.82] lg:scale-[0.92] xl:scale-100 transition-transform origin-top"
+                style={{ width: `${W}px`, height: `${H}px` }}
               >
-                <div className="relative w-44 h-44 rounded-full bg-white border-2 border-slate-900 shadow-[0_0_60px_rgba(0,0,0,0.12)] flex items-center justify-center group hover:scale-105 transition-transform duration-500 overflow-hidden">
-                  <div className="absolute inset-0">
-                    <Image src="/images/bg/corner-2.png" alt="" fill className="object-cover object-right-top" priority />
-                  </div>
-                  <div className="relative z-10 flex flex-col items-center px-6 py-3">
-                    <p className="font-black text-slate-500 uppercase tracking-widest mt-2 text-center leading-tight">
-                      OLQ <br /> Result Management
-                    </p>
-                  </div>
-                </div>
-              </div>
+                {/* SVG tree connectors */}
+                <svg
+                  className="absolute inset-0 w-full h-full pointer-events-none"
+                  viewBox={`0 0 ${W} ${H}`}
+                >
+                  {/* Vertical stem: root bottom → branch */}
+                  <line
+                    x1={rootCx} y1={rootDiam}
+                    x2={rootCx} y2={branchY}
+                    stroke="#94a3b8" strokeWidth="2" strokeDasharray="6 5"
+                  />
+                  {/* Horizontal branch bar */}
+                  <line
+                    x1={childCx[0]} y1={branchY}
+                    x2={childCx[1]} y2={branchY}
+                    stroke="#94a3b8" strokeWidth="2" strokeDasharray="6 5"
+                  />
+                  {/* Drop to left child */}
+                  <line
+                    x1={childCx[0]} y1={branchY}
+                    x2={childCx[0]} y2={childTopY}
+                    stroke="#94a3b8" strokeWidth="2" strokeDasharray="6 5"
+                  />
+                  {/* Drop to right child */}
+                  <line
+                    x1={childCx[1]} y1={branchY}
+                    x2={childCx[1]} y2={childTopY}
+                    stroke="#94a3b8" strokeWidth="2" strokeDasharray="6 5"
+                  />
+                  {/* Junction dots */}
+                  <circle cx={rootCx} cy={branchY} r="5" fill="#64748b" />
+                  <circle cx={childCx[0]} cy={branchY} r="4" fill="#94a3b8" />
+                  <circle cx={childCx[1]} cy={branchY} r="4" fill="#94a3b8" />
+                  {/* Child top dots */}
+                  <circle cx={childCx[0]} cy={childTopY} r="3" fill="#cbd5e1" />
+                  <circle cx={childCx[1]} cy={childTopY} r="3" fill="#cbd5e1" />
+                </svg>
 
-              {/* Child Nodes */}
-              {nodes.map((node, i) => (
+                {/* Root Hub — top center */}
                 <div
-                  key={i}
                   className="absolute"
-                  style={{ left: `${childCx[i]}px`, top: `${childTopY}px`, transform: "translateX(-50%)" }}
+                  style={{ left: `${rootCx}px`, top: "0", transform: "translateX(-50%)" }}
                 >
-                  <OrbitCircle {...node} />
+                  <div className="relative w-44 h-44 rounded-full bg-white border-2 border-slate-900 shadow-[0_0_60px_rgba(0,0,0,0.12)] flex items-center justify-center group hover:scale-105 transition-transform duration-500 overflow-hidden">
+                    <div className="absolute inset-0">
+                      <Image src="/images/bg/corner-2.png" alt="" fill className="object-cover object-right-top" priority />
+                    </div>
+                    <div className="relative z-10 flex flex-col items-center px-6 py-3">
+                      <p className="font-black text-slate-500 uppercase tracking-widest mt-2 text-center leading-tight">
+                        OLQ <br /> Result Management
+                      </p>
+                    </div>
+                  </div>
                 </div>
-              ))}
-            </div>
-          </div>
 
-          {/* Mobile Grid */}
-          <div className="sm:hidden w-full space-y-5 py-4">
-            <div className="text-center relative py-8 rounded-2xl overflow-hidden">
-              <div className="absolute inset-0 -z-10">
-                <Image src="/images/bg/corner-1.png" alt="" fill className="object-cover opacity-20" />
+                {/* Child Nodes */}
+                {dynamicNodes.map((node, i) => (
+                  <div
+                    key={i}
+                    className="absolute"
+                    style={{ left: `${childCx[i]}px`, top: `${childTopY}px`, transform: "translateX(-50%)" }}
+                  >
+                    <OrbitCircle {...node} />
+                  </div>
+                ))}
               </div>
-              <h1 className="text-5xl font-black text-slate-900">OLQ</h1>
-              <div className="h-1.5 w-16 bg-blue-600 rounded-full mt-2 mx-auto" />
-              <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mt-2">ATW Result Management</p>
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              {nodes.map((node, i) => (
-                <Link
-                  key={i}
-                  href={node.href}
-                  className="relative flex flex-col items-center p-5 bg-white rounded-2xl border border-slate-200 gap-2 overflow-hidden shadow-sm hover:shadow-md hover:border-blue-300 transition-all duration-300"
-                >
-                  <div className="absolute inset-0 -z-10">
-                    <Image src="/images/bg/corner-1.png" alt="" fill className="object-cover opacity-10" />
-                  </div>
-                  <div className="w-9 h-9 rounded-xl bg-white shadow-sm border border-slate-100 flex items-center justify-center">
-                    <Icon icon={node.icon} className="w-5 h-5 text-blue-600" />
-                  </div>
-                  <span className="text-[9px] font-black uppercase text-slate-800 tracking-wider leading-none text-center">{node.title}</span>
-                </Link>
-              ))}
-            </div>
-          </div>
 
-        </div>
-      </div>
-      <div className="lg:col-span-1 xl:col-span-2">
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            {isInstructor && (
-              <div className="hidden lg:flex flex-col gap-4">
-                <StatCard
-                  label="Total Subjects"
-                  value={stats.subjects}
-                  icon="solar:book-2-broken"
-                  accentColor="from-blue-600 to-indigo-700"
-                  bgImage="corner-1.png"
-                  loading={statsLoading}
-                />
-                <StatCard
-                  label="Total Cadets"
-                  value={stats.cadets}
-                  icon="hugeicons:user-group"
-                  accentColor="from-violet-600 to-purple-700"
-                  bgImage="corner-2.png"
-                  loading={statsLoading}
-                />
-                <StatCard
-                  label="Results Inputted"
-                  value={stats.results}
-                  icon="hugeicons:notebook"
-                  accentColor="from-emerald-500 to-teal-700"
-                  bgImage="corner-1.png"
-                  loading={statsLoading}
-                />
+            {/* Mobile Grid */}
+            <div className="sm:hidden w-full space-y-5 py-4">
+              <div className="text-center relative py-8 rounded-2xl overflow-hidden">
+                <div className="absolute inset-0 -z-10">
+                  <Image src="/images/bg/corner-1.png" alt="" fill className="object-cover opacity-20" />
+                </div>
+                <h1 className="text-5xl font-black text-slate-900">OLQ</h1>
+                <div className="h-1.5 w-16 bg-blue-600 rounded-full mt-2 mx-auto" />
+                <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mt-2">ATW Result Management</p>
               </div>
-            )}
-          </div>
-          <div>
-            <NoticesPanel />
+              <div className="grid grid-cols-2 gap-3">
+                {dynamicNodes.map((node, i) => (
+                  <div key={i}>
+                    {node.onClick ? (
+                      <button
+                        type="button"
+                        onClick={node.onClick}
+                        className="w-full relative flex flex-col items-center p-5 bg-white rounded-2xl border border-slate-200 gap-2 overflow-hidden shadow-sm hover:shadow-md hover:border-blue-300 transition-all duration-300"
+                      >
+                        <div className="absolute inset-0 -z-10">
+                          <Image src="/images/bg/corner-1.png" alt="" fill className="object-cover opacity-10" />
+                        </div>
+                        <div className="w-9 h-9 rounded-xl bg-white shadow-sm border border-slate-100 flex items-center justify-center">
+                          <Icon icon={node.icon} className="w-5 h-5 text-blue-600" />
+                        </div>
+                        <span className="text-[9px] font-black uppercase text-slate-800 tracking-wider leading-none text-center">{node.title}</span>
+                      </button>
+                    ) : (
+                      <Link
+                        href={node.href || "#"}
+                        className="relative flex flex-col items-center p-5 bg-white rounded-2xl border border-slate-200 gap-2 overflow-hidden shadow-sm hover:shadow-md hover:border-blue-300 transition-all duration-300"
+                      >
+                        <div className="absolute inset-0 -z-10">
+                          <Image src="/images/bg/corner-1.png" alt="" fill className="object-cover opacity-10" />
+                        </div>
+                        <div className="w-9 h-9 rounded-xl bg-white shadow-sm border border-slate-100 flex items-center justify-center">
+                          <Icon icon={node.icon} className="w-5 h-5 text-blue-600" />
+                        </div>
+                        <span className="text-[9px] font-black uppercase text-slate-800 tracking-wider leading-none text-center">{node.title}</span>
+                      </Link>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
+        <div className="lg:col-span-1 xl:col-span-2">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              {isInstructor && (
+                <div className="hidden lg:flex flex-col gap-4">
+                  <StatCard
+                    label="Total Subjects"
+                    value={stats.subjects}
+                    icon="solar:book-2-broken"
+                    accentColor="from-blue-600 to-indigo-700"
+                    bgImage="corner-1.png"
+                    loading={statsLoading}
+                  />
+                  <StatCard
+                    label="Total Cadets"
+                    value={stats.cadets}
+                    icon="hugeicons:user-group"
+                    accentColor="from-violet-600 to-purple-700"
+                    bgImage="corner-2.png"
+                    loading={statsLoading}
+                  />
+                  <StatCard
+                    label="Results Inputted"
+                    value={stats.results}
+                    icon="hugeicons:notebook"
+                    accentColor="from-emerald-500 to-teal-700"
+                    bgImage="corner-1.png"
+                    loading={statsLoading}
+                  />
+                </div>
+              )}
+            </div>
+            <div>
+              <NoticesPanel />
+            </div>
+          </div>
+        </div>
       </div>
-    </div>
+
+      <Modal
+        isOpen={showWarningModal}
+        onClose={() => setShowWarningModal(false)}
+        className="max-w-md mx-4 p-6"
+        showCloseButton={true}
+      >
+        <div className="flex flex-col gap-4 text-center">
+          <div className="flex justify-center mb-2"><FullLogo /></div>
+          <h1 className="text-xl font-bold text-gray-900 uppercase">Bangladesh Air Force Academy</h1>
+          
+          <div className="mt-2">
+            <h2 className="text-md font-semibold text-red-600 uppercase flex items-center justify-center gap-2">
+              <Icon icon="hugeicons:alert-square" className="w-5 h-5" />
+              Not Eligible
+            </h2>
+            <p className="text-sm text-gray-600 mt-3">
+              You are not Eligible for Input Mark. Please contact admin to assign you to an OLQ assessment for a course.
+            </p>
+          </div>
+
+          <div className="mt-4 pt-4 border-t border-gray-100 flex justify-center">
+            <button
+              onClick={() => setShowWarningModal(false)}
+              className="px-6 py-2 text-sm font-medium text-white bg-blue-600 rounded-xl hover:bg-blue-700 transition-colors"
+            >
+              Understood
+            </button>
+          </div>
+        </div>
+      </Modal>
+    </>
   );
 }

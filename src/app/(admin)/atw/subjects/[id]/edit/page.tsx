@@ -84,7 +84,7 @@ export default function EditAtwSubjectPage() {
       <div className="text-center mb-8">
         <div className="flex justify-center mb-4"><FullLogo /></div>
         <h1 className="text-xl font-bold text-gray-900 uppercase">Bangladesh Air Force Academy</h1>
-        <h2 className="text-md font-semibold text-gray-700 mt-2 uppercase">Edit Subject Mapping</h2>
+        <h2 className="text-md font-semibold text-gray-700 mt-2 uppercase">Edit Subject Group</h2>
       </div>
 
       <div className="mx-auto">

@@ -128,21 +128,38 @@ export interface AtwSubjectsModuleMarksheetMark {
   updated_at?: string;
 }
 
+export interface AtwMarksheetEditLog {
+  id: number;
+  atw_subjects_module_marksheet_id: number;
+  edited_by: number;
+  editor?: { id: number; name: string; service_number?: string; rank?: { id: number; name: string; short_name?: string }; roles?: { id: number; name: string }[] };
+  created_at?: string;
+}
+
 export interface AtwSubjectsModuleMarksheet {
   id: number;
   name: string;
   code: string;
   is_active: boolean;
+  created_by?: number;
+  creator?: { id: number; name: string; service_number?: string; rank?: { id: number; name: string; short_name?: string }; roles?: { id: number; name: string }[] };
   marks?: AtwSubjectsModuleMarksheetMark[];
+  edit_logs?: AtwMarksheetEditLog[];
   created_at?: string;
   updated_at?: string;
+}
+
+export interface AtwSubjectModuleEditLog {
+  id: number;
+  atw_subject_module_id: number;
+  edited_by: number;
+  editor?: { id: number; name: string; service_number?: string; rank?: { id: number; name: string; short_name?: string }; roles?: { id: number; name: string }[] };
+  created_at?: string;
 }
 
 export interface AtwSubjectModule {
   id: number;
   atw_subjects_module_marksheet_id?: number;
-  semester_id?: number;
-  program_id?: number;
   subject_name: string;
   subject_code: string;
   subject_legend?: string;
@@ -155,11 +172,12 @@ export interface AtwSubjectModule {
   syllabus_file?: File;
   is_active: boolean;
   created_by?: number;
+  creator?: { id: number; name: string; service_number?: string; rank?: { id: number; name: string; short_name?: string }; roles?: { id: number; name: string }[] };
+  edit_logs?: AtwSubjectModuleEditLog[];
   created_at?: string;
   updated_at?: string;
   marksheet?: AtwSubjectsModuleMarksheet;
-  semester?: SystemSemester;
-  program?: SystemProgram;
+  groups?: AtwSubjectGroup[];
 }
 
 export interface AtwSubjectGroup {

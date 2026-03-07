@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { Icon } from "@iconify/react";
+import FullLogo from "../ui/fulllogo";
 import { Modal } from "@/components/ui/modal";
 import { InstructorBiodata, User } from "@/libs/types/user";
 import type { SystemCourse } from "@/libs/types/system";
@@ -137,14 +138,18 @@ export default function InstructorAssignAssessmentModal({ isOpen, onClose, onSuc
     <Modal isOpen={isOpen} onClose={handleClose} showCloseButton className="max-w-md">
       <div className="p-6">
         {/* Header */}
-        <div className="mb-5">
-          <h2 className="text-lg font-bold text-gray-900">Assign Assessments</h2>
+        <div className="text-center mb-6">
+          <div className="flex justify-center mb-4"><FullLogo /></div>
+          <h1 className="text-xl font-bold text-gray-900 uppercase">Bangladesh Air Force Academy</h1>
+          <h2 className="text-md font-semibold text-gray-700 mt-2 uppercase">
+            Assign Assessments
+          </h2>
           {displayUser && (
-            <p className="text-sm text-gray-500 mt-0.5">
-              {displayUser.rank?.name && <span className="font-medium">{displayUser.rank.name} </span>}
-              <span className="font-semibold text-gray-700">{displayUser.name}</span>
+            <p className="text-sm text-gray-500 mt-1">
+              Select assessment for {displayUser.rank?.name && <span className="font-medium">{displayUser.rank.name} </span>}
+              <span>{displayUser.name}</span>
               {displayUser.service_number && (
-                <span className="ml-2 text-xs text-gray-400 font-mono">({displayUser.service_number})</span>
+                <span className="ml-1">({displayUser.service_number})</span>
               )}
             </p>
           )}
@@ -159,13 +164,13 @@ export default function InstructorAssignAssessmentModal({ isOpen, onClose, onSuc
 
         {/* Course Select */}
         <div className="mb-4">
-          <label className="block text-sm font-medium text-gray-700 mb-1">
+          <label className="block text-[11px] font-bold text-gray-500 uppercase mb-1">
             Course <span className="text-red-500">*</span>
           </label>
           <select
             value={selectedCourseId}
             onChange={(e) => setSelectedCourseId(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-gray-900 text-sm"
+            className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white text-gray-900 text-sm"
           >
             <option value="">Select Course</option>
             {courses.map((c) => (
@@ -176,11 +181,11 @@ export default function InstructorAssignAssessmentModal({ isOpen, onClose, onSuc
 
         {/* Assessment Checkboxes */}
         <div className="mb-6">
-          <label className="block text-sm font-medium text-gray-700 mb-2">Assessments</label>
+          <label className="block text-[11px] font-bold text-gray-500 uppercase mb-2">Assessments</label>
 
           {loadingAssigns ? (
             <div className="flex items-center justify-center py-6">
-              <Icon icon="hugeicons:fan-01" className="w-6 h-6 animate-spin text-blue-500" />
+              <Icon icon="hugeicons:fan-01" className="w-6 h-6 animate-spin text-purple-500" />
             </div>
           ) : (
             <div className="grid grid-cols-2 gap-2">
@@ -199,8 +204,8 @@ export default function InstructorAssignAssessmentModal({ isOpen, onClose, onSuc
                         ? color
                         : isExisting
                           ? "bg-gray-100 border-gray-300 text-gray-500"
-                          : "bg-gray-50 border-gray-200 text-gray-600"
-                    } ${isDisabled ? "opacity-70 cursor-not-allowed" : "cursor-pointer hover:bg-gray-100"}`}
+                          : "bg-gray-50 border-gray-200 text-gray-600 hover:border-purple-200"
+                    } ${isDisabled ? "opacity-70 cursor-not-allowed" : "cursor-pointer"}`}
                   >
                     <div className="flex items-center gap-2.5">
                       <input
@@ -208,7 +213,7 @@ export default function InstructorAssignAssessmentModal({ isOpen, onClose, onSuc
                         checked={checks[key]}
                         disabled={isDisabled}
                         onChange={(e) => setChecks((prev) => ({ ...prev, [key]: e.target.checked }))}
-                        className="w-4 h-4 rounded"
+                        className="w-4 h-4 rounded text-purple-600 focus:ring-purple-500"
                       />
                       <span className="text-sm font-medium flex-1">{label}</span>
                       {isExisting && (
@@ -225,7 +230,7 @@ export default function InstructorAssignAssessmentModal({ isOpen, onClose, onSuc
           )}
 
           {!selectedCourseId && (
-            <p className="text-xs text-gray-400 mt-2">Select a course to manage assessments.</p>
+            <p className="text-xs text-gray-400 mt-2 italic">Select a course to manage assessments.</p>
           )}
           {selectedCourseId && Object.values(existing).some(Boolean) && (
             <p className="text-xs text-amber-600 mt-2 flex items-center gap-1">
@@ -236,18 +241,18 @@ export default function InstructorAssignAssessmentModal({ isOpen, onClose, onSuc
         </div>
 
         {/* Actions */}
-        <div className="flex items-center justify-end gap-3 pt-4 border-t">
+        <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-100">
           <button
             type="button"
             onClick={handleClose}
-            className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 text-sm font-medium"
+            className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 text-sm font-medium transition-colors"
           >
             Cancel
           </button>
           <button
             onClick={handleSave}
             disabled={saving || !selectedCourseId || loadingAssigns}
-            className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 text-sm font-medium"
+            className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 text-sm font-medium transition-colors"
           >
             {saving
               ? <><Icon icon="hugeicons:fan-01" className="w-4 h-4 animate-spin" />Saving...</>

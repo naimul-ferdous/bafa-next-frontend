@@ -7,6 +7,18 @@ import { atwSubjectModuleService } from "@/libs/services/atwSubjectModuleService
 import FullLogo from "@/components/ui/fulllogo";
 import type { AtwSubjectModule } from "@/libs/types/system";
 
+const formatType = (type: string) => {
+  return type
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/(classtest)/gi, "Class Test")
+    .replace(/(quiztest)/gi, "Quiz Test")
+    .replace(/(endsemester)/gi, "End Semester")
+    .replace(/(midsemester)/gi, "Mid Semester")
+    .replace(/(midterm)/gi, "Mid Term")
+    .replace(/(finalexam)/gi, "Final Exam")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+};
+
 export default function SubjectDetailsPage() {
   const router = useRouter();
   const params = useParams();
@@ -84,6 +96,13 @@ export default function SubjectDetailsPage() {
         </button>
         <div className="flex items-center gap-3">
           <button
+            onClick={() => router.push(`/atw/subjects/modules/${subject.id}/edit`)}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2"
+          >
+            <Icon icon="hugeicons:pencil-edit-01" className="w-4 h-4" />
+            Edit
+          </button>
+          <button
             onClick={handlePrint}
             className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 flex items-center gap-2"
           >
@@ -111,7 +130,7 @@ export default function SubjectDetailsPage() {
         {/* Basic Information Section */}
         <div className="mb-6">
           <h2 className="text-lg font-bold text-gray-900 mb-4 pb-1 border-b border-dashed border-gray-400">
-            Basic Information
+            Subject Information
           </h2>
           <div className="grid grid-cols-2 gap-x-12 gap-y-3">
             <div className="flex">
@@ -140,15 +159,15 @@ export default function SubjectDetailsPage() {
               <span className="text-gray-900 flex-1 font-semibold">{subject.subjects_full_mark}</span>
             </div>
             <div className="flex">
-              <span className="w-48 text-gray-900 font-medium">Credit</span>
+              <span className="w-48 text-gray-900 font-medium">Credit Hours</span>
               <span className="mr-4">:</span>
               <span className="text-gray-900 flex-1 font-semibold">{subject.subjects_credit}</span>
             </div>
-            <div className="flex">
+            {/* <div className="flex">
               <span className="w-48 text-gray-900 font-medium">Status</span>
               <span className="mr-4">:</span>
               <span className="text-gray-900 flex-1">{subject.is_active ? "Active" : "Inactive"}</span>
-            </div>
+            </div> */}
           </div>
         </div>
 
@@ -187,7 +206,7 @@ export default function SubjectDetailsPage() {
                       <tr key={mark.id}>
                         <td className="border border-gray-900 px-4 py-2 text-center text-gray-900">{index + 1}</td>
                         <td className="border border-gray-900 px-4 py-2 text-gray-900 font-medium">{mark.name}</td>
-                        <td className="border border-gray-900 px-4 py-2 text-gray-900 capitalize">{mark.type || "N/A"}</td>
+                        <td className="border border-gray-900 px-4 py-2 text-gray-900">{mark.type ? formatType(mark.type) : "N/A"}</td>
                         <td className="border border-gray-900 px-4 py-2 text-center text-gray-900">{mark.estimate_mark}</td>
                         <td className="border border-gray-900 px-4 py-2 text-center text-gray-900 font-bold">{mark.percentage}%</td>
                       </tr>
@@ -210,44 +229,73 @@ export default function SubjectDetailsPage() {
           )}
         </div>
 
-        {/* System Information Section */}
-        <div className="mb-6">
-          <h2 className="text-lg font-bold text-gray-900 mb-4 pb-1 border-b border-dashed border-gray-400">
-            System Information
-          </h2>
-          <div className="grid grid-cols-2 gap-x-12 gap-y-3">
-            <div className="flex">
-              <span className="w-48 text-gray-900 font-medium">Created At</span>
-              <span className="mr-4">:</span>
-              <span className="text-gray-900 flex-1">
-                {subject.created_at ? new Date(subject.created_at).toLocaleString("en-GB", {
-                  day: "2-digit",
-                  month: "long",
-                  year: "numeric",
-                  hour: "2-digit",
-                  minute: "2-digit"
-                }) : "N/A"}
-              </span>
+        {/* Signature Blocks - Creator + Last 4 Unique Editors */}
+        <div className="mt-16 flex justify-end gap-10">
+          {/* Created by */}
+          <div className="text-left min-w-[180px]">
+            <p className="text-xs text-gray-900 uppercase tracking-wider">Created by</p>
+            <div className="border-b border-gray-400">
+              <p className="text-sm text-gray-900">
+                {subject.creator ? (
+                  <>
+                    {subject.creator.rank?.short_name && <>{subject.creator.rank.short_name} </>}
+                    {subject.creator.name}
+                  </>
+                ) : "N/A"}
+              </p>
+              {subject.creator?.roles && subject.creator.roles.length > 0 && (
+                <p className="text-xs text-gray-900 mt-0.5">{subject.creator.roles[0].name}</p>
+              )}
             </div>
-            <div className="flex">
-              <span className="w-48 text-gray-900 font-medium">Last Updated</span>
-              <span className="mr-4">:</span>
-              <span className="text-gray-900 flex-1">
-                {subject.updated_at ? new Date(subject.updated_at).toLocaleString("en-GB", {
-                  day: "2-digit",
-                  month: "long",
-                  year: "numeric",
-                  hour: "2-digit",
-                  minute: "2-digit"
-                }) : "N/A"}
-              </span>
-            </div>
+            <p className="text-xs text-gray-900">
+              {subject.created_at ? new Date(subject.created_at).toLocaleDateString("en-GB", {
+                day: "2-digit",
+                month: "long",
+                year: "numeric"
+              }) : "N/A"}
+            </p>
           </div>
-        </div>
 
-        {/* Footer with date */}
-        <div className="mt-12 text-center text-sm text-gray-600">
-          <p>Generated on: {new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}</p>
+          {/* Edited by - last 4 unique consecutive editors, oldest first, last one labeled "Last Edited by" */}
+          {(() => {
+            const logs = subject.edit_logs || [];
+            const uniqueEditors: typeof logs = [];
+            for (const log of logs) {
+              if (uniqueEditors.length >= 4) break;
+              const lastEditor = uniqueEditors[uniqueEditors.length - 1];
+              if (!lastEditor || lastEditor.edited_by !== log.edited_by) {
+                uniqueEditors.push(log);
+              }
+            }
+            const ordered = [...uniqueEditors].reverse();
+            return ordered.map((log, idx) => (
+              <div key={log.id} className="text-left min-w-[180px]">
+                <p className="text-xs text-gray-900 uppercase tracking-wider">
+                  {idx === ordered.length - 1 ? "Last Edited by" : "Edited by"}
+                </p>
+                <div className="border-b border-gray-400">
+                  <p className="text-sm text-gray-900">
+                    {log.editor ? (
+                      <>
+                        {log.editor.rank?.short_name && <>{log.editor.rank.short_name} </>}
+                        {log.editor.name}
+                      </>
+                    ) : "N/A"}
+                  </p>
+                  {log.editor?.roles && log.editor.roles.length > 0 && (
+                    <p className="text-xs text-gray-900 mt-0.5">{log.editor.roles[0].name}</p>
+                  )}
+                </div>
+                <p className="text-xs text-gray-900">
+                  {log.created_at ? new Date(log.created_at).toLocaleDateString("en-GB", {
+                    day: "2-digit",
+                    month: "long",
+                    year: "numeric"
+                  }) : "N/A"}
+                </p>
+              </div>
+            ));
+          })()}
         </div>
       </div>
     </div>

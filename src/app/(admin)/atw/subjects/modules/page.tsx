@@ -309,7 +309,7 @@ export default function AtwSubjectModulesPage() {
       <div className="text-center mb-8">
         <div className="flex justify-center mb-4"><FullLogo /></div>
         <h1 className="text-xl font-bold text-gray-900 uppercase">Bangladesh Air Force Academy</h1>
-        <h2 className="text-md font-semibold text-gray-700 mt-2 uppercase">ATW Modules</h2>
+        <h2 className="text-md font-semibold text-gray-700 mt-2 uppercase">ATW Subject Modules</h2>
       </div>
 
       <div className="flex items-center justify-between gap-4 mb-6">
@@ -342,7 +342,7 @@ export default function AtwSubjectModulesPage() {
           {!isInstructor && (
             <button onClick={handleAddSubject} className="px-4 py-2 rounded-lg text-white flex items-center gap-1 bg-blue-600 hover:bg-blue-700">
               <Icon icon="hugeicons:add-circle" className="w-4 h-4 mr-2" />
-              Add Module
+              Add Subject Module
             </button>
           )}
         </div>

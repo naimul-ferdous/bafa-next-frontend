@@ -145,7 +145,7 @@ export default function AtwCourseSemesterProgramResultsPage() {
         loadResults();
     }, [loadResults]);
 
-    const handleBack = () => router.push(`/atw/results/course/${courseId}/semester/${semesterId}`);
+    const handleBack = () => history.back();
     const handleViewResultDetails = (resultId: number) => router.push(`/atw/results/${resultId}`);
     const handlePrintClick = () => setIsPrintModalOpen(true);
 
@@ -320,7 +320,7 @@ export default function AtwCourseSemesterProgramResultsPage() {
             <div className="p-4 flex items-center justify-between no-print">
                 <button onClick={handleBack} className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 flex items-center gap-2">
                     <Icon icon="hugeicons:arrow-left-01" className="w-4 h-4" />
-                    Back
+                    Back to List
                 </button>
                 <div className="flex items-center gap-3">
                     {/* Forward Program button */}

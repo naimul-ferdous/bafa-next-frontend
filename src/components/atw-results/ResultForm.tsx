@@ -6,7 +6,6 @@ import Label from "@/components/form/Label";
 import { cadetService } from "@/libs/services/cadetService";
 import { commonService } from "@/libs/services/commonService";
 import { atwResultService } from "@/libs/services/atwResultService";
-import { atwSubjectService } from "@/libs/services/atwSubjectService";
 import { atwInstructorAssignSubjectService } from "@/libs/services/atwInstructorAssignSubjectService";
 import { atwSubjectGroupService } from "@/libs/services/atwSubjectGroupService";
 import { useAuth } from "@/libs/hooks/useAuth";
@@ -197,6 +196,8 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
     }
 
     try {
+      let modules: AtwSubjectModule[] = [];
+
       if (userIsSystemAdmin) {
         // Admin: Load subjects available for this Semester + Program
         const response = await atwSubjectGroupService.getAllSubjectGroups({
@@ -205,12 +206,9 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
           per_page: 500,
         });
 
-        const modules: AtwSubjectModule[] = response.data
+        modules = response.data
           .map(g => g.module)
           .filter((m): m is AtwSubjectModule => !!m && !!m.id);
-
-        const uniqueModules = modules.filter((v, i, a) => a.findIndex(t => t.id === v.id) === i);
-        setSubjectMappings(uniqueModules);
       } else if (user?.id) {
         // Instructor: Load assigned subjects from service
         const response = await atwInstructorAssignSubjectService.getAll({
@@ -221,7 +219,7 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
           per_page: 500
         });
 
-        let modules: AtwSubjectModule[] = response.data
+        modules = response.data
           .map((as: any) => as.subject || as.module || (as.subject_id ? { id: as.subject_id, ...as.subject } : null))
           .filter((m: any) => m && m.id && (m.subject_name || m.name));
 
@@ -236,13 +234,22 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
             .map((as: any) => as.subject || as.module)
             .filter((m: any) => m && m.id && (m.subject_name || m.name));
         }
-
-        setSubjectMappings(modules);
       }
+
+      // If in Edit mode, ensure the subject from initialData is in the list
+      if (isEdit && initialData?.subject) {
+        const initialSubject = initialData.subject;
+        if (!modules.find(m => m.id === initialSubject.id)) {
+          modules.push(initialSubject);
+        }
+      }
+
+      const uniqueModules = modules.filter((v, i, a) => a.findIndex(t => t.id === v.id) === i);
+      setSubjectMappings(uniqueModules);
     } catch (err) {
       console.error("Failed to load subjects:", err);
     }
-  }, [formData.course_id, formData.semester_id, formData.program_id, userIsSystemAdmin, user]);
+  }, [formData.course_id, formData.semester_id, formData.program_id, userIsSystemAdmin, user, isEdit, initialData]);
 
   useEffect(() => {
     loadSubjects();
@@ -263,15 +270,29 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
         setMarkGroups(Object.entries(groups).map(([type, marks]) => ({ type, marks })));
         setFormData(prev => ({ ...prev, atw_subject_module_id: module.id } as any));
       } else {
-        setMarkGroups([]);
-        setFormData(prev => ({ ...prev, atw_subject_module_id: 0 } as any));
+        // Fallback: if we are in Edit mode and the initialData has the subject with marks
+        if (isEdit && initialData?.subject?.id === formData.atw_subject_id && initialData.subject.marksheet?.marks) {
+          const module = initialData.subject;
+          setSelectedSubjectMapping(module);
+          const groups: { [key: string]: AtwSubjectsModuleMarksheetMark[] } = {};
+          module.marksheet.marks.forEach((mark: any) => {
+            const type = mark.type || "Other";
+            if (!groups[type]) groups[type] = [];
+            groups[type].push(mark);
+          });
+          setMarkGroups(Object.entries(groups).map(([type, marks]) => ({ type, marks })));
+          setFormData(prev => ({ ...prev, atw_subject_module_id: module.id } as any));
+        } else {
+          setMarkGroups([]);
+          setFormData(prev => ({ ...prev, atw_subject_module_id: 0 } as any));
+        }
       }
     } else {
       setSelectedSubjectMapping(null);
       setMarkGroups([]);
       setFormData(prev => ({ ...prev, atw_subject_module_id: 0 } as any));
     }
-  }, [formData.atw_subject_id, subjectMappings]);
+  }, [formData.atw_subject_id, subjectMappings, isEdit, initialData]);
 
   // Auto-load cadets when filters change
   useEffect(() => {
@@ -339,7 +360,7 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
         semester_id: initialData.semester_id,
         program_id: initialData.program_id,
         exam_type_id: initialData.exam_type_id,
-        atw_subject_id: initialData.atw_subject_module_id || 0,
+        atw_subject_id: initialData.atw_subject_id || initialData.atw_subject_module_id || 0,
         instructor_id: initialData.instructor_id || 0,
         is_active: initialData.is_active,
       });

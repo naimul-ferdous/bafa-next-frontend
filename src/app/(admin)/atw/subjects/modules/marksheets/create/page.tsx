@@ -3,8 +3,8 @@
 
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Icon } from "@iconify/react";
 import { atwMarksheetService } from "@/libs/services/atwMarksheetService";
+import FullLogo from "@/components/ui/fulllogo";
 import MarksheetForm from "@/components/atw-subjects/MarksheetForm";
 
 export default function CreateMarksheetPage() {
@@ -25,17 +25,16 @@ export default function CreateMarksheetPage() {
   };
 
   return (
-    <div className="bg-white p-6 rounded-lg border border-gray-200 space-y-6">
-      <div className="flex items-center gap-2 mb-4">
-        <button onClick={() => router.back()} className="p-2 hover:bg-gray-100 rounded-full">
-          <Icon icon="hugeicons:arrow-left-01" className="w-5 h-5" />
-        </button>
-        <h1 className="text-xl font-bold text-gray-900">Create Subject Module Marksheet</h1>
+    <div className="bg-white p-6 rounded-lg border border-gray-200">
+      <div className="text-center mb-8">
+        <div className="flex justify-center mb-4"><FullLogo /></div>
+        <h1 className="text-xl font-bold text-gray-900 uppercase">Bangladesh Air Force Academy</h1>
+        <h2 className="text-md font-semibold text-gray-700 mt-2 uppercase">Create Subject Module Marksheet</h2>
       </div>
 
       <MarksheetForm
         onSubmit={handleSubmit}
-        onCancel={() => router.back()}
+        onCancel={() => router.push("/atw/subjects/modules/marksheets")}
         loading={loading}
       />
     </div>

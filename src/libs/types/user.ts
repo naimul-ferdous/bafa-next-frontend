@@ -353,6 +353,9 @@ export interface Role {
   wing_id?: number | null;
   subwing_id?: number | null;
   is_super_admin?: boolean;
+  is_role_switch?: boolean;
+  is_manage?: boolean;
+  is_marge_role?: boolean;
   is_active?: boolean;
   created_at?: string;
   updated_at?: string;

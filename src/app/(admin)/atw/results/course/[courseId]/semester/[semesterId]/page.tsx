@@ -169,11 +169,6 @@ export default function AtwCourseSemesterResultsPage() {
       render: (res) => res.program_name
     },
     {
-      key: "branch",
-      header: "Branches",
-      render: (res) => <RenderChips items={res.branches} color="blue" />
-    },
-    {
       key: "subject",
       header: "Subjects",
       render: (res) => <RenderChips items={res.subjects} color="indigo" max={3} />

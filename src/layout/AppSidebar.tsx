@@ -120,6 +120,10 @@ const AppSidebar: React.FC = () => {
     return false;
   }, [pathname]);
 
+  const pendingWingIds = useMemo(() => {
+    return user?.assign_wings?.filter((aw: any) => aw.status === "pending").map((aw: any) => aw.wing_id) || [];
+  }, [user]);
+
   // Recursive menu item renderer
   const renderMenuItem = (menu: Menu, level: number = 0): React.ReactNode => {
     const hasChildren = menu.children && menu.children.length > 0;
@@ -127,6 +131,37 @@ const AppSidebar: React.FC = () => {
     const menuKey = `menu-${menu.id}`;
     const isOpen = openSubmenus[menuKey] ?? autoOpenKeys[menuKey] ?? false;
     const parentActive = hasChildren && !!menuPath ? hasActiveChild(menu) : false;
+
+    const isPending = menu.wing_id ? pendingWingIds.includes(menu.wing_id) : false;
+
+    if (isPending) {
+      return (
+        <li key={menu.id}>
+           <div
+            className={`menu-item group menu-item-inactive cursor-not-allowed opacity-50 ${
+              level === 0 && !isExpanded && !isHovered
+                ? "lg:justify-center"
+                : "lg:justify-start"
+            }`}
+            style={{ paddingLeft: level > 0 ? `${level * 1.5}rem` : undefined }}
+            title="Access pending approval"
+          >
+            <span className="menu-item-icon-inactive">
+              <Icon icon={getIconName(menu.icon)} className="w-5 h-5" />
+            </span>
+            {(isExpanded || isHovered || isMobileOpen) && (
+              <span className="menu-item-text truncate">{menu.name}</span>
+            )}
+            {hasChildren && (isExpanded || isHovered || isMobileOpen) && (
+              <Icon
+                icon="hugeicons:arrow-down-01"
+                className="ml-auto w-5 h-5 opacity-50"
+              />
+            )}
+          </div>
+        </li>
+      );
+    }
 
     return (
       <li key={menu.id}>
@@ -208,6 +243,17 @@ const AppSidebar: React.FC = () => {
     </ul>
   );
 
+  const assignments = user?.role_assignments || user?.roleAssignments || [];
+  const primaryAssignment = assignments.find((a: any) => a.is_primary) || assignments[0];
+  
+  // Try to get wingCode from role assignments first, fallback to assign_wings (Instructor Wings)
+  let wingCode = primaryAssignment?.wing?.code;
+  if (!wingCode && user?.assign_wings && user.assign_wings.length > 0) {
+    wingCode = user.assign_wings[0].wing?.code;
+  }
+
+  const roleName = user?.role?.name || primaryAssignment?.role?.name || user?.roles?.[0]?.name || "Admin";
+
   return (
     <aside
       className={`fixed mt-16 flex flex-col lg:mt-0 top-0 px-5 left-0 bg-white dark:bg-gray-900 dark:border-gray-800 text-gray-900 h-screen transition-all duration-300 ease-in-out z-50 border-r border-gray-200
@@ -240,10 +286,10 @@ const AppSidebar: React.FC = () => {
               />
               <div>
                 <p className="text-base font-medium text-black">
-                  Bangladesh Air Force Academy ({user?.role_assignments ? user.role_assignments[0].wing?.code : ""})
+                  Bangladesh Air Force Academy {wingCode ? `(${wingCode})` : ""}
                 </p>
                 <p className="text-sm font-light text-gray-600">
-                  {user?.role_assignments ? user.role_assignments[0].wing?.code : "Admin"} Panel
+                  {roleName} Panel
                 </p>
               </div>
             </div>

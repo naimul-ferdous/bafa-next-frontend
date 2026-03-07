@@ -9,6 +9,7 @@ import { Modal } from "../ui/modal";
 import { useAuth } from "@/libs/hooks/useAuth";
 import { authService } from "@/libs/services/authService";
 import { getImageUrl } from "@/libs/utils/formatter";
+import FullLogo from "../ui/fulllogo";
 
 export default function UserDropdown() {
   const [isOpen, setIsOpen] = useState(false);
@@ -252,13 +253,14 @@ export default function UserDropdown() {
         className="max-w-sm mx-4 p-6"
         showCloseButton={false}
       >
-        <div className="flex flex-col items-center text-center gap-4">
-          <div className="w-14 h-14 rounded-full bg-red-100 flex items-center justify-center">
-            <Icon icon="hugeicons:logout-03" className="w-7 h-7 text-red-600" />
-          </div>
-          <div>
-            <h3 className="text-lg font-bold text-gray-900 dark:text-white">Are you sure?</h3>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">You will be logged out of your account.</p>
+        <div className="flex flex-col gap-4">
+          <div className="text-center mb-6">
+            <div className="flex justify-center mb-4"><FullLogo /></div>
+            <h1 className="text-xl font-bold text-gray-900 uppercase">Bangladesh Air Force Academy</h1>
+            <h2 className="text-md font-semibold text-gray-700 mt-2 uppercase">
+              Confirm Logout
+            </h2>
+            <p className="text-sm text-gray-500">You will be logged out of your account.</p>
           </div>
           <div className="flex gap-3 w-full">
             <button
@@ -285,40 +287,54 @@ export default function UserDropdown() {
         className="max-w-md mx-4 p-6"
       >
         <div className="flex flex-col gap-4">
-          <div>
-            <h3 className="text-lg font-bold text-gray-900 dark:text-white">Switch Active Role</h3>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Select a role to switch your primary context.</p>
+          <div className="text-center mb-6">
+            <div className="flex justify-center mb-4"><FullLogo /></div>
+            <h1 className="text-xl font-bold text-gray-900 uppercase">Bangladesh Air Force Academy</h1>
+            <h2 className="text-md font-semibold text-gray-700 mt-2 uppercase">Switch Role</h2>
+            <p className="text-sm text-gray-500 mt-2">Select a role to switch your primary context.</p>
           </div>
 
-          <div className="flex flex-col gap-2 mt-2">
-            {user?.roles?.map((role: any) => (
-              <button
-                key={role.id}
-                onClick={() => onRoleClick(role)}
-                disabled={role.pivot?.is_primary}
-                className={`flex items-center justify-between p-3 rounded-xl border text-left transition-all ${role.pivot?.is_primary
-                  ? 'border-yellow-400 bg-yellow-50 dark:bg-yellow-900/20 dark:border-yellow-700/50 cursor-default'
-                  : 'border-gray-200 hover:border-brand-500 hover:bg-brand-50 dark:border-gray-700 dark:hover:border-brand-500/50 dark:hover:bg-brand-900/20 cursor-pointer'
-                  }`}
-              >
-                <div className="flex items-center gap-3">
-                  <div className={`w-10 h-10 rounded-full flex items-center justify-center ${role.pivot?.is_primary ? 'bg-yellow-200 text-yellow-700 dark:bg-yellow-900/50 dark:text-yellow-400' : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'
-                    }`}>
-                    <Icon icon={role.pivot?.is_primary ? "hugeicons:user-status" : "hugeicons:user-settings-01"} className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <div className="font-medium text-gray-900 dark:text-white">{role.name}</div>
-                    <div className="text-xs text-gray-500 dark:text-gray-400">
-                      {role.pivot?.is_primary ? 'Current Primary Role' : 'Switch to this role'}
+          <div className="flex flex-col gap-2 mt-2 max-h-[60vh] overflow-y-auto">
+            {user?.roles?.map((role: any) => {
+              const isPrimary = role.pivot?.is_primary;
+              const isRoleSwitchable = role.is_role_switch !== false && role.is_role_switch !== 0;
+              const isDisabled = isPrimary || !isRoleSwitchable;
+
+              return (
+                <button
+                  key={role.id}
+                  onClick={() => !isDisabled && onRoleClick(role)}
+                  disabled={isDisabled}
+                  className={`flex items-center justify-between p-3 rounded-xl border text-left transition-all ${isPrimary
+                    ? 'border-yellow-400 bg-yellow-50 dark:bg-yellow-900/20 dark:border-yellow-700/50 cursor-default'
+                    : !isRoleSwitchable
+                      ? 'border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-800/50 opacity-60 cursor-not-allowed'
+                      : 'border-gray-200 hover:border-brand-500 hover:bg-brand-50 dark:border-gray-700 dark:hover:border-brand-500/50 dark:hover:bg-brand-900/20 cursor-pointer'
+                    }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className={`w-10 h-10 rounded-full flex items-center justify-center ${isPrimary ? 'bg-yellow-200 text-yellow-700 dark:bg-yellow-900/50 dark:text-yellow-400' : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'
+                      }`}>
+                      <Icon icon={isPrimary ? "hugeicons:user-status" : !isRoleSwitchable ? "hugeicons:lock-key" : "hugeicons:user-settings-01"} className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <div className="font-medium text-gray-900 dark:text-white">{role.name}</div>
+                      <div className="text-xs text-gray-500 dark:text-gray-400">
+                        {isPrimary 
+                          ? 'Current Primary Role' 
+                          : !isRoleSwitchable 
+                            ? 'Cannot switch to this role' 
+                            : 'Switch to this role'}
+                      </div>
                     </div>
                   </div>
-                </div>
-                {role.pivot?.is_primary ? (
-                  <Icon icon="hugeicons:tick-circle" className="w-6 h-6 text-yellow-500 dark:text-yellow-400" />
-                ) : null}
-                
-              </button>
-            ))}
+                  {isPrimary ? (
+                    <Icon icon="hugeicons:tick-circle" className="w-6 h-6 text-yellow-500 dark:text-yellow-400" />
+                  ) : null}
+                  
+                </button>
+              );
+            })}
           </div>
 
           <div className="flex justify-end gap-3 mt-4 pt-4 border-t border-gray-100 dark:border-gray-800">
@@ -336,15 +352,16 @@ export default function UserDropdown() {
       <Modal
         isOpen={confirmRoleModalOpen}
         onClose={() => !isSwitching && setConfirmRoleModalOpen(false)}
-        className="max-w-sm mx-4 p-6"
+        className="max-w-md mx-4 p-6"
         showCloseButton={false}
       >
-        <div className="flex flex-col items-center text-center gap-4">
-          <div className="w-14 h-14 rounded-full bg-brand-100 flex items-center justify-center">
-            <Icon icon="hugeicons:user-switch" className="w-7 h-7 text-brand-600" />
-          </div>
-          <div>
-            <h3 className="text-lg font-bold text-gray-900 dark:text-white">Are you sure?</h3>
+        <div className="flex flex-col gap-4">
+          <div className="text-center mb-2">
+            <div className="flex justify-center mb-4"><FullLogo /></div>
+            <h1 className="text-xl font-bold text-gray-900 uppercase dark:text-white">Bangladesh Air Force Academy</h1>
+            <h2 className="text-md font-semibold text-gray-700 mt-2 uppercase dark:text-gray-300">
+              Confirm Role Switch
+            </h2>
             <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
               Do you want to switch your active role to <span className="font-semibold text-gray-800 dark:text-gray-200">{selectedRoleToSwitch?.name}</span>? This will reload your dashboard and menus.
             </p>

@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import Label from "@/components/form/Label";
 import { Icon } from "@iconify/react";
 import type {
@@ -10,13 +10,13 @@ import type {
   AtwAssessmentOlqType,
   AtwAssessmentOlqTypeEstimatedMark
 } from "@/libs/types/atwAssessmentOlq";
-import type { SystemCourse, SystemSemester, SystemProgram, SystemBranch, SystemGroup, SystemExam } from "@/libs/types/system";
+import type { SystemCourse, SystemSemester, SystemProgram, SystemExam } from "@/libs/types/system";
 import { commonService } from "@/libs/services/commonService";
 import { atwAssessmentOlqTypeService } from "@/libs/services/atwAssessmentOlqTypeService";
 import { cadetService } from "@/libs/services/cadetService";
-import { atwInstructorAssignCadetService } from "@/libs/services/atwInstructorAssignCadetService";
 import { atwUserAssignService } from "@/libs/services/atwUserAssignService";
 import { useAuth } from "@/libs/hooks/useAuth";
+import { AtwOlqAssign } from "@/libs/types/atwAssign";
 
 interface OlqResultFormProps {
   initialData?: AtwAssessmentOlqResult | null;
@@ -41,12 +41,11 @@ interface CadetRow {
 export default function OlqResultForm({ initialData, onSubmit, onCancel, loading, isEdit = false }: OlqResultFormProps) {
   const { user, userIsInstructor } = useAuth();
   const isInstructor = userIsInstructor;
+  
   const [formData, setFormData] = useState({
     course_id: 0,
     semester_id: 0,
     program_id: 0,
-    branch_id: 0,
-    group_id: 0,
     exam_type_id: 0,
     atw_assessment_olq_type_id: 0,
     remarks: "",
@@ -58,17 +57,38 @@ export default function OlqResultForm({ initialData, onSubmit, onCancel, loading
 
   // Dropdown data
   const [allCourses, setAllCourses] = useState<SystemCourse[]>([]);
-  const [assignedOlqCourseIds, setAssignedOlqCourseIds] = useState<number[]>([]);
-  const courses = assignedOlqCourseIds.length > 0
-    ? allCourses.filter(c => assignedOlqCourseIds.includes(c.id))
-    : allCourses;
-  const [semesters, setSemesters] = useState<SystemSemester[]>([]);
-  const [programs, setPrograms] = useState<SystemProgram[]>([]);
-  const [branches, setBranches] = useState<SystemBranch[]>([]);
-  const [groups, setGroups] = useState<SystemGroup[]>([]);
-  const [exams, setExams] = useState<SystemExam[]>([]);
+  const [olqAssignments, setOlqAssignments] = useState<AtwOlqAssign[]>([]);
   const [allOlqTypes, setAllOlqTypes] = useState<AtwAssessmentOlqType[]>([]);
   const [filteredOlqTypes, setFilteredOlqTypes] = useState<AtwAssessmentOlqType[]>([]);
+
+  // Courses that have at least one OLQ type assigned
+  const olqAssignedCourseIds = useMemo(() => {
+    const ids = new Set<number>();
+    allOlqTypes.forEach(type => {
+      type.assignments?.forEach(assign => {
+        if (assign.is_active) ids.add(assign.course_id);
+      });
+      // Fallback for old structure if any
+      if ((type as any).course_id) ids.add((type as any).course_id);
+    });
+    return ids;
+  }, [allOlqTypes]);
+
+  const courses = useMemo(() => {
+    let available = allCourses.filter(c => olqAssignedCourseIds.has(c.id));
+
+    if (isInstructor) {
+      const assignedIds = new Set(olqAssignments.map(a => a.course_id));
+      available = available.filter(c => assignedIds.has(c.id));
+    }
+
+    return available;
+  }, [isInstructor, allCourses, olqAssignedCourseIds, olqAssignments]);
+
+  const [semesters, setSemesters] = useState<SystemSemester[]>([]);
+  const [programs, setPrograms] = useState<SystemProgram[]>([]);
+  const [exams, setExams] = useState<SystemExam[]>([]);
+
   const [loadingDropdowns, setLoadingDropdowns] = useState(true);
   const [loadingSemesters, setLoadingSemesters] = useState(false);
   const [loadingCadets, setLoadingCadets] = useState(false);
@@ -84,20 +104,18 @@ export default function OlqResultForm({ initialData, onSubmit, onCancel, loading
         setLoadingDropdowns(true);
         const [commonData, olqTypesRes, assignsData] = await Promise.all([
           commonService.getResultOptions(),
-          atwAssessmentOlqTypeService.getAllTypes({ per_page: 100 }),
+          atwAssessmentOlqTypeService.getAllTypes({ per_page: 1000 }),
           user?.id ? atwUserAssignService.getAll({ user_id: user.id }) : Promise.resolve(null),
         ]);
 
         if (commonData) {
           setAllCourses(commonData.courses || []);
           setPrograms(commonData.programs || []);
-          setBranches(commonData.branches || []);
-          setGroups(commonData.groups || []);
           setExams(commonData.exams || []);
         }
 
-        if (assignsData && assignsData.olq.length > 0) {
-          setAssignedOlqCourseIds(assignsData.olq.map(a => a.course_id));
+        if (assignsData) {
+          setOlqAssignments(assignsData.olq || []);
         }
 
         setAllOlqTypes(olqTypesRes.data.filter(t => t.is_active));
@@ -112,7 +130,7 @@ export default function OlqResultForm({ initialData, onSubmit, onCancel, loading
     loadDropdownData();
   }, [user?.id]);
 
-  // Fetch semesters whenever course changes
+  // Fetch semesters when course changes
   useEffect(() => {
     if (!formData.course_id) {
       setSemesters([]);
@@ -120,14 +138,43 @@ export default function OlqResultForm({ initialData, onSubmit, onCancel, loading
     }
     const fetchSemesters = async () => {
       setLoadingSemesters(true);
-      const data = await commonService.getSemestersByCourse(formData.course_id);
-      setSemesters(data);
-      setLoadingSemesters(false);
+      try {
+        let semestersList = await commonService.getSemestersByCourse(formData.course_id);
+        
+        if (isInstructor) {
+          const assignmentsForCourse = olqAssignments.filter(a => a.course_id === formData.course_id);
+          // Check if there's a general assignment (semester_id is null)
+          const hasGeneralAssignment = assignmentsForCourse.some(a => a.semester_id === null);
+          
+          if (!hasGeneralAssignment) {
+            const assignedSemIds = new Set(assignmentsForCourse.map(a => a.semester_id).filter(Boolean));
+            semestersList = semestersList.filter(s => assignedSemIds.has(s.id));
+          }
+        }
+
+        setSemesters(semestersList);
+        
+        if (semestersList.length === 1) {
+          setFormData(prev => ({ ...prev, semester_id: semestersList[0].id }));
+        } else if (semestersList.length > 0 && !isEdit) {
+          // Only auto-select if not currently selected or invalid
+          setFormData(prev => {
+            if (prev.semester_id && semestersList.some(s => s.id === prev.semester_id)) {
+              return prev;
+            }
+            return { ...prev, semester_id: semestersList[0].id };
+          });
+        }
+      } catch (err) {
+        console.error("Failed to fetch semesters:", err);
+      } finally {
+        setLoadingSemesters(false);
+      }
     };
     fetchSemesters();
-  }, [formData.course_id]);
+  }, [formData.course_id, isInstructor, olqAssignments, isEdit]);
 
-  // Load assigned cadets for instructor when course+semester+branch are selected
+  // Load cadets for instructor when course+semester are selected
   useEffect(() => {
     if (!isInstructor || !user?.id) return;
     if (!formData.course_id || !formData.semester_id) {
@@ -136,49 +183,56 @@ export default function OlqResultForm({ initialData, onSubmit, onCancel, loading
     }
     const fetchCadets = async () => {
       setLoadingCadets(true);
-      const res = await atwInstructorAssignCadetService.getAll({
-        instructor_id: user.id,
-        course_id: formData.course_id,
-        semester_id: formData.semester_id,
-        per_page: 1000,
-      });
-      const rows: CadetRow[] = res.data
-        .filter((a: any) => a.cadet?.id)
-        .map((a: any) => {
-          const cadet = a.cadet;
+      try {
+        const res = await cadetService.getAllCadets({
+          course_id: formData.course_id,
+          semester_id: formData.semester_id,
+          program_id: formData.program_id || undefined,
+          is_current: 1,
+          per_page: 1000,
+        });
+        const rows: CadetRow[] = res.data.map((cadet: any) => {
           const currentRank = cadet.assigned_ranks?.find((ar: any) => ar.is_current)?.rank || cadet.assigned_ranks?.[0]?.rank;
-          const currentBranch = cadet.assigned_branchs?.find((ab: any) => ab.is_current)?.branch || cadet.assigned_branchs?.[0]?.branch;
           return {
             cadet_id: cadet.id,
             bd_no: cadet.bd_no || cadet.cadet_number || "",
             cadet_name: cadet.name,
             cadet_rank: currentRank?.short_name || currentRank?.name || "Officer Cadet",
-            cadet_branch: currentBranch?.name || "—",
+            cadet_branch: cadet.assigned_branchs?.find((ab: any) => ab.is_current)?.branch?.name || "—",
             is_present: true,
             absent_reason: "",
             marks: {},
           };
         });
-      // Deduplicate by cadet_id
-      const unique = rows.filter((r, i, arr) => arr.findIndex(x => x.cadet_id === r.cadet_id) === i);
-      setCadetRows(unique);
-      setLoadingCadets(false);
+        setCadetRows(rows);
+      } catch (err) {
+        console.error("Failed to fetch cadets:", err);
+      } finally {
+        setLoadingCadets(false);
+      }
     };
     if (!initialData) fetchCadets();
-  }, [isInstructor, user?.id, formData.course_id, formData.semester_id, initialData]);
+  }, [isInstructor, user?.id, formData.course_id, formData.semester_id, formData.program_id, initialData]);
 
   // Filter OLQ types by selected course and semester
   useEffect(() => {
     let filtered = [...allOlqTypes];
 
     if (formData.course_id) {
-      filtered = filtered.filter(type => type.course_id === formData.course_id);
+      filtered = filtered.filter(type => 
+        type.assignments?.some(a => a.course_id === formData.course_id && a.is_active) ||
+        (type as any).course_id === formData.course_id
+      );
     }
 
     if (formData.semester_id) {
-      filtered = filtered.filter(type =>
-        type.semesters?.some(s => s.semester_id === formData.semester_id)
-      );
+      filtered = filtered.filter(type => {
+        const semesterMapping = (type.semesters as any[]) || [];
+        // If no specific semesters are defined, assume it applies to all semesters of the assigned course
+        if (semesterMapping.length === 0) return true;
+        // Otherwise, it must match the selected semester
+        return semesterMapping.some((s: any) => s.semester_id === formData.semester_id);
+      });
     }
 
     setFilteredOlqTypes(filtered);
@@ -192,7 +246,7 @@ export default function OlqResultForm({ initialData, onSubmit, onCancel, loading
     } else if (filtered.length === 0) {
       setFormData(prev => ({ ...prev, atw_assessment_olq_type_id: 0 }));
     }
-  }, [formData.course_id, formData.semester_id, allOlqTypes]);
+  }, [formData.course_id, formData.semester_id, allOlqTypes, isEdit]);
 
   // Update selected OLQ type and estimated marks when type changes
   useEffect(() => {
@@ -210,7 +264,7 @@ export default function OlqResultForm({ initialData, onSubmit, onCancel, loading
   useEffect(() => {
     if (isInstructor || initialData) return;
     const loadCadets = async () => {
-      if (!formData.course_id || !formData.semester_id || !formData.program_id || !formData.branch_id) {
+      if (!formData.course_id || !formData.semester_id || !formData.program_id) {
         setCadetRows([]);
         return;
       }
@@ -222,19 +276,16 @@ export default function OlqResultForm({ initialData, onSubmit, onCancel, loading
           course_id: formData.course_id,
           semester_id: formData.semester_id,
           program_id: formData.program_id,
-          branch_id: formData.branch_id,
-          group_id: formData.group_id || undefined,
         });
 
         const rows: CadetRow[] = cadetsRes.data.filter(c => c.is_active).map(cadet => {
           const currentRank = cadet.assigned_ranks?.find(ar => ar.is_current)?.rank || cadet.assigned_ranks?.[0]?.rank;
-          const currentBranch = cadet.assigned_branchs?.find(ab => ab.is_current)?.branch || cadet.assigned_branchs?.[0]?.branch;
           return {
             cadet_id: cadet.id,
             bd_no: cadet.bd_no || cadet.cadet_number || "",
             cadet_name: cadet.name,
             cadet_rank: currentRank?.short_name || currentRank?.name || "Officer Cadet",
-            cadet_branch: currentBranch?.name || "—",
+            cadet_branch: cadet.assigned_branchs?.find((ab: any) => ab.is_current)?.branch?.name || "—",
             is_present: true,
             absent_reason: "",
             marks: {},
@@ -250,7 +301,7 @@ export default function OlqResultForm({ initialData, onSubmit, onCancel, loading
     };
 
     loadCadets();
-  }, [isInstructor, initialData, formData.course_id, formData.semester_id, formData.program_id, formData.branch_id, formData.group_id]);
+  }, [isInstructor, initialData, formData.course_id, formData.semester_id, formData.program_id]);
 
   // Populate form with initial data
   useEffect(() => {
@@ -259,8 +310,6 @@ export default function OlqResultForm({ initialData, onSubmit, onCancel, loading
         course_id: initialData.course_id,
         semester_id: initialData.semester_id,
         program_id: initialData.program_id,
-        branch_id: initialData.branch_id,
-        group_id: initialData.group_id || 0,
         exam_type_id: initialData.exam_type_id || 0,
         atw_assessment_olq_type_id: initialData.atw_assessment_olq_type_id,
         remarks: initialData.remarks || "",
@@ -274,14 +323,13 @@ export default function OlqResultForm({ initialData, onSubmit, onCancel, loading
             marks[m.atw_assessment_olq_type_estimated_mark_id] = parseFloat(String(m.achieved_mark));
           });
           const currentRank = c.cadet?.assigned_ranks?.find(ar => ar.is_current)?.rank || c.cadet?.assigned_ranks?.[0]?.rank;
-          const currentBranch = c.cadet?.assigned_branchs?.find(ab => ab.is_current)?.branch || c.cadet?.assigned_branchs?.[0]?.branch;
           return {
             id: c.id,
             cadet_id: c.cadet_id,
             bd_no: c.bd_no,
             cadet_name: c.cadet?.name || "Unknown",
             cadet_rank: currentRank?.short_name || currentRank?.name || "Officer Cadet",
-            cadet_branch: currentBranch?.name || "—",
+            cadet_branch: (c.cadet as any)?.assigned_branchs?.find((ab: any) => ab.is_current)?.branch?.name || "—",
             is_present: c.is_present,
             absent_reason: c.absent_reason || "",
             marks,
@@ -328,7 +376,6 @@ export default function OlqResultForm({ initialData, onSubmit, onCancel, loading
   };
 
   const calculateTotal = (marks: { [key: number]: number | string }) => {
-    // Calculate: sum of (estimated_mark * inputed_mark)
     let total = 0;
     estimatedMarks.forEach(em => {
       const markVal = marks[em.id];
@@ -337,7 +384,6 @@ export default function OlqResultForm({ initialData, onSubmit, onCancel, loading
       total += estimatedMark * inputedMark;
     });
 
-    // If type_code is "for_116b", multiply by 1.5
     if (selectedOlqType?.type_code?.toLowerCase() === "for_116b") {
       total = total * 1.5;
     }
@@ -346,14 +392,10 @@ export default function OlqResultForm({ initialData, onSubmit, onCancel, loading
   };
 
   const calculateMaxTotal = () => {
-    // Max total = sum of all (estimated_marks * 10) when input is 10 for each
     let total = estimatedMarks.reduce((sum, em) => sum + (parseFloat(String(em.estimated_mark || 0)) * 10), 0);
-
-    // If type_code is "for_116b", multiply by 1.5
     if (selectedOlqType?.type_code?.toLowerCase() === "for_116b") {
       total = total * 1.5;
     }
-
     return total;
   };
 
@@ -364,7 +406,6 @@ export default function OlqResultForm({ initialData, onSubmit, onCancel, loading
     if (!formData.course_id) { setError("Please select a course"); return; }
     if (!formData.semester_id) { setError("Please select a semester"); return; }
     if (!formData.program_id) { setError("Please select a program"); return; }
-    if (!formData.branch_id) { setError("Please select a branch"); return; }
     if (!formData.atw_assessment_olq_type_id) { setError("Please select an OLQ type"); return; }
 
     try {
@@ -372,9 +413,7 @@ export default function OlqResultForm({ initialData, onSubmit, onCancel, loading
         course_id: formData.course_id,
         semester_id: formData.semester_id,
         program_id: formData.program_id,
-        branch_id: formData.branch_id,
-        group_id: formData.group_id || undefined,
-        exam_type_id: formData.exam_type_id || undefined,
+        branch_id: 0,
         atw_assessment_olq_type_id: formData.atw_assessment_olq_type_id,
         remarks: formData.remarks || undefined,
         is_active: formData.is_active,
@@ -397,7 +436,7 @@ export default function OlqResultForm({ initialData, onSubmit, onCancel, loading
 
   const filtersSelected = isInstructor
     ? formData.course_id && formData.semester_id
-    : formData.course_id && formData.semester_id && formData.program_id && formData.branch_id;
+    : formData.course_id && formData.semester_id && formData.program_id;
   const olqTypeSelected = formData.atw_assessment_olq_type_id > 0;
 
   if (loadingDropdowns) {
@@ -425,7 +464,7 @@ export default function OlqResultForm({ initialData, onSubmit, onCancel, loading
             Basic Information
           </h3>
 
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
               <Label>Course <span className="text-red-500">*</span></Label>
               <select value={formData.course_id} onChange={(e) => handleChange("course_id", parseInt(e.target.value))} className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500" required>
@@ -468,22 +507,6 @@ export default function OlqResultForm({ initialData, onSubmit, onCancel, loading
               <select value={formData.program_id} onChange={(e) => handleChange("program_id", parseInt(e.target.value))} className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500" required>
                 <option value={0}>Select Program</option>
                 {programs.map(program => (<option key={program.id} value={program.id}>{program.name} ({program.code})</option>))}
-              </select>
-            </div>
-
-            <div>
-              <Label>Branch <span className="text-red-500">*</span></Label>
-              <select value={formData.branch_id} onChange={(e) => handleChange("branch_id", parseInt(e.target.value))} className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500" required>
-                <option value={0}>Select Branch</option>
-                {branches.map(branch => (<option key={branch.id} value={branch.id}>{branch.name} ({branch.code})</option>))}
-              </select>
-            </div>
-
-            <div>
-              <Label>Group</Label>
-              <select value={formData.group_id} onChange={(e) => handleChange("group_id", parseInt(e.target.value))} className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500">
-                <option value={0}>Select Group (Optional)</option>
-                {groups.map(group => (<option key={group.id} value={group.id}>{group.name} ({group.code})</option>))}
               </select>
             </div>
 
@@ -536,7 +559,7 @@ export default function OlqResultForm({ initialData, onSubmit, onCancel, loading
           {!filtersSelected ? (
             <div className="text-center py-12 text-gray-500">
               <Icon icon="hugeicons:filter" className="w-10 h-10 mx-auto mb-2" />
-              <p>{isInstructor ? "Please select Course and Semester to load cadets" : "Please select Course, Semester, Program, and Branch to load cadets"}</p>
+              <p>{isInstructor ? "Please select Course and Semester to load cadets" : "Please select Course, Semester, and Program to load cadets"}</p>
             </div>
           ) : !olqTypeSelected ? (
             <div className="text-center py-12 text-gray-500">

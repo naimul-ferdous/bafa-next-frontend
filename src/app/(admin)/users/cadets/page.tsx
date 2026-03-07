@@ -17,12 +17,9 @@ import { CadetAssignmentModalProvider } from "@/context/CadetAssignmentModalCont
 import CadetAssignmentModal from "@/components/cadets/CadetAssignmentModal";
 import CadetPromotionModal from "@/components/cadets/CadetPromotionModal";
 import CadetDemotionModal from "@/components/cadets/CadetDemotionModal";
-import CadetPostponeModal from "@/components/cadets/CadetPostponeModal";
 import CadetRankAssignmentModal from "@/components/cadets/CadetRankAssignmentModal";
 import CadetAssignWingModal from "@/components/users/CadetAssignWingModal";
 import { useAuth } from "@/context/AuthContext";
-
-import { getImageUrl } from "@/libs/utils/formatter";
 
 function CadetsPageContent() {
   const router = useRouter();
@@ -270,39 +267,20 @@ function CadetsPageContent() {
         return currentSemester?.name || "—";
       }
     },
-    {
-      key: "units",
-      header: "Wings/Subwings",
+    { 
+      key: "program", 
+      header: "Current Program", 
       render: (cadet) => {
-        const wingNames = cadet.assigned_wings?.filter(aw => aw.is_current).map(aw => aw.wing?.code || aw.wing?.name).filter(Boolean) || [];
-        const subWingNames = cadet.assigned_sub_wings?.filter(asw => asw.is_current).map(asw => {
-          const subWingLabel = asw.sub_wing?.code || asw.sub_wing?.name;
-          const wingLabel = asw.sub_wing?.wing?.code || asw.sub_wing?.wing?.name;
-          return wingLabel ? `${wingLabel}:${subWingLabel}` : subWingLabel;
-        }).filter(Boolean) || [];
-
-        const allUnits = Array.from(new Set([...wingNames, ...subWingNames])) as string[];
-        
-        if (allUnits.length === 0) return "—";
-
-        const displayLimit = 5;
-        const visibleUnits = allUnits.slice(0, displayLimit);
-        const remainingCount = allUnits.length - displayLimit;
-
-        return (
-          <div className="flex flex-wrap gap-1 max-w-[250px]">
-            {visibleUnits.map((unit, idx) => (
-              <span key={idx} className="px-2 py-0.5 bg-blue-50 text-blue-700 text-[10px] font-bold rounded border border-blue-100 uppercase whitespace-nowrap">
-                {unit}
-              </span>
-            ))}
-            {remainingCount > 0 && (
-              <span className="px-2 py-0.5 bg-gray-100 text-gray-600 text-[10px] font-bold rounded border border-gray-200">
-                +{remainingCount} more
-              </span>
-            )}
-          </div>
-        );
+        const currentProgram = cadet.assigned_programs?.find(p => p.is_current)?.program || cadet.assigned_programs?.[0]?.program;
+        return currentProgram?.name || "—";
+      }
+    },
+    { 
+      key: "branch", 
+      header: "Current Branch", 
+      render: (cadet) => {
+        const currentBranch = cadet.assigned_branchs?.find(b => b.is_current)?.branch || cadet.assigned_branchs?.[0]?.branch;
+        return currentBranch?.name || "—";
       }
     },
     { key: "is_active", header: "Status", className: "text-center", render: (cadet) => (

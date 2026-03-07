@@ -27,7 +27,19 @@ export interface AtwAssessmentOlqTypeEstimatedMark {
   updated_at?: string;
 }
 
-// OLQ Type Semester
+// OLQ Type Assignment (New Course-based structure)
+export interface AtwAssessmentOlqTypeAssignment {
+  id: number;
+  atw_assessment_olq_type_id: number;
+  course_id: number;
+  is_active: boolean;
+  created_at?: string;
+  updated_at?: string;
+  course?: SystemCourse;
+  olq_type?: AtwAssessmentOlqType;
+}
+
+// Legacy Semester Mapping (Restored for compatibility)
 export interface AtwAssessmentOlqTypeSemester {
   id: number;
   atw_assessment_olq_type_id: number;
@@ -41,16 +53,15 @@ export interface AtwAssessmentOlqTypeSemester {
 // OLQ Type
 export interface AtwAssessmentOlqType {
   id: number;
-  course_id?: number;
   type_name: string;
   type_code: string;
   is_active: boolean;
   created_by?: number;
   created_at?: string;
   updated_at?: string;
-  course?: SystemCourse;
   estimated_marks?: AtwAssessmentOlqTypeEstimatedMark[];
-  semesters?: AtwAssessmentOlqTypeSemester[];
+  assignments?: AtwAssessmentOlqTypeAssignment[];
+  semesters?: AtwAssessmentOlqTypeAssignment[] | AtwAssessmentOlqTypeSemester[];
   creator?: {
     id: number;
     name: string;
@@ -139,7 +150,6 @@ export interface AtwAssessmentOlqResult {
 
 // Create/Update Data Types
 export interface AtwAssessmentOlqTypeCreateData {
-  course_id: number;
   type_name: string;
   type_code: string;
   is_active?: boolean;

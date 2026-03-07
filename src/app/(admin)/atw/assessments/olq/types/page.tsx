@@ -121,13 +121,7 @@ export default function AtwAssessmentOlqTypesPage() {
   );
 
   const columns: Column<AtwAssessmentOlqType>[] = [
-    { key: "id", header: "SL.", headerAlign:"center", className: "text-center text-gray-900", render: (type, index) => (pagination.from || 0) + (index + 1) },
-    { 
-      key: "course", 
-      header: "Course", 
-      className: "text-gray-900 font-semibold",
-      render: (type) => type.course ? `${type.course.name} (${type.course.code})` : "—"
-    },
+    { key: "id", header: "SL.", headerAlign:"center", className: "text-center text-gray-900", render: (type, index) => (pagination.from || 0) + (index) },
     { key: "type_name", header: "Type Name", className: "font-medium text-gray-900" },
     { key: "type_code", header: "Type Code", className: "text-gray-700 font-mono text-sm" },
     {

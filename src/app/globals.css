@@ -780,13 +780,16 @@ span.flatpickr-weekday,
   }
 
   /* Specific fix for cv-content to fill the page */
-  .cv-content {
+  .cv-content:not(.hidden) {
     display: block !important;
     width: 100% !important;
     max-width: none !important;
     padding: 10mm !important; /* Proper margin for printing */
     margin: 0 !important;
     border: none !important;
+  }
+  .cv-content.hidden {
+    display: none !important;
   }
 
   .overflow-x-auto {

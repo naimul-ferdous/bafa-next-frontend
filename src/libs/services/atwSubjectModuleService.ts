@@ -57,8 +57,6 @@ interface SubjectMarkApiResponse {
 
 interface SubjectCreateData {
   atw_subjects_module_marksheet_id?: number;
-  semester_id?: number | null;
-  program_id?: number | null;
   subject_name: string;
   subject_code: string;
   subject_legend?: string;

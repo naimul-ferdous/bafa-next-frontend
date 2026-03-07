@@ -21,18 +21,16 @@ const OrbitCircle = ({ title, href, icon, style, className }: OrbitCircleProps) 
     <Link
       href={href}
       style={style}
-      className={`absolute group w-28 h-28 sm:w-36 sm:h-36 md:w-40 md:h-40 rounded-full bg-white border-2 border-slate-200 shadow-xl flex items-center justify-center transition-all duration-500 hover:shadow-2xl hover:scale-110 hover:border-blue-400 overflow-hidden z-20 ${className || ""}`}
+      className={`absolute group w-28 h-28 sm:w-36 sm:h-36 md:w-40 md:h-40 rounded-full bg-white border-2 border-slate-200 shadow-xl flex items-center justify-center transition-all duration-500 hover:shadow-2xl hover:scale-105 hover:border-blue-400 overflow-hidden z-20 ${className || ""}`}
     >
       <div className="absolute inset-0 transition-transform duration-700 group-hover:scale-110">
         <Image src="/images/bg/corner-1.png" alt="" fill className="object-cover object-right-top" priority />
         <div className="absolute inset-0 bg-white/10 group-hover:bg-transparent transition-colors" />
       </div>
       <div className="relative z-10 flex flex-col items-center gap-1.5 text-center">
-        <div className="w-8 h-8 sm:w-10 sm:h-10 md:w-11 md:h-11 rounded-xl bg-white/90 backdrop-blur-sm flex items-center justify-center group-hover:bg-blue-600 group-hover:text-white transition-all duration-300 shadow-md border border-slate-100">
-          <Icon icon={icon} className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600 group-hover:text-white transition-colors" />
-        </div>
+        <Icon icon={icon} className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600 transition-colors" />
         <div className="px-1 py-0.5">
-          <span className="text-[9px] sm:text-[10px] md:text-xs font-black text-slate-900 group-hover:text-blue-700 uppercase tracking-widest leading-none">
+          <span className="text-sm font-bold group-hover:text-blue-700 uppercase leading-none">
             {title}
           </span>
         </div>
@@ -66,17 +64,17 @@ const StatusCard = ({ title, subtitle, href, icon, accentColor, bgImage }: Statu
           <Icon icon={icon} className="w-6 h-6 sm:w-7 sm:h-7 lg:w-8 lg:h-8 text-white" />
         </div>
         <div className="mt-4 sm:mt-5 lg:mt-6">
-          <h3 className="text-base sm:text-lg lg:text-xl font-black text-slate-900 group-hover:text-blue-700 transition-colors leading-tight">
+          <h3 className="text-base sm:text-lg lg:text-xl font-bold text-slate-900 group-hover:text-blue-700 transition-colors">
             {title}
           </h3>
-          <p className="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-[0.15em] sm:tracking-[0.2em] mt-1.5 flex items-center gap-2">
+          <p className="text-xs font-bold uppercase mt-1.5 flex items-center gap-2">
             <span className="w-4 h-[2px] bg-slate-200 group-hover:w-8 group-hover:bg-blue-500 transition-all duration-500" />
             {subtitle}
           </p>
         </div>
       </div>
       <div className="relative z-10 flex items-center gap-2 text-blue-600 opacity-0 group-hover:opacity-100 transition-all duration-500 transform translate-y-4 group-hover:translate-y-0 mt-3">
-        <span className="text-[9px] sm:text-[10px] font-black uppercase tracking-tighter">Enter Module</span>
+        <span className="text-xs font-bold uppercase">Enter Module</span>
         <Icon icon="hugeicons:arrow-right-02" className="w-3.5 h-3.5" />
       </div>
     </Link>
@@ -167,14 +165,14 @@ const NoticesPanel = () => {
               <Icon icon="hugeicons:notification-02" className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
             </div>
             <div>
-              <h2 className="text-xs sm:text-sm font-black text-slate-900 uppercase tracking-widest leading-none">Notices</h2>
-              <p className="text-[8px] sm:text-[9px] font-bold text-slate-400 uppercase tracking-wider mt-0.5">Official Board</p>
+              <h2 className="text-xs sm:text-sm font-bold uppercase">Notices</h2>
+              <p className="text-[8px] sm:text-[9px] uppercase mt-0.5">Official Board</p>
             </div>
           </div>
           {newCount > 0 && (
             <div className="flex items-center gap-1.5 bg-red-50 border border-red-100 px-2 sm:px-2.5 py-1 rounded-full">
               <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
-              <span className="text-[9px] sm:text-[10px] font-black text-red-500 uppercase tracking-wider">{newCount} New</span>
+              <span className="text-[9px] sm:text-[10px] font-black text-red-500 uppercase">{newCount} New</span>
             </div>
           )}
         </div>
@@ -195,15 +193,15 @@ const NoticesPanel = () => {
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap mb-1">
-                <span className={`text-[8px] sm:text-[9px] font-black uppercase tracking-widest px-1.5 sm:px-2 py-0.5 rounded-full ${notice.tagColor}`}>
+                <span className={`text-[8px] sm:text-[9px] font-bold uppercase px-1.5 sm:px-2 py-0.5 rounded-full ${notice.tagColor}`}>
                   {notice.tag}
                 </span>
-                <span className="text-[8px] sm:text-[9px] text-slate-300 font-bold uppercase tracking-wider">{notice.timestamp}</span>
+                <span className="text-[8px] sm:text-[9px] font-bold uppercase">{notice.timestamp}</span>
               </div>
-              <p className="text-[11px] sm:text-xs font-black text-slate-800 leading-snug group-hover:text-blue-700 transition-colors">
+              <p className="text-[11px] sm:text-xs font-bold group-hover:text-blue-700 transition-colors">
                 {notice.title}
               </p>
-              <p className="text-[9px] sm:text-[10px] text-slate-400 font-medium leading-relaxed mt-0.5 sm:mt-1 line-clamp-2">
+              <p className="text-[9px] sm:text-[10px] font-medium leading-relaxed mt-0.5 sm:mt-1 line-clamp-2">
                 {notice.body}
               </p>
             </div>
@@ -217,7 +215,7 @@ const NoticesPanel = () => {
           href="/notices"
           className="group flex items-center justify-center gap-2 w-full py-2 sm:py-2.5 rounded-xl bg-slate-50 hover:bg-blue-50 border border-slate-100 hover:border-blue-200 transition-all duration-300"
         >
-          <span className="text-[9px] sm:text-[10px] font-black uppercase tracking-widest text-slate-500 group-hover:text-blue-600 transition-colors">
+          <span className="text-[9px] sm:text-[10px] font-bold uppercase group-hover:text-blue-600 transition-colors">
             View All Notices
           </span>
           <Icon icon="hugeicons:arrow-right-02" className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-slate-400 group-hover:text-blue-500 transition-colors" />
@@ -350,9 +348,8 @@ export function ATWDashboardView() {
                     <Image src="/images/bg/corner-2.png" alt="" fill className="object-cover object-right-top" priority />
                   </div>
                   <div className="relative z-10 flex flex-col items-center px-6 py-3">
-                    <h1 className="text-3xl font-black text-slate-900 tracking-tight">ATW</h1>
-                    <div className="h-1.5 w-16 bg-blue-600 rounded-full mt-2" />
-                    <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mt-2 text-center leading-tight">
+                    <h1 className="text-xl font-bold">ATW</h1>
+                    <p className="font-bold uppercase text-center leading-tight">
                       Academic<br />Training Wing
                     </p>
                   </div>

@@ -37,6 +37,29 @@ export default function AtwCadetWarningForm({ initialData, onSubmit, onCancel, l
   const [warningTypes, setWarningTypes] = useState<SystemWarningType[]>([]);
   const [courses, setCourses] = useState<SystemCourse[]>([]);
   const [semesters, setSemesters] = useState<SystemSemester[]>([]);
+  const [cadetSearch, setCadetSearch] = useState("");
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const dropdownRef = React.useRef<HTMLDivElement>(null);
+
+  const filteredCadets = React.useMemo(() => {
+    const term = cadetSearch.toLowerCase().trim();
+    if (!term) return cadets;
+    return cadets.filter(c => 
+      c.name?.toLowerCase().includes(term) || 
+      (c.cadet_number || c.bd_no || "").toLowerCase().includes(term)
+    );
+  }, [cadets, cadetSearch]);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   useEffect(() => {
     loadDropdownData();
@@ -196,40 +219,91 @@ export default function AtwCadetWarningForm({ initialData, onSubmit, onCancel, l
 
         <div>
           <div className="max-w-sm">
-            <div>
-              <Label htmlFor="warning_id" className="font-bold uppercase tracking-wide"> To </Label>
-              {selectedCadetNumber ? (
-                <div>
-                  <p>{selectedCadetNumber}</p>
+            <div className="relative" ref={dropdownRef}>
+              <Label className="font-bold uppercase tracking-wide"> To </Label>
+              
+              {/* Custom Dropdown Trigger */}
+              <div 
+                onClick={() => !loading && setIsDropdownOpen(!isDropdownOpen)}
+                className={`w-full py-1.5 flex items-center justify-between cursor-pointer focus:border-blue-500 outline-none bg-transparent font-bold border-b border-gray-300 transition-all ${loading ? 'opacity-50 cursor-not-allowed' : ''}`}
+              >
+                <div className="truncate">
+                  {selectedCadetObj ? (
+                    `${selectedCadetObj.assigned_ranks?.[0]?.rank?.short_name || ""} ${selectedCadetObj.name} (${selectedCadetObj.cadet_number || selectedCadetObj.bd_no})`
+                  ) : (
+                    <span className="text-gray-400">Select Cadet</span>
+                  )}
                 </div>
-              ) : null}
-              <div className="relative">
-                <select
-                  value={formData.cadet_id}
-                  onChange={(e) => handleCadetChange(parseInt(e.target.value))}
-                  className="w-full py-1.5 focus:border-blue-500 outline-none bg-transparent font-bold appearance-none pr-8"
-                  required
-                >
-                  <option value={0}>Select Cadet</option>
-                  {cadets.map((cadet) => (
-                    <option key={cadet.id} value={cadet.id}>
-                      {cadet.assigned_ranks?.[0]?.rank?.name} {cadet.name}
-                    </option>
-                  ))}
-                </select>
+                <Icon 
+                  icon={isDropdownOpen ? "hugeicons:arrow-up-01" : "hugeicons:arrow-down-01"} 
+                  className={`w-4 h-4 text-gray-400 transition-transform ${isDropdownOpen ? 'rotate-180' : ''}`} 
+                />
               </div>
+
+              {/* Custom Dropdown Menu */}
+              {isDropdownOpen && (
+                <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-xl overflow-hidden animate-in fade-in zoom-in duration-150">
+                  {/* Search Input inside Dropdown */}
+                  <div className="p-2 border-b border-gray-100 bg-gray-50">
+                    <div className="relative">
+                      <Icon icon="hugeicons:search-01" className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-3.5 h-3.5" />
+                      <input
+                        autoFocus
+                        type="text"
+                        placeholder="Search by name or BD No..."
+                        value={cadetSearch}
+                        onChange={(e) => setCadetSearch(e.target.value)}
+                        onClick={(e) => e.stopPropagation()}
+                        className="w-full pl-9 pr-3 py-1.5 bg-white border border-gray-200 rounded-md text-sm outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Options List */}
+                  <div className="max-h-60 overflow-y-auto">
+                    {filteredCadets.length > 0 ? (
+                      filteredCadets.map((cadet) => (
+                        <div
+                          key={cadet.id}
+                          onClick={() => {
+                            handleCadetChange(cadet.id);
+                            setIsDropdownOpen(false);
+                            setCadetSearch("");
+                          }}
+                          className={`px-4 py-2 text-sm cursor-pointer hover:bg-blue-50 transition-colors flex flex-col gap-0.5 ${formData.cadet_id === cadet.id ? 'bg-blue-50 border-l-4 border-blue-500 pl-3' : ''}`}
+                        >
+                          <span className="font-bold text-gray-900">
+                            {cadet.assigned_ranks?.[0]?.rank?.short_name || ""} {cadet.name}
+                          </span>
+                          <span className="text-[10px] text-gray-500 uppercase tracking-tight">
+                            BD No: {cadet.cadet_number || cadet.bd_no}
+                          </span>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="px-4 py-6 text-center text-gray-400">
+                        <Icon icon="hugeicons:search-02" className="w-8 h-8 mx-auto mb-2 opacity-20" />
+                        <p className="text-xs">No cadets match your search</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
-            {selectedCourseName ? (
-              <div>
-                <p className="text-gray-500 mt-1 flex items-center gap-2">
+
+            {selectedCourseName && selectedCourseName !== "N/A" ? (
+              <div className="mt-2">
+                <p className="text-gray-500 text-sm flex items-center gap-2">
+                  <Icon icon="hugeicons:course" className="w-3.5 h-3.5" />
                   {selectedCourseName}
                   {loadingCadet && <Icon icon="hugeicons:loading-03" className="w-3 h-3 animate-spin text-blue-500" />}
                 </p>
               </div>
             ) : null}
-            {selectedSemesterName ? (
-              <div>
-                <p className="text-gray-500 mt-1 flex items-center gap-2">
+            {selectedSemesterName && selectedSemesterName !== "N/A" ? (
+              <div className="mt-1">
+                <p className="text-gray-500 text-sm flex items-center gap-2">
+                  <Icon icon="hugeicons:calendar-01" className="w-3.5 h-3.5" />
                   {selectedSemesterName}
                   {loadingCadet && <Icon icon="hugeicons:loading-03" className="w-3 h-3 animate-spin text-blue-500" />}
                 </p>

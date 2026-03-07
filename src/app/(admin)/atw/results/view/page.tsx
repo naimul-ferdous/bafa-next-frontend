@@ -14,6 +14,7 @@ import DataTable, { Column } from "@/components/ui/DataTable";
 import ConfirmationModal from "@/components/ui/modal/ConfirmationModal";
 import { Modal } from "@/components/ui/modal";
 import { useCan } from "@/context/PagePermissionsContext";
+import { cadetService } from "@/libs/services/cadetService";
 
 interface GroupedResult {
   course_details: {
@@ -54,6 +55,9 @@ export default function AtwViewResultsPage() {
     to: 0,
   });
 
+  const [cadetCounts, setCadetCounts] = useState<Record<string, number>>({});
+  const [loadingCadets, setLoadingCadets] = useState(false);
+
   const [approvalAuthorities, setApprovalAuthorities] = useState<AtwResultApprovalAuthority[]>([]);
   const [forwardModal, setForwardModal] = useState<{
     open: boolean;
@@ -61,6 +65,7 @@ export default function AtwViewResultsPage() {
     loading: boolean;
     error: string;
   }>({ open: false, result: null, loading: false, error: "" });
+  const [showRoleModal, setShowRoleModal] = useState(false);
 
   const isInstructor = userIsInstructor;
   const instructorId = isInstructor ? user?.id : undefined;
@@ -96,6 +101,35 @@ export default function AtwViewResultsPage() {
           from: response.from,
           to: response.to,
         });
+
+        // Fetch live cadet counts
+        setLoadingCadets(true);
+        const counts: Record<string, number> = {};
+        const uniqueContexts = new Set<string>();
+        response.data.forEach((r: any) => {
+          if (r.course_id && r.semester_id && r.program_id) {
+            uniqueContexts.add(`${r.course_id}-${r.semester_id}-${r.program_id}`);
+          }
+        });
+
+        const countPromises = Array.from(uniqueContexts).map(async (context) => {
+          const [cId, sId, pId] = context.split('-').map(Number);
+          try {
+            const res = await cadetService.getAllCadets({
+              course_id: cId,
+              semester_id: sId,
+              program_id: pId,
+              is_current: 1,
+              per_page: 1
+            });
+            counts[context] = res.total || 0;
+          } catch (err) {
+            counts[context] = 0;
+          }
+        });
+        await Promise.all(countPromises);
+        setCadetCounts(counts);
+        setLoadingCadets(false);
       } else {
         const data = await atwResultService.getGroupedResults({
           search: searchTerm || undefined,
@@ -119,6 +153,25 @@ export default function AtwViewResultsPage() {
       .then((res) => setApprovalAuthorities(res.data))
       .catch(() => { });
   }, []);
+
+  // Logic to determine if user can input marks
+  const roles = user?.roles || [];
+  const primaryRole = roles.find((r: any) => r.pivot?.is_primary) || roles[0] || user?.role;
+  const isInstructorActive = primaryRole?.slug === 'instructor';
+  
+  const assignWings = user?.assign_wings || [];
+  const hasPendingInstructorWings = assignWings.some((aw: any) => aw.status === "pending");
+
+  const canInputMarks = isInstructorActive && !hasPendingInstructorWings;
+
+  const handleAddResult = (e: React.MouseEvent) => {
+    if (!canInputMarks) {
+      e.preventDefault();
+      setShowRoleModal(true);
+    } else {
+      router.push("/atw/results/create");
+    }
+  };
 
   // Group results for Admin View (Non-instructor) - Semester wise
   const flattenedAdminResults = useMemo(() => {
@@ -144,7 +197,6 @@ export default function AtwViewResultsPage() {
     return flat;
   }, [groupedResults, isInstructor]);
 
-  const handleAddResult = () => router.push("/atw/results/create");
   const handleEditResult = (result: AtwResult) => router.push(`/atw/results/${result.id}/edit`);
   const handleViewResult = (resultId: number) => router.push(`/atw/results/${resultId}`);
   const handleViewSemesterResults = (courseId: number, semesterId: number) => {
@@ -216,6 +268,39 @@ export default function AtwViewResultsPage() {
     setCurrentPage(1);
   };
 
+  // ── Instructor grouping logic ──────────────────────────────────────────
+  const courseTree = useMemo(() => {
+    if (!isInstructor || results.length === 0) return [];
+
+    const cMap: any = {};
+    results.forEach(r => {
+      const cId = r.course_id || 'unassigned';
+      if (!cMap[cId]) cMap[cId] = { course: r.course, sMap: {} };
+
+      const sId = r.semester_id || 'unassigned';
+      if (!cMap[cId].sMap[sId]) cMap[cId].sMap[sId] = { semester: r.semester, pMap: {} };
+
+      const pId = r.program_id || 'unassigned';
+      if (!cMap[cId].sMap[sId].pMap[pId]) cMap[cId].sMap[sId].pMap[pId] = { program: r.program, results: [] };
+
+      cMap[cId].sMap[sId].pMap[pId].results.push(r);
+    });
+
+    return Object.values(cMap).map((c: any) => {
+      const semesters = Object.values(c.sMap).map((s: any) => {
+        const programs = Object.values(s.pMap).map((p: any) => ({
+          program: p.program,
+          results: p.results,
+          pRowSpan: p.results.length
+        }));
+        const sRowSpan = programs.reduce((sum, p) => sum + p.pRowSpan, 0);
+        return { semester: s.semester, programs, sRowSpan };
+      });
+      const cRowSpan = semesters.reduce((sum, s) => sum + s.sRowSpan, 0);
+      return { course: c.course, semesters, cRowSpan };
+    });
+  }, [results, isInstructor]);
+
   const TableLoading = () => (
     <div className="w-full min-h-[20vh] flex items-center justify-center">
       <div><Icon icon="hugeicons:fan-01" className="w-10 h-10 animate-spin mx-auto my-10 text-blue-500" /></div>
@@ -253,155 +338,6 @@ export default function AtwViewResultsPage() {
       </div>
     );
   };
-
-  const instructorColumns: Column<AtwResult>[] = [
-    {
-      key: "id",
-      header: "SL.",
-      headerAlign: "center",
-      className: "text-center text-gray-900",
-      render: (_, index) => (pagination.from || 0) + (index)
-    },
-    {
-      key: "course",
-      header: "Course",
-      render: (result) => (
-        <div>
-          <div className="font-medium text-gray-900">{result.course?.name || "N/A"}</div>
-        </div>
-      ),
-    },
-    {
-      key: "subject",
-      header: "Subject",
-      render: (result) => {
-        const subjectModule = result.subject?.module || result.subject || result.atw_subject_module;
-        return (
-          <div className="font-medium text-gray-900">{subjectModule?.subject_name || "N/A"} ({subjectModule?.subject_code || ""})</div>
-        );
-      },
-    },
-    {
-      key: "semester",
-      header: "Semester",
-      className: "text-gray-700",
-      render: (result) => result.semester?.name || "N/A",
-    },
-    {
-      key: "program",
-      header: "Program",
-      className: "text-gray-700",
-      render: (result) => result.program?.name || "N/A",
-    },
-    {
-      key: "total_entry",
-      header: "No of Cadets",
-      headerAlign: "center",
-      className: "text-center",
-      render: (result) => {
-        const entry = result.result_getting_cadets?.length ?? 0;
-        const total = result.total_cadets ?? 0;
-        const allEntered = total > 0 && entry >= total;
-        return (
-          <p>
-            {entry}
-          </p>
-        );
-      },
-    },
-    {
-      key: "created_at",
-      header: "Created At",
-      className: "text-gray-700 text-sm",
-      render: (result) => result.created_at ? new Date(result.created_at).toLocaleDateString("en-GB") : "—"
-    },
-    {
-      key: "approval_stats",
-      header: "Approval",
-      headerAlign: "center",
-      className: "text-center",
-      render: (result) => {
-        const stats = result.approval_stats;
-        const sa = (result as any).subject_approval;
-        // Subject approved by final authority → forwarded to program level
-        if (sa?.approved_by) {
-          return (
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-green-100 text-green-800 whitespace-nowrap">
-              ↑ Forwarded
-            </span>
-          );
-        }
-        // Forwarded to authority but pending their review (not yet approved)
-        if (sa?.forwarded_by) {
-          return (
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-800 whitespace-nowrap">
-              ⏳ Under Review
-            </span>
-          );
-        }
-        if (!stats || stats.total === 0) return <span className="text-gray-400 text-xs">—</span>;
-        if (stats.approved === stats.total) {
-          return (
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-teal-100 text-teal-800 whitespace-nowrap">
-              ✓ All Cadets Approved
-            </span>
-          );
-        }
-        if (stats.approved === 0) {
-          return (
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-100 text-red-800 whitespace-nowrap">
-              ✗ Not Approved
-            </span>
-          );
-        }
-        const remaining = stats.total - stats.approved;
-        return (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-yellow-100 text-yellow-800 whitespace-nowrap">
-            {stats.approved}/{stats.total} Approved
-          </span>
-        );
-      },
-    },
-    {
-      key: "actions",
-      header: "Actions",
-      headerAlign: "center",
-      className: "text-center no-print",
-      render: (result) => (
-        <div className="flex items-center justify-center gap-1" onClick={(e) => e.stopPropagation()}>
-          {can('view') && (
-            <button onClick={() => handleViewResult(result.id)} className="p-1 text-blue-600 hover:bg-blue-50 rounded" title="View"><Icon icon="hugeicons:view" className="w-4 h-4" /></button>
-          )}
-          {can('edit') && (
-            <button onClick={() => handleEditResult(result)} className="p-1 text-yellow-600 hover:bg-yellow-50 rounded" title="Edit"><Icon icon="hugeicons:pencil-edit-01" className="w-4 h-4" /></button>
-          )}
-          {can('delete') && (
-            <button onClick={() => handleDeleteResult(result)} className="p-1 text-red-600 hover:bg-red-50 rounded" title="Delete"><Icon icon="hugeicons:delete-02" className="w-4 h-4" /></button>
-          )}
-          {canInitialForward && (() => {
-            const sa = result.subject_approval;
-            const stats = result.approval_stats;
-            // Use per-result forwarding flag so other instructors' forward action
-            // doesn't hide the button for this instructor
-            const isMyResultForwarded = !!(stats as any)?.is_result_forwarded;
-            if (isMyResultForwarded) return null;
-            const allCadetsApproved = (stats?.approved ?? 0) > 0 && (stats?.approved ?? 0) >= (stats?.total ?? 0);
-            const canForward = (!sa?.approved_by) && allCadetsApproved;
-            return (
-              <button
-                onClick={() => handleForwardResult(result)}
-                disabled={!canForward}
-                title={canForward ? "Forward to Higher Authority" : "All cadets must be approved before forwarding"}
-                className={`p-1 rounded ${canForward ? "text-indigo-600 hover:bg-indigo-50" : "text-gray-300 cursor-not-allowed"}`}
-              >
-                <Icon icon="hugeicons:share-04" className="w-4 h-4" />
-              </button>
-            );
-          })()}
-        </div>
-      ),
-    },
-  ];
 
   const adminColumns: Column<any>[] = [
     {
@@ -460,7 +396,7 @@ export default function AtwViewResultsPage() {
       header: "Cadets",
       headerAlign: "center",
       className: "text-center",
-      render: (res) => <span className="font-mono bg-gray-100 px-2 py-0.5 rounded text-xs">{res.total_cadets || 0}</span>
+      render: (res) => res.total_cadets || 0
     },
     {
       key: "actions",
@@ -497,7 +433,7 @@ export default function AtwViewResultsPage() {
           <input type="text" placeholder="Search results..." value={searchTerm} onChange={(e) => handleSearchChange(e.target.value)} className="pl-10 pr-4 py-2 border border-gray-200 rounded-lg bg-white text-gray-900 w-full focus:outline-none focus:ring-0" />
         </div>
         <div className="flex items-center gap-3">
-          {isInstructor && can('add') && (
+          {can('add') && (
             <button onClick={handleAddResult} className="px-4 py-2 rounded-lg text-white flex items-center gap-1 bg-blue-600 hover:bg-blue-700">
               <Icon icon="hugeicons:add-circle" className="w-4 h-4 mr-2" />
               Add Result
@@ -511,13 +447,132 @@ export default function AtwViewResultsPage() {
         <TableLoading />
       ) : isInstructor ? (
         <>
-          <DataTable
-            columns={instructorColumns}
-            data={results}
-            keyExtractor={(result) => result.id.toString()}
-            emptyMessage="No results found"
-            onRowClick={can('view') ? (res) => handleViewResult(res.id) : undefined}
-          />
+          <div className="overflow-x-auto">
+            <table className="w-full border-collapse border border-black text-sm text-left">
+              <thead className="uppercase font-bold tracking-wider bg-gray-50">
+                <tr>
+                  <th className="px-3 py-3 border border-black text-center w-12">SL.</th>
+                  <th className="px-4 py-3 border border-black">Course</th>
+                  <th className="px-4 py-3 border border-black">Semester</th>
+                  <th className="px-4 py-3 border border-black">Program</th>
+                  <th className="px-4 py-3 border border-black">Subject</th>
+                  <th className="px-4 py-3 border border-black text-center">Cadets Mark Input</th>
+                  <th className="px-4 py-3 border border-black text-center">Approval</th>
+                  <th className="px-4 py-3 border border-black text-center no-print">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="bg-white">
+                {(() => {
+                  let globalIdx = (pagination.from || 1) - 1;
+                  if (courseTree.length === 0) {
+                    return (
+                      <tr>
+                        <td colSpan={8} className="px-4 py-10 text-center text-gray-500 italic">
+                          No results found
+                        </td>
+                      </tr>
+                    );
+                  }
+                  return courseTree.map((cNode: any) =>
+                    cNode.semesters.map((sNode: any, sIdx: number) =>
+                      sNode.programs.map((pNode: any, pIdx: number) =>
+                        pNode.results.map((r: any, rIdx: number) => {
+                          globalIdx++;
+                          const isFirstInCourse = sIdx === 0 && pIdx === 0 && rIdx === 0;
+                          const isFirstInSem = pIdx === 0 && rIdx === 0;
+                          const isFirstInProg = rIdx === 0;
+
+                          const subjectModule = r.subject?.module || r.subject || r.atw_subject_module;
+                          const stats = r.approval_stats;
+                          const sa = (r as any).subject_approval;
+
+                          return (
+                            <tr key={r.id} className="hover:bg-blue-50/20 transition-colors cursor-pointer group" onClick={() => can('view') && handleViewResult(r.id)}>
+                              <td className="px-3 py-3 border border-black text-center font-medium text-gray-500 group-hover:text-blue-600">
+                                {globalIdx}
+                              </td>
+
+                              {isFirstInCourse && (
+                                <td rowSpan={cNode.cRowSpan} className="px-4 py-3 border border-black text-gray-900 font-bold align-middle bg-white">
+                                  {cNode.course?.name || "—"}
+                                </td>
+                              )}
+
+                              {isFirstInSem && (
+                                <td rowSpan={sNode.sRowSpan} className="px-4 py-3 border border-black text-gray-700 font-medium align-middle bg-white">
+                                  {sNode.semester?.name || "—"}
+                                </td>
+                              )}
+
+                              {isFirstInProg && (
+                                <td rowSpan={pNode.pRowSpan} className="px-4 py-3 border border-black text-gray-900 font-bold align-middle bg-white">
+                                  {pNode.program?.name || "—"}
+                                </td>
+                              )}
+
+                              <td className="px-4 py-3 border border-black group-hover:text-blue-700">
+                                <div className="flex flex-col">
+                                  <span className="font-bold">{subjectModule?.subject_name || "N/A"}</span>
+                                  <span className="text-xs text-gray-500 font-mono">{subjectModule?.subject_code || ""}</span>
+                                </div>
+                              </td>
+
+                              <td className="px-4 py-3 border border-black text-center">
+                                <span className="font-semibold text-blue-700">
+                                  {r.result_getting_cadets?.length ?? 0}/{r.total_cadets ?? 0}
+                                </span>
+                              </td>
+
+                              <td className="px-4 py-3 border border-black text-center align-middle">
+                                {(() => {
+                                  if (sa?.approved_by) return <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-green-100 text-green-800">↑ Forwarded</span>;
+                                  if (sa?.forwarded_by) return <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-800">⏳ Under Review</span>;
+                                  if (!stats || stats.total === 0) return "—";
+                                  if (stats.approved === stats.total) return <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-teal-100 text-teal-800">✓ Approved</span>;
+                                  if (stats.approved === 0) return <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-100 text-red-800">✗ Not Approved</span>;
+                                  return <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-yellow-100 text-yellow-800">{stats.approved}/{stats.total} Appr.</span>;
+                                })()}
+                              </td>
+
+                              <td className="px-4 py-3 border border-black text-center align-middle no-print">
+                                <div className="flex items-center justify-center gap-1" onClick={(e) => e.stopPropagation()}>
+                                  {can('view') && (
+                                    <button onClick={() => handleViewResult(r.id)} className="p-1 text-blue-600 hover:bg-blue-50 rounded" title="View"><Icon icon="hugeicons:view" className="w-4 h-4" /></button>
+                                  )}
+                                  {can('edit') && (
+                                    <button onClick={() => handleEditResult(r)} className="p-1 text-yellow-600 hover:bg-yellow-50 rounded" title="Edit"><Icon icon="hugeicons:pencil-edit-01" className="w-4 h-4" /></button>
+                                  )}
+                                  {can('delete') && (
+                                    <button onClick={() => handleDeleteResult(r)} className="p-1 text-red-600 hover:bg-red-50 rounded" title="Delete"><Icon icon="hugeicons:delete-02" className="w-4 h-4" /></button>
+                                  )}
+                                  {canInitialForward && (() => {
+                                    const isMyResultForwarded = !!(stats as any)?.is_result_forwarded;
+                                    if (isMyResultForwarded) return null;
+                                    const allCadetsApproved = (stats?.approved ?? 0) > 0 && (stats?.approved ?? 0) >= (stats?.total ?? 0);
+                                    const canForward = (!sa?.approved_by) && allCadetsApproved;
+                                    return (
+                                      <button
+                                        onClick={() => handleForwardResult(r)}
+                                        disabled={!canForward}
+                                        title={canForward ? "Forward to Higher Authority" : "All cadets must be approved before forwarding"}
+                                        className={`p-1 rounded ${canForward ? "text-indigo-600 hover:bg-indigo-50" : "text-gray-300 cursor-not-allowed"}`}
+                                      >
+                                        <Icon icon="hugeicons:share-04" className="w-4 h-4" />
+                                      </button>
+                                    );
+                                  })()}
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )
+                    )
+                  );
+                })()}
+              </tbody>
+            </table>
+          </div>
           <div className="flex items-center justify-between mt-4">
             <div className="flex items-center gap-4">
               <div className="text-sm text-gray-700">Showing {pagination.from || 0} to {pagination.to || 0} of {pagination.total} results</div>
@@ -641,6 +696,39 @@ export default function AtwViewResultsPage() {
               {forwardModal.loading && <Icon icon="hugeicons:fan-01" className="w-4 h-4 animate-spin" />}
               <Icon icon="hugeicons:share-04" className="w-4 h-4" />
               Confirm Forward
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={showRoleModal}
+        onClose={() => setShowRoleModal(false)}
+        className="max-w-md mx-4 p-6"
+        showCloseButton={true}
+      >
+        <div className="flex flex-col gap-4 text-center">
+          <div className="flex justify-center mb-2"><FullLogo /></div>
+          <h1 className="text-xl font-bold text-gray-900 uppercase">Bangladesh Air Force Academy</h1>
+          
+          <div className="mt-2">
+            <h2 className="text-md font-semibold text-red-600 uppercase flex items-center justify-center gap-2">
+              <Icon icon="hugeicons:alert-square" className="w-5 h-5" />
+              Access Denied
+            </h2>
+            <p className="text-sm text-gray-600 mt-3">
+              {hasPendingInstructorWings 
+                ? "Your Instructor assignment is currently pending admin approval. You will be able to input marks once approved."
+                : "To input marks, please switch your active role to Instructor from the top-right menu."}
+            </p>
+          </div>
+
+          <div className="mt-4 pt-4 border-t border-gray-100 flex justify-center">
+            <button
+              onClick={() => setShowRoleModal(false)}
+              className="px-6 py-2 text-sm font-medium text-white bg-blue-600 rounded-xl hover:bg-blue-700 transition-colors"
+            >
+              Understood
             </button>
           </div>
         </div>

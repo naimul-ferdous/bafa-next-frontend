@@ -2,11 +2,18 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { User } from "@/libs/types/user";
 import { Icon } from "@iconify/react";
-import { userService } from "@/libs/services/userService";
 import FullLogo from "@/components/ui/fulllogo";
-import DataTable, { Column } from "@/components/ui/DataTable";
+import { userService } from "@/libs/services/userService";
+import { commonService } from "@/libs/services/commonService";
+import { atwUserAssignService } from "@/libs/services/atwUserAssignService";
+import type { SystemCourse } from "@/libs/types/system";
+import Image from "next/image";
+import type { User } from "@/libs/types/user";
+import DataTable, { Column as DataTableColumn } from "@/components/ui/DataTable";
+import TableLoading from "@/components/ui/TableLoading";
+import { useAuth } from "@/libs/hooks/useAuth";
+import { useCan } from "@/context/PagePermissionsContext";
 import ConfirmationModal from "@/components/ui/modal/ConfirmationModal";
 import UserAssignRoleModal from "@/components/users/UserAssignRoleModal";
 import UserAssignRankModal from "@/components/users/UserAssignRankModal";
@@ -14,39 +21,27 @@ import UserSignatureModal from "@/components/users/UserSignatureModal";
 import InstructorAssignWingModal from "@/components/instructors/InstructorAssignWingModal";
 import CadetAssignWingModal from "@/components/users/CadetAssignWingModal";
 import InstructorAssignAssessmentModal from "@/components/instructors/InstructorAssignAssessmentModal";
-import { commonService } from "@/libs/services/commonService";
-import { atwUserAssignService } from "@/libs/services/atwUserAssignService";
-import type { SystemCourse } from "@/libs/types/system";
-import Image from "next/image";
-import { usePageContext, useCan } from "@/context/PagePermissionsContext";
 
 export default function UsersPage() {
   const router = useRouter();
-  const { menu, permissions } = usePageContext();
+  const { user: authUser } = useAuth();
   const can = useCan();
-
-  useEffect(() => {
-    console.log("can:", can);
-  }, [menu, can]);
-
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
-  
-  // Block modal state
+
+  // Block/Unblock state
   const [blockModalOpen, setBlockModalOpen] = useState(false);
   const [blockingUser, setBlockingUser] = useState<User | null>(null);
   const [blockLoading, setBlockLoading] = useState(false);
-
-  // Unblock modal state
   const [unblockModalOpen, setUnblockModalOpen] = useState(false);
   const [unblockingUser, setUnblockingUser] = useState<User | null>(null);
   const [unblockLoading, setUnblockLoading] = useState(false);
-  
-  // Role assignment modal state
+
+  // Role modal state
   const [assignRoleModalOpen, setAssignRoleModalOpen] = useState(false);
   const [assigningUser, setAssigningUser] = useState<User | null>(null);
 
-  // Rank assignment modal state
+  // Rank modal state
   const [assignRankModalOpen, setAssignRankModalOpen] = useState(false);
   const [rankingUser, setRankingUser] = useState<User | null>(null);
 
@@ -87,19 +82,6 @@ export default function UsersPage() {
     }
   }, [currentPage, perPage, searchTerm]);
 
-  useEffect(() => { loadUsers(); }, [loadUsers]);
-  useEffect(() => {
-    const handleUserUpdate = () => loadUsers();
-    window.addEventListener('userUpdated', handleUserUpdate);
-    return () => window.removeEventListener('userUpdated', handleUserUpdate);
-  }, [loadUsers]);
-
-  useEffect(() => {
-    commonService.getResultOptions().then((options) => {
-      if (options?.courses) setCourses(options.courses);
-    });
-  }, []);
-
   const loadAssignMap = useCallback(async () => {
     try {
       const data = await atwUserAssignService.getAll();
@@ -120,7 +102,25 @@ export default function UsersPage() {
     }
   }, []);
 
+  const refreshData = useCallback(() => {
+    loadUsers();
+    loadAssignMap();
+  }, [loadUsers, loadAssignMap]);
+
+  useEffect(() => { loadUsers(); }, [loadUsers]);
   useEffect(() => { loadAssignMap(); }, [loadAssignMap]);
+
+  useEffect(() => {
+    const handleUserUpdate = () => refreshData();
+    window.addEventListener('userUpdated', handleUserUpdate);
+    return () => window.removeEventListener('userUpdated', handleUserUpdate);
+  }, [refreshData]);
+
+  useEffect(() => {
+    commonService.getResultOptions().then((options) => {
+      if (options?.courses) setCourses(options.courses);
+    });
+  }, []);
 
   const handleAddUser = () => router.push('/users/create');
   const handleEditUser = (user: User) => router.push(`/users/${user.id}/edit`);
@@ -149,17 +149,13 @@ export default function UsersPage() {
 
   const confirmBlock = async () => {
     if (!blockingUser) return;
+    setBlockLoading(true);
     try {
-      setBlockLoading(true);
-      await userService.updateUser(blockingUser.id, {
-        is_active: false,
-      });
-      await loadUsers();
+      await userService.updateUser(blockingUser.id, { is_active: false });
+      refreshData();
       setBlockModalOpen(false);
-      setBlockingUser(null);
     } catch (error) {
       console.error("Failed to block user:", error);
-      alert("Failed to block user");
     } finally {
       setBlockLoading(false);
     }
@@ -167,193 +163,189 @@ export default function UsersPage() {
 
   const confirmUnblock = async () => {
     if (!unblockingUser) return;
+    setUnblockLoading(true);
     try {
-      setUnblockLoading(true);
-      await userService.updateUser(unblockingUser.id, {
-        is_active: true,
-        failed_login_attempts: 0,
-        locked_until: null,
-      });
-      await loadUsers();
+      await userService.updateUser(unblockingUser.id, { is_active: true });
+      refreshData();
       setUnblockModalOpen(false);
-      setUnblockingUser(null);
     } catch (error) {
       console.error("Failed to unblock user:", error);
-      alert("Failed to unblock user");
     } finally {
       setUnblockLoading(false);
     }
   };
 
-  const handleAssignAssessments = (user: User) => { setAssignAssessmentUser(user); setAssignAssessmentModalOpen(true); };
+  const handleExport = () => {
+    // Implement export functionality
+    console.log("Exporting users...");
+  };
 
-  const handleExport = () => console.log("Export users");
-  const handleSearchChange = (value: string) => { setSearchTerm(value); setCurrentPage(1); };
-  const handlePerPageChange = (value: number) => { setPerPage(value); setCurrentPage(1); };
+  const handleSearchChange = (value: string) => {
+    setSearchTerm(value);
+    setCurrentPage(1);
+  };
 
-  const TableLoading = () => (
-    <div className="w-full min-h-[20vh] flex items-center justify-center">
-      <div><Icon icon="hugeicons:fan-01" className="w-10 h-10 animate-spin mx-auto my-10 text-blue-500" /></div>
-    </div>
-  );
+  const handlePerPageChange = (value: number) => {
+    setPerPage(value);
+    setCurrentPage(1);
+  };
 
-  const columns: Column<User>[] = [
-    { key: "id", header: "SL.", className: "text-center text-gray-900", render: (user, index) => (pagination.from || 0) + (index) },
-    { key: "profile_photo", header: "Profile", className: "text-center", render: (user) => (
-      user.profile_photo ? (
-        <div className="flex justify-center">
-          <div className="relative w-10 h-10 overflow-hidden rounded-full border border-gray-200">
-            <Image 
-              src={user.profile_photo} 
-              alt={user.name} 
-              fill
-              className="object-cover"
-            />
-          </div>
-        </div>
-      ) : (
-        <div className="flex justify-center">
-          <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center text-gray-400">
-            <Icon icon="hugeicons:user-circle" className="w-6 h-6" />
-          </div>
-        </div>
-      )
-    )},
-    { key: "service_number", header: "BD Number", className: "font-mono text-sm text-gray-900" },
-    { key: "name", header: "Name", className: "font-medium text-gray-900" },
-    { key: "signature", header: "Signature", className: "text-center", render: (user) => (
-      user.signature ? (
-        <div className="flex justify-center">
-          <div
-            className={`relative w-20 h-10 overflow-hidden rounded border border-gray-200 bg-gray-50 ${can('edit') ? 'cursor-pointer hover:bg-gray-100' : ''}`}
-            onClick={can('edit') ? (e) => { e.stopPropagation(); handleUpdateSignature(user); } : undefined}
-            title={can('edit') ? "Update Signature" : undefined}
-          >
-            <Image src={user.signature} alt="Signature" fill className="object-contain" />
-          </div>
-        </div>
-      ) : (
-        can('edit') ? (
-          <button
-            onClick={(e) => { e.stopPropagation(); handleUpdateSignature(user); }}
-            className="p-1 text-blue-600 hover:bg-blue-50 rounded-full border border-blue-100"
-            title="Add Signature"
-          >
-            <Icon icon="hugeicons:plus-sign" className="w-4 h-4" />
-          </button>
-        ) : <span className="text-gray-400 text-xs">—</span>
-      )
-    )},
-    { key: "email", header: "Email", className: "text-gray-700" },
-    { key: "phone", header: "Phone", className: "text-gray-700", render: (user) => user.phone || "—" },
-    { key: "rank", header: "Rank", className: "text-gray-700", render: (user) => (
-      <div className="flex items-center gap-2">
-        {user.rank ? (
-          <>
-            <span className="flex-1">{user.rank.name}</span>
-            {can('edit') && (
+  const columns: DataTableColumn<User>[] = [
+    { 
+      key: "sl", 
+      header: "Sl", 
+      className: "text-center w-12", 
+      render: (_, index) => (pagination.from || 0) + index 
+    },
+    { 
+      key: "service_number", 
+      header: "BD/No", 
+      className: "font-mono font-bold text-gray-700" 
+    },
+    { 
+      key: "name", 
+      header: "Name", 
+      className: "font-bold text-gray-900" 
+    },
+    { 
+      key: "rank_id" as keyof User, 
+      header: "Rank", 
+      render: (user) => (
+        <div className="flex items-center gap-2">
+          {user.rank ? (
+            <>
+              <span className="flex-1">{user.rank.name}</span>
+              {can('edit') && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); handleAssignRank(user); }}
+                  className="p-0.5 text-blue-600 hover:bg-blue-50 rounded border border-blue-100"
+                  title="Update Rank"
+                >
+                  <Icon icon="hugeicons:pencil-edit-01" className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </>
+          ) : (
+            can('edit') ? (
               <button
                 onClick={(e) => { e.stopPropagation(); handleAssignRank(user); }}
-                className="p-0.5 text-blue-600 hover:bg-blue-50 rounded border border-blue-100"
-                title="Update Rank"
+                className="p-1 text-blue-600 hover:bg-blue-50 rounded border border-blue-100 flex items-center gap-1"
+                title="Assign Rank"
               >
-                <Icon icon="hugeicons:pencil-edit-01" className="w-3.5 h-3.5" />
+                <Icon icon="hugeicons:plus-sign" className="w-3.5 h-3.5" />
+                <span className="text-xs font-medium">Add Rank</span>
               </button>
-            )}
-          </>
-        ) : (
-          can('edit') ? (
-            <button
-              onClick={(e) => { e.stopPropagation(); handleAssignRank(user); }}
-              className="p-1 text-blue-600 hover:bg-blue-50 rounded border border-blue-100 flex items-center gap-1"
-              title="Assign Rank"
-            >
-              <Icon icon="hugeicons:plus-sign" className="w-3.5 h-3.5" />
-              <span className="text-xs font-medium">Add Rank</span>
-            </button>
-          ) : <span className="text-gray-400 text-xs">—</span>
-        )}
-      </div>
-    )},
-    { key: "roles", header: "Roles", className: "text-gray-700", render: (user) => (
-      <div className="flex flex-wrap items-center gap-1 max-w-xs">
-        {user.roles && user.roles.length > 0 ? (
-          Array.from(new Map(user.roles.map((r) => [r.id, r])).values()).map((role) => (
-            <span
-              key={role.id}
-              className={`inline-flex items-center px-2 py-0.5 text-xs font-medium rounded ${
-                role.is_super_admin
-                  ? "bg-purple-100 text-purple-700"
-                  : "bg-blue-100 text-blue-700"
-              }`}
-            >
-              {role.name}
-            </span>
-          ))
-        ) : (
-          <span className="text-gray-400 text-xs">No roles</span>
-        )}
-        {can('asign-role') && (
-          <button
-            onClick={(e) => { e.stopPropagation(); handleAssignRole(user); }}
-            className="ml-1 p-0.5 text-blue-600 hover:bg-blue-50 rounded border border-blue-100"
-            title="Add / Manage Roles"
-          >
-            <Icon icon="hugeicons:plus-sign-circle" className="w-3.5 h-3.5" />
-          </button>
-        )}
-      </div>
-    )},
-    { key: "assessments" as keyof User, header: "Assessments", className: "text-center", render: (user) => {
-      const assigns = userAssignMap[user.id] || {};
-      const CHIPS = [
-        { key: "penpicture", label: "PenPicture", color: "bg-purple-100 text-purple-700 border-purple-200" },
-        { key: "counseling", label: "Counseling", color: "bg-blue-100   text-blue-700   border-blue-200"   },
-        { key: "olq",        label: "OLQ",        color: "bg-green-100  text-green-700  border-green-200"  },
-        { key: "warning",    label: "Warning",    color: "bg-red-100    text-red-700    border-red-200"    },
-      ];
-      const chips = CHIPS.flatMap((c) =>
-        (assigns[c.key] || []).map((courseName, i) => ({ ...c, courseName, uid: `${c.key}-${i}` }))
-      );
-      return (
-        <div className="flex flex-col items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
-          <div className="flex flex-wrap gap-1 justify-center">
-            {chips.map((c) => (
-              <span key={c.uid} className={`px-1.5 py-0.5 text-xs font-medium rounded border ${c.color}`}>
-                {c.label}: {c.courseName}
+            ) : <span className="text-gray-400 text-xs">—</span>
+          )}
+        </div>
+      )
+    },
+    { 
+      key: "profile_photo", 
+      header: "Profile", 
+      className: "w-16",
+      render: (user) => (
+        <div className="w-10 h-10 rounded-full bg-gray-100 overflow-hidden relative border border-gray-200 mx-auto">
+          <Image 
+            src={user.profile_photo || '/images/default-avatar.png'} 
+            alt={user.name} 
+            fill 
+            className="object-cover"
+          />
+        </div>
+      )
+    },
+    { 
+      key: "email", 
+      header: "Email", 
+      className: "text-gray-500",
+      render: (user) => user.email || <span className="text-gray-400 italic">No Email</span>
+    },
+    { 
+      key: "roles", 
+      header: "Role", 
+      className: "text-gray-700", 
+      render: (user) => (
+        <div className="flex flex-wrap items-center gap-1 max-w-xs">
+          {user.roles && user.roles.length > 0 ? (
+            Array.from(new Map(user.roles.map((r) => [r.id, r])).values()).map((role) => (
+              <span
+                key={role.id}
+                className={`inline-flex items-center px-2 py-0.5 text-[10px] font-bold uppercase rounded ${
+                  role.is_super_admin
+                    ? "bg-purple-100 text-purple-700"
+                    : "bg-blue-100 text-blue-700"
+                }`}
+              >
+                {role.name}
               </span>
-            ))}
-          </div>
-          {can('asign-assessments') && (
+            ))
+          ) : (
+            <span className="text-gray-400 text-xs">No roles</span>
+          )}
+          {can('asign-role') && (
             <button
-              onClick={() => handleAssignAssessments(user)}
-              className="px-2.5 py-0.5 text-xs font-medium bg-indigo-50 text-indigo-700 border border-indigo-200 rounded hover:bg-indigo-100 flex items-center gap-1"
-              title="Assign Assessments"
+              onClick={(e) => { e.stopPropagation(); handleAssignRole(user); }}
+              className="ml-1 p-0.5 text-blue-600 hover:bg-blue-50 rounded border border-blue-100"
+              title="Add / Manage Roles"
             >
-              <Icon icon="hugeicons:plus-sign" className="w-3 h-3" />
-              Assign
+              <Icon icon="hugeicons:plus-sign-circle" className="w-3.5 h-3.5" />
             </button>
           )}
         </div>
-      );
-    }},
-    { key: "actions", header: "Actions", headerAlign: "center", className: "text-center no-print", render: (user) => (
-      <div className="flex items-center justify-center gap-1" onClick={(e) => e.stopPropagation()}>
-        {can('edit') && (
-          <button onClick={() => handleEditUser(user)} className="p-1 text-yellow-600 hover:bg-yellow-50 rounded" title="Edit"><Icon icon="hugeicons:pencil-edit-01" className="w-4 h-4" /></button>
-        )}
-        {can('asign-wings') && (
-          <button onClick={() => handleAssignWing(user)} className="p-1 text-green-600 hover:bg-green-50 rounded" title="Assign Wing"><Icon icon="hugeicons:hierarchy-square-01" className="w-4 h-4" /></button>
-        )}
-        {can('delete') && (
-          (!user.is_active) ? (
-            <button onClick={() => handleUnblockUser(user)} className="p-1 text-orange-600 hover:bg-orange-50 rounded" title="Unblock / Activate"><Icon icon="hugeicons:checkmark-circle-02" className="w-4 h-4" /></button>
-          ) : (
-            <button onClick={() => handleBlockUser(user)} className="p-1 text-red-600 hover:bg-red-50 rounded" title="Block / Deactivate"><Icon icon="hugeicons:unavailable" className="w-4 h-4" /></button>
-          )
-        )}
-      </div>
-    )},
+      )
+    },
+    { 
+      key: "assessments" as keyof User, 
+      header: "Assessments", 
+      className: "text-center", 
+      render: (user) => {
+        const assigns = userAssignMap[user.id] || {};
+        const CHIPS = [
+          { key: "penpicture", label: "PenPicture", color: "bg-purple-100 text-purple-700 border-purple-200" },
+          { key: "counseling", label: "Counseling", color: "bg-blue-100   text-blue-700   border-blue-200"   },
+          { key: "olq",        label: "OLQ",        color: "bg-green-100  text-green-700  border-green-200"  },
+          { key: "warning",    label: "Warning",    color: "bg-red-100    text-red-700    border-red-200"    },
+        ];
+        const chips = CHIPS.flatMap((c) =>
+          (assigns[c.key] || []).map((courseName, i) => ({ ...c, courseName, uid: `${c.key}-${i}` }))
+        );
+        return (
+          <div className="flex flex-col items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+            <div className="flex flex-wrap gap-1 justify-center">
+              {chips.map((c) => (
+                <span key={c.uid} className={`px-1.5 py-0.5 text-[9px] font-bold uppercase rounded border ${c.color}`}>
+                  {c.label}: {c.courseName}
+                </span>
+              ))}
+            </div>
+          </div>
+        );
+      }
+    },
+    { 
+      key: "actions", 
+      header: "Action", 
+      headerAlign: "center", 
+      className: "text-center no-print", 
+      render: (user) => (
+        <div className="flex items-center justify-center gap-1" onClick={(e) => e.stopPropagation()}>
+          {can('edit') && (
+            <button onClick={() => handleEditUser(user)} className="p-1 text-yellow-600 hover:bg-yellow-50 rounded" title="Edit"><Icon icon="hugeicons:pencil-edit-01" className="w-4 h-4" /></button>
+          )}
+          {can('asign-wings') && (
+            <button onClick={() => handleAssignWing(user)} className="p-1 text-green-600 hover:bg-green-50 rounded" title="Assign Wing"><Icon icon="hugeicons:hierarchy-square-01" className="w-4 h-4" /></button>
+          )}
+          {can('delete') && (
+            (!user.is_active) ? (
+              <button onClick={() => handleUnblockUser(user)} className="p-1 text-orange-600 hover:bg-orange-50 rounded" title="Unblock / Activate"><Icon icon="hugeicons:checkmark-circle-02" className="w-4 h-4" /></button>
+            ) : (
+              <button onClick={() => handleBlockUser(user)} className="p-1 text-red-600 hover:bg-red-50 rounded" title="Block / Deactivate"><Icon icon="hugeicons:unavailable" className="w-4 h-4" /></button>
+            )
+          )}
+        </div>
+      )
+    },
   ];
 
   return (
@@ -422,40 +414,40 @@ export default function UsersPage() {
         variant="success" 
       />
 
-      <UserAssignRoleModal isOpen={assignRoleModalOpen} onClose={() => { setAssignRoleModalOpen(false); setAssigningUser(null); }} user={assigningUser} onSuccess={() => loadUsers()} />
+      <UserAssignRoleModal isOpen={assignRoleModalOpen} onClose={() => { setAssignRoleModalOpen(false); setAssigningUser(null); }} user={assigningUser} onSuccess={() => refreshData()} />
       
       <UserAssignRankModal 
         isOpen={assignRankModalOpen} 
         onClose={() => { setAssignRankModalOpen(false); setRankingUser(null); }} 
         user={rankingUser} 
-        onSuccess={() => loadUsers()} 
+        onSuccess={() => refreshData()} 
       />
 
       <UserSignatureModal 
         isOpen={signatureModalOpen} 
         onClose={() => { setSignatureModalOpen(false); setSigningUser(null); }} 
         user={signingUser} 
-        onSuccess={() => loadUsers()} 
+        onSuccess={() => refreshData()} 
       />
 
       <InstructorAssignWingModal 
         isOpen={assignWingModalOpen} 
         onClose={() => { setAssignWingModalOpen(false); setAssigningWingUser(null); }} 
         instructor={assigningWingUser} 
-        onSuccess={() => loadUsers()} 
+        onSuccess={() => refreshData()} 
       />
 
       <CadetAssignWingModal
         isOpen={assignCadetWingModalOpen}
         onClose={() => { setAssignCadetWingModalOpen(false); setAssigningCadetWingUser(null); }}
         user={assigningCadetWingUser}
-        onSuccess={() => loadUsers()}
+        onSuccess={() => refreshData()}
       />
 
       <InstructorAssignAssessmentModal
         isOpen={assignAssessmentModalOpen}
         onClose={() => { setAssignAssessmentModalOpen(false); setAssignAssessmentUser(null); }}
-        onSuccess={() => { loadUsers(); loadAssignMap(); }}
+        onSuccess={() => refreshData()}
         user={assignAssessmentUser}
         courses={courses}
       />

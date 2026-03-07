@@ -5,10 +5,8 @@ import React, { useState, useEffect, useMemo, useRef } from "react";
 import Input from "@/components/form/input/InputField";
 import Label from "@/components/form/Label";
 import { Icon } from "@iconify/react";
-import type { AtwSubjectModule, AtwSubjectsModuleMarksheet, SystemSemester, SystemProgram } from "@/libs/types/system";
+import type { AtwSubjectModule, AtwSubjectsModuleMarksheet } from "@/libs/types/system";
 import { atwMarksheetService } from "@/libs/services/atwMarksheetService";
-import { semesterService } from "@/libs/services/semesterService";
-import { programService } from "@/libs/services/programService";
 
 interface SubjectFormProps {
   initialData?: AtwSubjectModule | null;
@@ -23,27 +21,21 @@ export default function SubjectModuleForm({ initialData, onSubmit, onCancel, loa
 
   const [formData, setFormData] = useState({
     atw_subjects_module_marksheet_id: "" as number | "",
-    semester_id: "" as number | "",
-    program_id: "" as number | "",
     subject_name: "",
     subject_code: "",
     subject_legend: "",
     subject_period: "",
     subject_type: "academic" as "academic" | "professional",
     subjects_full_mark: "100",
-    subjects_credit: "0",
+    subjects_credit: "",
     is_current: true,
     is_active: true,
     syllabus_file: null as File | null,
   });
 
   const [marksheets, setMarksheets] = useState<AtwSubjectsModuleMarksheet[]>([]);
-  const [semesters, setSemesters] = useState<SystemSemester[]>([]);
-  const [programs, setPrograms] = useState<SystemProgram[]>([]);
   
   const [loadingMarksheets, setLoadingMarksheets] = useState(false);
-  const [loadingSemesters, setLoadingSemesters] = useState(false);
-  const [loadingPrograms, setLoadingPrograms] = useState(false);
   
   const [error, setError] = useState("");
 
@@ -52,24 +44,14 @@ export default function SubjectModuleForm({ initialData, onSubmit, onCancel, loa
     const fetchOptions = async () => {
       try {
         setLoadingMarksheets(true);
-        setLoadingSemesters(true);
-        setLoadingPrograms(true);
 
-        const [marksheetsRes, semestersRes, programsRes] = await Promise.all([
-          atwMarksheetService.getAllMarksheets({ per_page: 100 }),
-          semesterService.getAllSemesters({ per_page: 100 }),
-          programService.getAllPrograms({ per_page: 100 }),
-        ]);
+        const marksheetsRes = await atwMarksheetService.getAllMarksheets({ per_page: 100 });
 
         setMarksheets(marksheetsRes.data || []);
-        setSemesters(semestersRes.data || []);
-        setPrograms(programsRes.data || []);
       } catch (err) {
         console.error("Failed to load form options:", err);
       } finally {
         setLoadingMarksheets(false);
-        setLoadingSemesters(false);
-        setLoadingPrograms(false);
       }
     };
     fetchOptions();
@@ -80,8 +62,6 @@ export default function SubjectModuleForm({ initialData, onSubmit, onCancel, loa
     if (initialData) {
       setFormData({
         atw_subjects_module_marksheet_id: initialData.atw_subjects_module_marksheet_id || "",
-        semester_id: initialData.semester_id || "",
-        program_id: initialData.program_id || "",
         subject_name: initialData.subject_name || "",
         subject_code: initialData.subject_code || "",
         subject_legend: initialData.subject_legend || "",
@@ -139,8 +119,6 @@ export default function SubjectModuleForm({ initialData, onSubmit, onCancel, loa
         subjects_full_mark: parseFloat(formData.subjects_full_mark) || 0,
         subjects_credit: parseFloat(formData.subjects_credit) || 0,
         atw_subjects_module_marksheet_id: formData.atw_subjects_module_marksheet_id === "" ? null : formData.atw_subjects_module_marksheet_id,
-        semester_id: formData.semester_id === "" ? null : formData.semester_id,
-        program_id: formData.program_id === "" ? null : formData.program_id,
       };
       await onSubmit(submitData);
     } catch (err: any) {
@@ -179,7 +157,7 @@ export default function SubjectModuleForm({ initialData, onSubmit, onCancel, loa
 
       <div className="space-y-6">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="md:col-span-2 lg:col-span-2">
+          <div>
             <Label>Select Marksheet <span className="text-red-500">*</span></Label>
             <div className="relative">
               <select
@@ -200,45 +178,7 @@ export default function SubjectModuleForm({ initialData, onSubmit, onCancel, loa
             <p className="mt-1 text-[10px] text-gray-500 italic">Manage marksheets in the Marksheets section.</p>
           </div>
 
-          <div className="md:col-span-1 lg:col-span-1">
-            <Label>Semester</Label>
-            <div className="relative">
-              <select
-                value={formData.semester_id}
-                onChange={(e) => handleChange("semester_id", e.target.value ? parseInt(e.target.value) : "")}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none appearance-none"
-              >
-                <option value="">Select Semester (Optional)</option>
-                {semesters.map(s => (
-                  <option key={s.id} value={s.id}>{s.name} ({s.code})</option>
-                ))}
-              </select>
-              <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
-                {loadingSemesters ? <Icon icon="hugeicons:fan-01" className="animate-spin" /> : <Icon icon="hugeicons:arrow-down-01" />}
-              </div>
-            </div>
-          </div>
-
-          <div className="md:col-span-1 lg:col-span-1">
-            <Label>Program</Label>
-            <div className="relative">
-              <select
-                value={formData.program_id}
-                onChange={(e) => handleChange("program_id", e.target.value ? parseInt(e.target.value) : "")}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none appearance-none"
-              >
-                <option value="">Select Program (Optional)</option>
-                {programs.map(p => (
-                  <option key={p.id} value={p.id}>{p.name} ({p.code})</option>
-                ))}
-              </select>
-              <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
-                {loadingPrograms ? <Icon icon="hugeicons:fan-01" className="animate-spin" /> : <Icon icon="hugeicons:arrow-down-01" />}
-              </div>
-            </div>
-          </div>
-
-          <div className="md:col-span-2">
+          <div>
             <Label>Subject Name <span className="text-red-500">*</span></Label>
             <Input value={formData.subject_name} onChange={(e) => handleChange("subject_name", e.target.value)} placeholder="Enter subject name" required />
           </div>
@@ -264,12 +204,12 @@ export default function SubjectModuleForm({ initialData, onSubmit, onCancel, loa
             </div>
           </div>
           <div>
-            <Label>Subject Legend</Label>
-            <Input value={formData.subject_legend} onChange={(e) => handleChange("subject_legend", e.target.value)} placeholder="Enter legend (optional)" />
+            <Label>Subject Legend <span className="text-red-500">*</span></Label>
+            <Input value={formData.subject_legend} onChange={(e) => handleChange("subject_legend", e.target.value)} placeholder="Enter legend" required />
           </div>
           <div>
-            <Label>Subject Period</Label>
-            <Input value={formData.subject_period} onChange={(e) => handleChange("subject_period", e.target.value)} placeholder="Enter period (optional)" />
+            <Label>Subject Period <span className="text-red-500">*</span></Label>
+            <Input value={formData.subject_period} onChange={(e) => handleChange("subject_period", e.target.value)} placeholder="Enter period" required />
           </div>
           <div>
             <Label>Full Mark <span className="text-red-500">*</span></Label>
@@ -281,12 +221,13 @@ export default function SubjectModuleForm({ initialData, onSubmit, onCancel, loa
             />
           </div>
           <div>
-            <Label>Credit</Label>
+            <Label>Credit Hours <span className="text-red-500">*</span></Label>
             <Input
               type="text"
               value={formData.subjects_credit}
               onChange={(e) => handleNumericInput("subjects_credit", e.target.value)}
               placeholder="0.00"
+              required
             />
           </div>
         </div>

@@ -36,6 +36,9 @@ export default function RoleForm({
         wing_id: null as number | null,
         subwing_id: null as number | null,
         is_active: true,
+        is_role_switch: true,
+        is_manage: true,
+        is_marge_role: false,
     });
     const [error, setError] = useState("");
 
@@ -98,6 +101,9 @@ export default function RoleForm({
                 wing_id: initialData.wing_id || null,
                 subwing_id: initialData.subwing_id || null,
                 is_active: initialData.is_active !== false,
+                is_role_switch: initialData.is_role_switch !== false,
+                is_manage: (initialData as any).is_manage !== false,
+                is_marge_role: !!(initialData as any).is_marge_role,
             });
             // Set selected permissions from the role
             const permIds = initialData.permissions?.map(p => p.id) || [];
@@ -111,6 +117,9 @@ export default function RoleForm({
                 wing_id: userContext?.wing_id || null,
                 subwing_id: userContext?.sub_wing_id || null,
                 is_active: true,
+                is_role_switch: true,
+                is_manage: true,
+                is_marge_role: false,
             });
             setSelectedPermissions([]);
         }
@@ -420,31 +429,114 @@ export default function RoleForm({
                 </div>
             </div>
 
-            <div className="flex items-center justify-between pt-6 border-t border-gray-100">
-                <div className="flex gap-6">
-                    <label className="flex items-center gap-2 cursor-pointer group">
-                        <input
-                            type="radio"
-                            name="is_active"
-                            checked={formData.is_active === true}
-                            onChange={() => handleChange("is_active", true)}
-                            className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
-                        />
-                        <span className="text-sm font-medium text-gray-700 group-hover:text-gray-900">Active Role</span>
-                    </label>
-                    <label className="flex items-center gap-2 cursor-pointer group">
-                        <input
-                            type="radio"
-                            name="is_active"
-                            checked={formData.is_active === false}
-                            onChange={() => handleChange("is_active", false)}
-                            className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
-                        />
-                        <span className="text-sm font-medium text-gray-700 group-hover:text-gray-900">Inactive Role</span>
-                    </label>
+            <div className="flex flex-col gap-6 pt-6 border-t border-gray-100">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                    <div className="space-y-3">
+                        <Label className="text-xs text-gray-500 uppercase tracking-wider">Role Status</Label>
+                        <div className="flex gap-4">
+                            <label className="flex items-center gap-2 cursor-pointer group">
+                                <input
+                                    type="radio"
+                                    name="is_active"
+                                    checked={formData.is_active === true}
+                                    onChange={() => handleChange("is_active", true)}
+                                    className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
+                                />
+                                <span className="text-sm font-medium text-gray-700 group-hover:text-gray-900">Active</span>
+                            </label>
+                            <label className="flex items-center gap-2 cursor-pointer group">
+                                <input
+                                    type="radio"
+                                    name="is_active"
+                                    checked={formData.is_active === false}
+                                    onChange={() => handleChange("is_active", false)}
+                                    className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
+                                />
+                                <span className="text-sm font-medium text-gray-700 group-hover:text-gray-900">Inactive</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div className="space-y-3">
+                        <Label className="text-xs text-gray-500 uppercase tracking-wider">Role Switching</Label>
+                        <div className="flex gap-4">
+                            <label className="flex items-center gap-2 cursor-pointer group">
+                                <input
+                                    type="radio"
+                                    name="is_role_switch"
+                                    checked={formData.is_role_switch === true}
+                                    onChange={() => handleChange("is_role_switch", true)}
+                                    className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
+                                />
+                                <span className="text-sm font-medium text-gray-700 group-hover:text-gray-900">Allow Switch</span>
+                            </label>
+                            <label className="flex items-center gap-2 cursor-pointer group">
+                                <input
+                                    type="radio"
+                                    name="is_role_switch"
+                                    checked={formData.is_role_switch === false}
+                                    onChange={() => handleChange("is_role_switch", false)}
+                                    className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
+                                />
+                                <span className="text-sm font-medium text-gray-700 group-hover:text-gray-900">No Switch</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div className="space-y-3">
+                        <Label className="text-xs text-gray-500 uppercase tracking-wider">Management</Label>
+                        <div className="flex gap-4">
+                            <label className="flex items-center gap-2 cursor-pointer group">
+                                <input
+                                    type="radio"
+                                    name="is_manage"
+                                    checked={formData.is_manage === true}
+                                    onChange={() => handleChange("is_manage", true)}
+                                    className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
+                                />
+                                <span className="text-sm font-medium text-gray-700 group-hover:text-gray-900">Yes</span>
+                            </label>
+                            <label className="flex items-center gap-2 cursor-pointer group">
+                                <input
+                                    type="radio"
+                                    name="is_manage"
+                                    checked={formData.is_manage === false}
+                                    onChange={() => handleChange("is_manage", false)}
+                                    className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
+                                />
+                                <span className="text-sm font-medium text-gray-700 group-hover:text-gray-900">No</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div className="space-y-3">
+                        <Label className="text-xs text-gray-500 uppercase tracking-wider">Merge Role Permissions</Label>
+                        <div className="flex gap-4">
+                            <label className="flex items-center gap-2 cursor-pointer group">
+                                <input
+                                    type="radio"
+                                    name="is_marge_role"
+                                    checked={formData.is_marge_role === true}
+                                    onChange={() => handleChange("is_marge_role", true)}
+                                    className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
+                                />
+                                <span className="text-sm font-medium text-gray-700 group-hover:text-gray-900">Yes</span>
+                            </label>
+                            <label className="flex items-center gap-2 cursor-pointer group">
+                                <input
+                                    type="radio"
+                                    name="is_marge_role"
+                                    checked={formData.is_marge_role === false}
+                                    onChange={() => handleChange("is_marge_role", false)}
+                                    className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
+                                />
+                                <span className="text-sm font-medium text-gray-700 group-hover:text-gray-900">No</span>
+                            </label>
+                        </div>
+                    </div>
                 </div>
 
-                <div className="flex items-center gap-3">
+                <div className="flex items-center justify-end gap-3 mt-4">
                     <button
                         type="button"
                         className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"

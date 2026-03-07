@@ -1,20 +1,24 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { useRouter, useParams } from "next/navigation";
+import { useRouter, useParams, useSearchParams } from "next/navigation";
 import Image from "next/image";
 import { Icon } from "@iconify/react";
 import { InstructorBiodata } from "@/libs/types/user";
 import { instructorService } from "@/libs/services/instructorService";
 import FullLogo from "@/components/ui/fulllogo";
+import InstructorSubjectDetailment from "@/components/instructors/InstructorSubjectDetailment";
 import { formatDate, getImageUrl } from "@/libs/utils/formatter";
 
 export default function ViewInstructorPage() {
     const router = useRouter();
     const params = useParams();
+    const searchParams = useSearchParams();
     const instructorId = params.id as string;
     const [instructor, setInstructor] = useState<InstructorBiodata | null>(null);
     const [loading, setLoading] = useState(true);
+    const initialTab = searchParams.get("tab") === "subjects" ? "subjects" : "biodata";
+    const [activeTab, setActiveTab] = useState<"biodata" | "subjects">(initialTab);
 
     useEffect(() => {
         const loadInstructor = async () => {
@@ -83,20 +87,61 @@ export default function ViewInstructorPage() {
                         className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 flex items-center gap-2"
                     >
                         <Icon icon="hugeicons:printer" className="w-4 h-4" />
-                        Print CV
+                        {activeTab === "subjects" ? "Print Detailment" : "Print CV"}
                     </button>
-                    <button
-                        onClick={handleEdit}
-                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2"
-                    >
-                        <Icon icon="hugeicons:pencil-edit-01" className="w-4 h-4" />
-                        Edit Instructor
-                    </button>
+                    {activeTab === "biodata" && (
+                        <button
+                            onClick={handleEdit}
+                            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2"
+                        >
+                            <Icon icon="hugeicons:pencil-edit-01" className="w-4 h-4" />
+                            Edit Instructor
+                        </button>
+                    )}
                 </div>
             </div>
 
+            {/* Tabs */}
+            <div className="px-8 pt-4 flex gap-0 border-b border-gray-200 no-print">
+                <button
+                    onClick={() => setActiveTab("biodata")}
+                    className={`px-6 py-2.5 text-sm font-semibold border-b-2 transition-colors ${
+                        activeTab === "biodata"
+                            ? "border-blue-600 text-blue-600"
+                            : "border-transparent text-gray-500 hover:text-gray-700"
+                    }`}
+                >
+                    Biodata
+                </button>
+                <button
+                    onClick={() => setActiveTab("subjects")}
+                    className={`px-6 py-2.5 text-sm font-semibold border-b-2 transition-colors ${
+                        activeTab === "subjects"
+                            ? "border-blue-600 text-blue-600"
+                            : "border-transparent text-gray-500 hover:text-gray-700"
+                    }`}
+                >
+                    Subject Detailment
+                </button>
+            </div>
+
+            {/* Subject Detailment Tab */}
+            <div className={`p-8 ${activeTab !== "subjects" ? "hidden print:hidden" : ""}`} id="print-detailment">
+                <div className="text-center mb-6">
+                    <div className="flex justify-center mb-4"><FullLogo /></div>
+                    <h1 className="text-xl font-bold text-gray-900 uppercase tracking-wider">Bangladesh Air Force Academy</h1>
+                    <p className="font-medium text-gray-900 uppercase tracking-wider pb-2">
+                        Subject Detailment - {instructor.user?.name || "Instructor"}
+                    </p>
+                </div>
+                <InstructorSubjectDetailment
+                    userId={instructor.user_id}
+                    userName={instructor.user?.name}
+                />
+            </div>
+
             {/* CV Content */}
-            <div className="p-8 cv-content">
+            <div className={`p-8 cv-content ${activeTab !== "biodata" ? "hidden print:hidden" : ""}`}>
                 {/* Header with Logo and Photo */}
                 <div className="relative mb-8">
                     <div className="flex justify-between items-start">

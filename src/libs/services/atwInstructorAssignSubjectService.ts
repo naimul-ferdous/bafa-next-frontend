@@ -158,6 +158,27 @@ export const atwInstructorAssignSubjectService = {
       console.error(`Failed to toggle assignment ${id} status:`, error);
       return null;
     }
+  },
+
+  /**
+   * Get grouped assignments for report
+   */
+  async getGrouped(params?: AssignSubjectQueryParams): Promise<any> {
+    try {
+      const query = new URLSearchParams();
+      if (params) {
+        Object.entries(params).forEach(([key, value]) => {
+          if (value !== undefined) query.append(key, value.toString());
+        });
+      }
+
+      const token = getToken();
+      const result = await apiClient.get<any>(`/atw-instructor-assign-subjects/grouped?${query.toString()}`, token);
+      return result?.data || [];
+    } catch (error) {
+      console.error('Failed to fetch grouped instructor subject assignments:', error);
+      return [];
+    }
   }
 };
 

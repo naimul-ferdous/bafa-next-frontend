@@ -1,52 +1,73 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
-import React, { useState, useEffect, useCallback, use, useMemo } from "react";
-import { useRouter } from "next/navigation";
+import React, { useState, useEffect, useCallback, use, useMemo, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/libs/hooks/useAuth";
 import { Icon } from "@iconify/react";
 import Image from "next/image";
 import FullLogo from "@/components/ui/fulllogo";
 import DataTable, { Column } from "@/components/ui/DataTable";
 import Pagination from "@/components/ui/Pagination";
-import { atwInstructorAssignCadetService, AtwInstructorAssignCadet } from "@/libs/services/atwInstructorAssignCadetService";
+import { cadetService } from "@/libs/services/cadetService";
+import { atwSubjectModuleService } from "@/libs/services/atwSubjectModuleService";
+import type { CadetProfile } from "@/libs/types/user";
+import type { AtwSubjectModule } from "@/libs/types/system";
 
-export default function AtwInstructorSubjectCadetsPage({ params }: { params: Promise<{ subjectId: string }> }) {
+function CadetsContent({ subjectId }: { subjectId: number }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { user } = useAuth();
-  const resolvedParams = use(params);
-  const subjectId = parseInt(resolvedParams.subjectId);
 
-  const [cadets, setCadets] = useState<AtwInstructorAssignCadet[]>([]);
+  const courseId = searchParams.get("course_id");
+  const semesterId = searchParams.get("semester_id");
+  const programId = searchParams.get("program_id");
+
+  const [cadets, setCadets] = useState<CadetProfile[]>([]);
+  const [subject, setSubject] = useState<AtwSubjectModule | null>(null);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [perPage, setPerPage] = useState(10);
 
-  const loadCadets = useCallback(async () => {
+  const loadData = useCallback(async () => {
     if (!user?.id) return;
     setLoading(true);
-    const res = await atwInstructorAssignCadetService.getAll({
-      instructor_id: user.id,
-      subject_id: subjectId,
-      per_page: 1000,
-    });
-    setCadets(res.data);
-    setLoading(false);
-  }, [user?.id, subjectId]);
+    try {
+      // 1. Fetch Subject Module info for the header
+      const subjectRes = await atwSubjectModuleService.getSubject(subjectId);
+      setSubject(subjectRes);
+
+      // 2. Fetch Cadets for this context
+      if (courseId && semesterId && programId) {
+        const res = await cadetService.getAllCadets({
+          course_id: parseInt(courseId),
+          semester_id: parseInt(semesterId),
+          program_id: parseInt(programId),
+          is_current: 1,
+          per_page: 1000,
+        });
+        setCadets(res.data);
+      }
+    } catch (err) {
+      console.error("Failed to load cadets data:", err);
+    } finally {
+      setLoading(false);
+    }
+  }, [user?.id, subjectId, courseId, semesterId, programId]);
 
   useEffect(() => {
-    loadCadets();
-  }, [loadCadets]);
+    loadData();
+  }, [loadData]);
 
   // Client-side search filter
   const filtered = useMemo(() => {
     const term = searchTerm.toLowerCase().trim();
     if (!term) return cadets;
     return cadets.filter((c) => {
-      const name = c.cadet?.name?.toLowerCase() ?? "";
-      const bdNo = ((c.cadet as any)?.cadet_number ?? "").toLowerCase();
-      const rank = ((c.cadet as any)?.assigned_ranks?.find((ar: any) => ar.rank)?.rank?.short_name ?? "").toLowerCase();
+      const name = c.name?.toLowerCase() ?? "";
+      const bdNo = (c.cadet_number ?? "").toLowerCase();
+      const rank = (c.assigned_ranks?.find((ar: any) => ar.is_current || ar.rank)?.rank?.short_name ?? "").toLowerCase();
       return name.includes(term) || bdNo.includes(term) || rank.includes(term);
     });
   }, [cadets, searchTerm]);
@@ -61,13 +82,12 @@ export default function AtwInstructorSubjectCadetsPage({ params }: { params: Pro
   // Reset to page 1 on search
   useEffect(() => { setCurrentPage(1); }, [searchTerm]);
 
-  const headerInfo = cadets[0] ?? null;
-  const subjectName = (headerInfo?.subject as any)?.module?.subject_name ?? (headerInfo?.subject as any)?.name ?? "";
-  const subjectCode = (headerInfo?.subject as any)?.module?.subject_code ?? "";
+  const subjectName = subject?.subject_name ?? "";
+  const subjectCode = subject?.subject_code ?? "";
 
   const handlePrint = () => window.print();
 
-  const columns: Column<AtwInstructorAssignCadet>[] = [
+  const columns: Column<CadetProfile>[] = [
     {
       key: "sl",
       header: "SL.",
@@ -81,10 +101,10 @@ export default function AtwInstructorSubjectCadetsPage({ params }: { params: Pro
       headerAlign: "center",
       className: "text-center w-16 no-print",
       render: (c) => {
-        const pic = (c.cadet as any)?.profile_picture;
+        const pic = c.profile_picture || c.profile_photo;
         return pic ? (
           <div className="flex justify-center">
-            <Image src={pic} alt={c.cadet?.name ?? ""} width={36} height={36} className="w-9 h-9 rounded-full object-cover border border-gray-200" />
+            <Image src={pic} alt={c.name ?? ""} width={36} height={36} className="w-9 h-9 rounded-full object-cover border border-gray-200" />
           </div>
         ) : (
           <div className="flex justify-center">
@@ -99,14 +119,14 @@ export default function AtwInstructorSubjectCadetsPage({ params }: { params: Pro
       key: "bd_no",
       header: "BD No.",
       className: "text-gray-800",
-      render: (c) => (c.cadet as any)?.cadet_number || "—",
+      render: (c) => c.cadet_number || "—",
     },
     {
       key: "rank",
       header: "Rank",
       className: "text-gray-800",
       render: (c) => {
-        const rank = (c.cadet as any)?.assigned_ranks?.find((ar: any) => ar.rank)?.rank;
+        const rank = c.assigned_ranks?.find((ar: any) => ar.is_current || ar.rank)?.rank;
         return rank?.short_name || rank?.name || "—";
       },
     },
@@ -116,8 +136,8 @@ export default function AtwInstructorSubjectCadetsPage({ params }: { params: Pro
       className: "text-gray-800 font-medium",
       render: (c) => (
         <span>
-          {c.cadet?.name || "—"}
-          {(c.cadet as any)?.gender === "female" && (
+          {c.name || "—"}
+          {c.gender === "female" && (
             <span className="text-pink-600 font-bold ml-1 text-xs">(F)</span>
           )}
         </span>
@@ -128,7 +148,7 @@ export default function AtwInstructorSubjectCadetsPage({ params }: { params: Pro
       header: "Current Course",
       className: "text-gray-800",
       render: (c) => {
-        const course = (c.cadet as any)?.assigned_courses?.[0]?.course;
+        const course = c.assigned_courses?.find((ac: any) => ac.is_current || ac.course)?.course;
         return course ? `${course.name} (${course.code})` : "—";
       },
     },
@@ -137,7 +157,7 @@ export default function AtwInstructorSubjectCadetsPage({ params }: { params: Pro
       header: "Current Semester",
       className: "text-gray-800",
       render: (c) => {
-        const semester = (c.cadet as any)?.assigned_semesters?.[0]?.semester;
+        const semester = c.assigned_semesters?.find((as: any) => as.is_current || as.semester)?.semester;
         return semester ? semester.name : "—";
       },
     },
@@ -146,7 +166,7 @@ export default function AtwInstructorSubjectCadetsPage({ params }: { params: Pro
       header: "Branch",
       className: "text-gray-800",
       render: (c) => {
-        const ab = (c.cadet as any)?.assigned_branchs;
+        const ab = c.assigned_branchs;
         return ab?.find((b: any) => b.is_current)?.branch?.name || ab?.[0]?.branch?.name || "—";
       },
     },
@@ -182,7 +202,7 @@ export default function AtwInstructorSubjectCadetsPage({ params }: { params: Pro
         <div className="mb-8 text-center">
           <div className="flex justify-center mb-4"><FullLogo /></div>
           <h1 className="text-xl font-bold text-gray-900 uppercase tracking-wider">Bangladesh Air Force Academy</h1>
-          <p className="font-medium text-gray-900 uppercase tracking-wider pb-2">
+          <p className="font-medium text-gray-700 uppercase tracking-wider pb-2">
             {subjectName}{subjectCode ? ` (${subjectCode})` : ""} — Assigned Cadets
           </p>
         </div>
@@ -235,5 +255,16 @@ export default function AtwInstructorSubjectCadetsPage({ params }: { params: Pro
         )}
       </div>
     </div>
+  );
+}
+
+export default function AtwInstructorSubjectCadetsPage({ params }: { params: Promise<{ subjectId: string }> }) {
+  const resolvedParams = use(params);
+  const subjectId = parseInt(resolvedParams.subjectId);
+
+  return (
+    <Suspense fallback={<div className="flex justify-center py-20"><Icon icon="hugeicons:fan-01" className="w-10 h-10 animate-spin text-blue-500" /></div>}>
+      <CadetsContent subjectId={subjectId} />
+    </Suspense>
   );
 }

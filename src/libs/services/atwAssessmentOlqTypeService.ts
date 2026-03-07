@@ -8,7 +8,7 @@ import { getToken } from '@/libs/auth/auth-token';
 import type {
   AtwAssessmentOlqType,
   AtwAssessmentOlqTypeEstimatedMark,
-  AtwAssessmentOlqTypeSemester,
+  AtwAssessmentOlqTypeAssignment,
   AtwAssessmentOlqTypeCreateData
 } from '@/libs/types/atwAssessmentOlq';
 
@@ -16,7 +16,6 @@ interface TypeQueryParams {
   page?: number;
   per_page?: number;
   search?: string;
-  semester_id?: number;
   course_id?: number;
 }
 
@@ -68,16 +67,28 @@ interface SingleEstimatedMarkApiResponse {
   data: AtwAssessmentOlqTypeEstimatedMark;
 }
 
-interface SemesterApiResponse {
-  success: boolean;
-  message: string;
-  data: AtwAssessmentOlqTypeSemester[];
+interface AssignmentPaginatedResponse {
+  data: AtwAssessmentOlqTypeAssignment[];
+  current_page: number;
+  per_page: number;
+  total: number;
+  last_page: number;
+  from: number;
+  to: number;
 }
 
-interface SingleSemesterApiResponse {
+interface AssignmentApiResponse {
   success: boolean;
   message: string;
-  data: AtwAssessmentOlqTypeSemester;
+  data: AtwAssessmentOlqTypeAssignment[];
+  pagination?: {
+    current_page: number;
+    per_page: number;
+    total: number;
+    last_page: number;
+    from: number;
+    to: number;
+  };
 }
 
 export const atwAssessmentOlqTypeService = {
@@ -91,7 +102,6 @@ export const atwAssessmentOlqTypeService = {
       if (params?.page) query.append('page', params.page.toString());
       if (params?.per_page) query.append('per_page', params.per_page.toString());
       if (params?.search) query.append('search', params.search);
-      if (params?.semester_id) query.append('semester_id', params.semester_id.toString());
       if (params?.course_id) query.append('course_id', params.course_id.toString());
 
       const endpoint = `/atw-assessment-olq-types${query.toString() ? `?${query.toString()}` : ''}`;
@@ -274,50 +284,75 @@ export const atwAssessmentOlqTypeService = {
     }
   },
 
-  // ==================== Semester Management ====================
+  // ==================== Assignment Management ====================
 
   /**
-   * Get semesters for OLQ type
+   * Get all OLQ type assignments
    */
-  async getSemesters(typeId: number): Promise<AtwAssessmentOlqTypeSemester[]> {
+  async getAllAssignments(params?: {
+    page?: number;
+    per_page?: number;
+    course_id?: number;
+    atw_assessment_olq_type_id?: number;
+  }): Promise<AssignmentPaginatedResponse> {
     try {
+      const query = new URLSearchParams();
+      if (params?.page) query.append('page', params.page.toString());
+      if (params?.per_page) query.append('per_page', params.per_page.toString());
+      if (params?.course_id) query.append('course_id', params.course_id.toString());
+      if (params?.atw_assessment_olq_type_id) query.append('atw_assessment_olq_type_id', params.atw_assessment_olq_type_id.toString());
+
+      const endpoint = `/atw-assessment-olq-assigned${query.toString() ? `?${query.toString()}` : ''}`;
       const token = getToken();
-      const result = await apiClient.get<SemesterApiResponse>(`/atw-assessment-olq-types/${typeId}/semesters`, token);
-      return result?.data || [];
+      const result = await apiClient.get<AssignmentApiResponse>(endpoint, token);
+
+      if (!result) {
+        return { data: [], current_page: 1, per_page: 10, total: 0, last_page: 1, from: 0, to: 0 };
+      }
+
+      return {
+        data: result.data || [],
+        current_page: result.pagination?.current_page || 1,
+        per_page: result.pagination?.per_page || 10,
+        total: result.pagination?.total || 0,
+        last_page: result.pagination?.last_page || 1,
+        from: result.pagination?.from || 0,
+        to: result.pagination?.to || 0,
+      };
     } catch (error) {
-      console.error('Failed to fetch semesters:', error);
-      return [];
+      console.error('Failed to fetch assignments:', error);
+      return { data: [], current_page: 1, per_page: 10, total: 0, last_page: 1, from: 0, to: 0 };
     }
   },
 
   /**
-   * Add semester to OLQ type
+   * Assign OLQ type to course
    */
-  async addSemester(typeId: number, semesterId: number): Promise<AtwAssessmentOlqTypeSemester | null> {
+  async assignType(data: {
+    atw_assessment_olq_type_id: number;
+    course_id: number;
+    is_active?: boolean;
+  }): Promise<AtwAssessmentOlqTypeAssignment | null> {
     try {
       const token = getToken();
-      if (!token) throw new Error('Authentication token not found.');
-
-      const result = await apiClient.post<SingleSemesterApiResponse>(`/atw-assessment-olq-types/${typeId}/semesters`, { semester_id: semesterId }, token);
-      if (!result || !result.success) throw new Error(result?.message || 'Failed to add semester');
-
-      return result.data || null;
+      const result = await apiClient.post<{ success: boolean; data: AtwAssessmentOlqTypeAssignment }>('/atw-assessment-olq-assigned', data, token);
+      return result?.data || null;
     } catch (error) {
-      console.error('Failed to add semester:', error);
+      console.error('Failed to assign OLQ type:', error);
       throw error;
     }
   },
 
   /**
-   * Remove semester from OLQ type
+   * Delete assignment
    */
-  async removeSemester(typeId: number, semesterId: number): Promise<boolean> {
+  async deleteAssignment(id: number): Promise<boolean> {
     try {
       const token = getToken();
-      const result = await apiClient.delete<{ success: boolean }>(`/atw-assessment-olq-types/${typeId}/semesters/${semesterId}`, token);
+      const result = await apiClient.delete<{ success: boolean }>(`/atw-assessment-olq-assigned/${id}`, token);
       return result?.success || false;
     } catch (error) {
-      console.error('Failed to remove semester:', error);
+      console.error(`Failed to delete assignment ${id}:`, error);
       return false;
     }
   },

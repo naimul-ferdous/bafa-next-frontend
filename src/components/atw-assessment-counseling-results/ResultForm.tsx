@@ -13,7 +13,6 @@ import type { SystemCourse, SystemSemester, SystemProgram, SystemBranch, SystemG
 import { commonService } from "@/libs/services/commonService";
 import { atwAssessmentCounselingTypeService } from "@/libs/services/atwAssessmentCounselingTypeService";
 import { cadetService } from "@/libs/services/cadetService";
-import { atwInstructorAssignCadetService } from "@/libs/services/atwInstructorAssignCadetService";
 import { atwAssessmentCounselingResultService } from "@/libs/services/atwAssessmentCounselingResultService";
 import { useAuth } from "@/libs/hooks/useAuth";
 import DatePicker from "@/components/form/input/DatePicker";
@@ -141,39 +140,44 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
     }
   }, [user?.id, isEdit]);
 
-  // Load assigned cadets for instructor when course+semester are selected
+  // Load cadets when course+semester are selected
   useEffect(() => {
-    if (!user?.id) return;
     if (!formData.course_id || !formData.semester_id) {
       setCadets([]);
       return;
     }
     const fetchCadets = async () => {
       setLoadingCadets(true);
-      const res = await atwInstructorAssignCadetService.getAll({
-        instructor_id: user.id,
-        course_id: formData.course_id,
-        semester_id: formData.semester_id,
-        per_page: 1000,
-      });
-      const mapped = res.data
-        .map((a: any) => ({
-          id: a.cadet?.id,
-          name: a.cadet?.name,
-          cadet_number: a.cadet?.cadet_number,
-          bd_no: a.cadet?.cadet_number,
-          program_id: a.cadet?.program_id,
-          branch_id: a.cadet?.branch_id,
-          group_id: a.cadet?.group_id,
-          is_active: true,
-        }))
-        .filter((c: any) => c.id);
-      const unique = mapped.filter((c: any, i: number, arr: any[]) => arr.findIndex((x: any) => x.id === c.id) === i);
-      setCadets(unique);
-      setLoadingCadets(false);
+      try {
+        const res = await cadetService.getAllCadets({
+          course_id: formData.course_id,
+          semester_id: formData.semester_id,
+          program_id: formData.program_id || undefined,
+          branch_id: formData.branch_id || undefined,
+          group_id: formData.group_id || undefined,
+          is_current: 1,
+          per_page: 1000,
+        });
+        const mapped = res.data
+          .map((c: any) => ({
+            id: c.id,
+            name: c.name,
+            cadet_number: c.cadet_number,
+            bd_no: c.cadet_number,
+            program_id: c.program_id,
+            branch_id: c.branch_id,
+            group_id: c.group_id,
+            is_active: true,
+          }));
+        setCadets(mapped);
+      } catch (err) {
+        console.error("Failed to fetch cadets:", err);
+      } finally {
+        setLoadingCadets(false);
+      }
     };
     fetchCadets();
-  }, [user?.id, formData.course_id, formData.semester_id]);
+  }, [formData.course_id, formData.semester_id, formData.program_id, formData.branch_id, formData.group_id]);
 
   // Fetch Counseling Type when course and semester change
   useEffect(() => {

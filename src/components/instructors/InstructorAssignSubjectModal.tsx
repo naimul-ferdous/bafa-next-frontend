@@ -40,12 +40,42 @@ export default function InstructorAssignSubjectModal({
   const [selectedProgramId, setSelectedProgramId] = useState<number | "">("");
   const [selectedSubjectIds, setSelectedSubjectIds] = useState<number[]>([]);
 
+  const [loadingSemesters, setLoadingSemesters] = useState(false);
+
   // Load dropdown data
   useEffect(() => {
     if (isOpen && instructor) {
       loadDropdownData();
     }
   }, [isOpen, instructor]);
+
+  // Fetch semesters when course changes
+  useEffect(() => {
+    if (!selectedCourseId) {
+      setSemesters([]);
+      setSelectedSemesterId("");
+      return;
+    }
+    const fetchSemesters = async () => {
+      setLoadingSemesters(true);
+      try {
+        const semestersList = await commonService.getSemestersByCourse(Number(selectedCourseId));
+        setSemesters(semestersList);
+        
+        if (semestersList.length === 1) {
+          setSelectedSemesterId(semestersList[0].id);
+        } else if (semestersList.length > 0) {
+          // Auto-select the first semester if multiple exist
+          setSelectedSemesterId(semestersList[0].id);
+        }
+      } catch (err) {
+        console.error("Failed to load semesters:", err);
+      } finally {
+        setLoadingSemesters(false);
+      }
+    };
+    fetchSemesters();
+  }, [selectedCourseId]);
 
   // Load subjects when filters change
   useEffect(() => {
@@ -69,9 +99,9 @@ export default function InstructorAssignSubjectModal({
       ]);
 
       if (options) {
-        setCourses(options.courses);
-        setSemesters(options.semesters);
-        setPrograms(options.programs);
+        // Only show active/running courses and programs
+        setCourses(options.courses.filter(c => !!c.is_active));
+        setPrograms(options.programs.filter(p => !!p.is_active));
       }
       
       setExistingAssignments(assignments);
@@ -102,8 +132,9 @@ export default function InstructorAssignSubjectModal({
         })
       ]);
 
-      // Map the grouped records to their module objects
+      // Map the grouped records to their module objects and filter for only running ones
       const groupedModules = groupedRes.data
+        .filter(g => !!g.is_current) // Only running subject mappings
         .map(g => g.module)
         .filter((m): m is AtwSubjectModule => !!m);
       
@@ -210,15 +241,14 @@ export default function InstructorAssignSubjectModal({
     <Modal isOpen={isOpen} onClose={handleClose} showCloseButton className="max-w-4xl">
       <div className="p-6">
         {/* Header */}
-        <div className="flex flex-col items-center mb-6">
-          <div>
-            <FullLogo />
-          </div>
-          <h2 className="text-xl font-bold text-gray-900 dark:text-white">
+        <div className="text-center mb-6">
+          <div className="flex justify-center mb-4"><FullLogo /></div>
+          <h1 className="text-xl font-bold text-gray-900 uppercase">Bangladesh Air Force Academy</h1>
+          <h2 className="text-md font-semibold text-gray-700 mt-2 uppercase">
             Assign Subjects
           </h2>
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-            {instructor?.user?.name || "Instructor"} ({instructor?.user?.service_number || "N/A"})
+          <p className="text-sm text-gray-500">
+            Select subject for {instructor?.user?.name || "Instructor"} ({instructor?.user?.service_number || "N/A"})
           </p>
         </div>
 
@@ -264,7 +294,8 @@ export default function InstructorAssignSubjectModal({
 
             {/* Error Message */}
             {error && (
-              <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+              <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm flex items-center gap-2">
+                <Icon icon="hugeicons:alert-circle" className="w-4 h-4 flex-shrink-0" />
                 {error}
               </div>
             )}
@@ -299,16 +330,21 @@ export default function InstructorAssignSubjectModal({
                   </label>
                   <select
                     value={selectedSemesterId}
-                    onChange={(e) => setSelectedSemesterId(e.target.value ? Number(e.target.value) : "")}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-purple-500 text-sm"
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-gray-100 text-gray-900 text-sm cursor-not-allowed"
                     required
+                    disabled
                   >
-                    <option value="">Select</option>
-                    {semesters.map((semester) => (
-                      <option key={semester.id} value={semester.id}>
-                        {semester.name}
-                      </option>
-                    ))}
+                    {loadingSemesters ? (
+                      <option value="">Loading...</option>
+                    ) : semesters.length === 0 ? (
+                      <option value="">Select a course first</option>
+                    ) : (
+                      semesters.map((semester) => (
+                        <option key={semester.id} value={semester.id}>
+                          {semester.name}
+                        </option>
+                      ))
+                    )}
                   </select>
                 </div>
 
@@ -361,12 +397,12 @@ export default function InstructorAssignSubjectModal({
                       <p className="text-sm text-gray-500">No subjects found for this context. Please create syllabus modules first.</p>
                     </div>
                   ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 max-h-64 overflow-y-auto p-2 border border-gray-200 rounded-lg">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 max-h-64 overflow-y-auto">
                       {subjects.map((subject) => {
                         const assignment = getAssignmentInfo(subject.id);
                         const isAssignedToMe = isSubjectAlreadyAssignedToMe(subject.id);
                         const isAssignedToOther = !!assignment && !isAssignedToMe;
-                        const isDisabled = isAssignedToMe;
+                        const isDisabled = !!assignment; // Disable if assigned to anyone
 
                         return (
                           <label
@@ -406,18 +442,18 @@ export default function InstructorAssignSubjectModal({
               )}
 
               {/* Action Buttons */}
-              <div className="flex items-center justify-end gap-3 pt-4 border-t">
+              <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-100">
                 <button
                   type="button"
                   onClick={handleClose}
-                  className="px-6 py-2 border border-gray-300 rounded-xl text-gray-700 font-bold hover:bg-gray-50"
+                  className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 font-medium hover:bg-gray-50 transition-colors"
                 >
-                  Close
+                  Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={loading || (selectedSubjectIds.length === 0)}
-                  className="px-6 py-2 bg-purple-600 text-white rounded-xl font-bold hover:bg-purple-700 disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed flex items-center gap-2 shadow-md transition-all active:scale-95"
+                  className="px-6 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed flex items-center gap-2 transition-colors"
                 >
                   {loading ? (
                     <>

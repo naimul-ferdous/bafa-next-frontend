@@ -5,6 +5,7 @@ import React from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { Icon } from "@iconify/react";
+import FullLogo from "@/components/ui/fulllogo";
 
 interface OrbitCircleProps {
   title: string;
@@ -28,13 +29,11 @@ const OrbitCircle = ({ title, subtitle, href, icon, accentColor, style, classNam
         <div className="absolute inset-0 bg-white/10 group-hover:bg-transparent transition-colors" />
       </div>
       <div className="relative z-10 flex flex-col items-center gap-2 text-center px-2">
-        <div className={`w-10 h-10 md:w-12 md:h-12 rounded-xl bg-gradient-to-br ${accentColor} flex items-center justify-center transition-all duration-300 shadow-md`}>
-          <Icon icon={icon} className="w-6 h-6 md:w-7 md:h-7 text-white" />
+        <Icon icon={icon} className="w-6 h-6 md:w-7 md:h-7 text-black" />
+        <div className="px-2 rounded-lg">
+          <span className="text-xs md:text-sm font-bold group-hover:text-blue-700 uppercase">{title}</span>
         </div>
-        <div className="px-2 py-0.5 rounded-lg">
-          <span className="text-xs md:text-sm font-black text-slate-900 group-hover:text-blue-700 uppercase tracking-widest">{title}</span>
-        </div>
-        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider leading-tight">{subtitle}</span>
+        <span className="text-[9px] font-bold uppercase">{subtitle}</span>
       </div>
     </Link>
   );
@@ -64,15 +63,15 @@ const StatusCard = ({ title, subtitle, href, icon, accentColor, bgImage }: Statu
           <Icon icon={icon} className="w-8 h-8 text-white" />
         </div>
         <div className="mt-8">
-          <h3 className="text-xl font-black text-slate-900 group-hover:text-blue-700 transition-colors leading-tight">{title}</h3>
-          <p className="text-[11px] font-bold text-slate-400 uppercase tracking-[0.2em] mt-2 flex items-center gap-2">
-            <span className="w-4 h-[2px] bg-slate-200 group-hover:w-8 group-hover:bg-blue-500 transition-all duration-500" />
+          <h3 className="text-xl font-bold group-hover:text-blue-700 transition-colors">{title}</h3>
+          <p className="text-[11px] font-bold uppercase mt-2 flex items-center gap-2">
+            <span className="w-4 h-[2px] group-hover:w-8 group-hover:bg-blue-500 transition-all duration-500" />
             {subtitle}
           </p>
         </div>
       </div>
       <div className="relative z-10 flex items-center gap-2 text-blue-600 opacity-0 group-hover:opacity-100 transition-all duration-500 transform translate-y-4 group-hover:translate-y-0">
-        <span className="text-[10px] font-black uppercase tracking-tighter">Enter Module</span>
+        <span className="text-[10px] font-bold uppercase">Enter Module</span>
         <Icon icon="hugeicons:arrow-right-02" className="w-4 h-4" />
       </div>
     </Link>
@@ -162,14 +161,14 @@ const NoticesPanel = () => {
               <Icon icon="hugeicons:notification-02" className="w-5 h-5 text-white" />
             </div>
             <div>
-              <h2 className="text-sm font-black text-slate-900 uppercase tracking-widest leading-none">Notices</h2>
-              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mt-0.5">Official Board</p>
+              <h2 className="text-sm font-bold uppercase leading-none">Notices</h2>
+              <p className="text-[9px] font-bold uppercase mt-0.5">Official Board</p>
             </div>
           </div>
           {newCount > 0 && (
             <div className="flex items-center gap-1.5 bg-red-50 border border-red-100 px-2.5 py-1 rounded-full">
               <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
-              <span className="text-[10px] font-black text-red-500 uppercase tracking-wider">{newCount} New</span>
+              <span className="text-[10px] font-bold text-red-500 uppercase">{newCount} New</span>
             </div>
           )}
         </div>
@@ -195,15 +194,15 @@ const NoticesPanel = () => {
             {/* Content */}
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap mb-1">
-                <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full ${notice.tagColor}`}>
+                <span className={`text-[9px] font-bold uppercase px-2 py-0.5 rounded-full ${notice.tagColor}`}>
                   {notice.tag}
                 </span>
-                <span className="text-[9px] text-slate-300 font-bold uppercase tracking-wider">{notice.timestamp}</span>
+                <span className="text-[9px] font-bold uppercase">{notice.timestamp}</span>
               </div>
-              <p className="text-xs font-black text-slate-800 leading-snug group-hover:text-blue-700 transition-colors">
+              <p className="text-xs font-bold group-hover:text-blue-700 transition-colors">
                 {notice.title}
               </p>
-              <p className="text-[10px] text-slate-400 font-medium leading-relaxed mt-1 line-clamp-2">
+              <p className="text-[10px] font-medium leading-relaxed mt-1 line-clamp-2">
                 {notice.body}
               </p>
             </div>
@@ -217,7 +216,7 @@ const NoticesPanel = () => {
           href="/notices"
           className="group flex items-center justify-center gap-2 w-full py-2.5 rounded-xl bg-slate-50 hover:bg-blue-50 border border-slate-100 hover:border-blue-200 transition-all duration-300"
         >
-          <span className="text-[10px] font-black uppercase tracking-widest text-slate-500 group-hover:text-blue-600 transition-colors">
+          <span className="text-[10px] font-bold uppercase group-hover:text-blue-600 transition-colors">
             View All Notices
           </span>
           <Icon icon="hugeicons:arrow-right-02" className="w-3.5 h-3.5 text-slate-400 group-hover:text-blue-500 transition-colors" />
@@ -229,33 +228,33 @@ const NoticesPanel = () => {
 
 const MainDashboard = () => {
   const nodes = [
-    { title: "ATW", subtitle: "Academic Wing", href: "/atw", icon: "hugeicons:book-open-01", accentColor: "from-blue-600 to-indigo-700", angle: 270 },
-    { title: "CTW", subtitle: "Central Training", href: "/ctw", icon: "hugeicons:flag-01", accentColor: "from-emerald-600 to-teal-800", angle: 0 },
-    { title: "FTW", subtitle: "Flying Training", href: "/ftw", icon: "hugeicons:airplane-01", accentColor: "from-orange-500 to-red-700", angle: 90 },
-    { title: "CPTC", subtitle: "Physical Excellence", href: "/cptc", icon: "hugeicons:chart-bar-line", accentColor: "from-slate-700 to-slate-950", angle: 180 },
+    { title: "ATW", subtitle: "Academic Training Wing", href: "/atw", icon: "hugeicons:book-open-01", accentColor: "from-blue-600 to-indigo-700", angle: 270 },
+    { title: "CTW", subtitle: "Cadet's Training Wing", href: "/ctw", icon: "hugeicons:flag-01", accentColor: "from-emerald-600 to-teal-800", angle: 0 },
+    { title: "FTW", subtitle: "Flying Training Wing", href: "/ftw", icon: "hugeicons:airplane-01", accentColor: "from-orange-500 to-red-700", angle: 90 },
+    { title: "CPTC", subtitle: "Central Progress Training Center", href: "/cptc", icon: "hugeicons:chart-bar-line", accentColor: "from-slate-700 to-slate-950", angle: 180 },
   ];
 
   const statusCards: StatusCardProps[] = [
     {
       title: "User Management",
-      subtitle: "Accounts & Cadets",
-      href: "/admin/users",
+      subtitle: "Accounts & Users",
+      href: "/users",
       icon: "hugeicons:user-multiple-02",
       accentColor: "from-blue-600 to-indigo-700",
       bgImage: "corner-1.png",
     },
     {
-      title: "Settings Management",
-      subtitle: "System Configuration",
-      href: "/admin/settings",
+      title: "Role's Management",
+      subtitle: "Role Configuration",
+      href: "/settings/roles",
       icon: "hugeicons:settings-01",
       accentColor: "from-violet-600 to-purple-800",
       bgImage: "corner-2.png",
     },
     {
-      title: "Setup Management",
-      subtitle: "Initial Deployment",
-      href: "/admin/setup",
+      title: "Course Management",
+      subtitle: "Course Setup",
+      href: "/setup/courses",
       icon: "hugeicons:package-01",
       accentColor: "from-emerald-600 to-teal-800",
       bgImage: "corner-1.png",
@@ -290,12 +289,15 @@ const MainDashboard = () => {
           {/* Center Hub */}
           <div className="relative z-30 w-72 h-72 rounded-full bg-white border-2 border-slate-900 shadow-[0_0_80px_rgba(0,0,0,0.15)] flex items-center justify-center group hover:scale-105 transition-transform duration-500 overflow-hidden">
             <div className="absolute inset-0 opacity-100">
-              <Image src="/images/bg/corner-1.png" alt="" fill className="object-cover object-right-top" priority />
+              <Image src="/images/bg/corner-2.png" alt="" fill className="object-cover object-right-top" priority />
             </div>
             <div className="relative z-10 flex flex-col items-center">
               <div className="px-6 py-4 flex flex-col items-center">
-                <h1 className="text-3xl font-black text-slate-900 tracking-tighter leading-none">BAFA</h1>
-                <div className="h-2 w-16 bg-blue-600 rounded-full mt-2" />
+              <div className="flex justify-center"><FullLogo /></div>
+                <h1 className="text-xl font-bold">BAFA</h1>
+                <p className="font-bold uppercase text-center leading-tight">
+                  Bangladesh Air Force Academy
+                </p>
               </div>
             </div>
           </div>

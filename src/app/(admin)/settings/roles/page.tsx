@@ -13,8 +13,6 @@ import DataTable, { Column } from "@/components/ui/DataTable";
 import ConfirmationModal from "@/components/ui/modal/ConfirmationModal";
 import Pagination from "@/components/ui/Pagination";
 import RolePermissionModal from "@/components/roles/RolePermissionModal";
-import Select from "@/components/form/Select";
-import Label from "@/components/form/Label";
 
 export default function RolesPage() {
     const router = useRouter();
@@ -282,7 +280,7 @@ export default function RolesPage() {
                 key: "id",
                 header: "SL.",
                 className: "text-center text-gray-900",
-                render: (role, index) => (pagination.from || 0) + (index + 1),
+                render: (role, index) => (pagination.from || 0) + (index),
             },
             {
                 key: "name",

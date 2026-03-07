@@ -22,6 +22,9 @@ export interface RoleCreateData {
   wing_id?: number | null;
   subwing_id?: number | null;
   is_active: boolean;
+  is_role_switch?: boolean;
+  is_manage?: boolean;
+  is_marge_role?: boolean;
 }
 
 export interface RolePaginatedResponse {
