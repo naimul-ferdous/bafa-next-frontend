@@ -147,13 +147,6 @@ function InstructorsPageContent() {
     }
   }, [currentPage, perPage, searchTerm, filterCourseId, filterSemesterId, filterProgramId, filterBranchId, filterGroupId]);
 
-  useEffect(() => { loadInstructors(); }, [loadInstructors]);
-  useEffect(() => {
-    const handleInstructorUpdate = () => loadInstructors();
-    window.addEventListener('instructorUpdated', handleInstructorUpdate);
-    return () => window.removeEventListener('instructorUpdated', handleInstructorUpdate);
-  }, [loadInstructors]);
-
   const loadAssignMap = useCallback(async () => {
     try {
       const data = await atwUserAssignService.getAll();
@@ -173,6 +166,16 @@ function InstructorsPageContent() {
       console.error("Failed to load instructor assign map:", error);
     }
   }, []);
+
+  useEffect(() => { loadInstructors(); }, [loadInstructors]);
+  useEffect(() => {
+    const handleInstructorUpdate = () => {
+      loadInstructors();
+      loadAssignMap();
+    };
+    window.addEventListener('instructorUpdated', handleInstructorUpdate);
+    return () => window.removeEventListener('instructorUpdated', handleInstructorUpdate);
+  }, [loadInstructors, loadAssignMap]);
 
   useEffect(() => { loadAssignMap(); }, [loadAssignMap]);
 
@@ -784,7 +787,7 @@ function InstructorsPageContent() {
       />
 
       <ConfirmationModal isOpen={approveModalOpen} onClose={() => { setApproveModalOpen(false); setApprovingAssignment(null); }} onConfirm={confirmApprove} title="Approve Wing Assignment" message={`Are you sure you want to approve wing assignment for ${approvingAssignment?.instructor?.user?.name || 'this instructor'}?`} confirmText="Approve" cancelText="Cancel" loading={approveLoading} variant="success" />
-      <InstructorAssignRoleModal isOpen={assignRoleModalOpen} onClose={() => { setAssignRoleModalOpen(false); setAssigningRoleInstructor(null); }} instructor={assigningRoleInstructor} onSuccess={() => loadInstructors()} />
+      <InstructorAssignRoleModal isOpen={assignRoleModalOpen} onClose={() => { setAssignRoleModalOpen(false); setAssigningRoleInstructor(null); }} instructor={assigningRoleInstructor} onSuccess={() => { loadInstructors(); loadAssignMap(); }} />
       <InstructorAssignWingModal isOpen={assignWingModalOpen} onClose={() => { setAssignWingModalOpen(false); setAssigningInstructor(null); }} instructor={assigningInstructor} onSuccess={() => loadInstructors()} />
       <InstructorAssignSubjectModal isOpen={assignSubjectModalOpen} onClose={() => { setAssignSubjectModalOpen(false); setAssigningSubjectInstructor(null); }} instructor={assigningSubjectInstructor} onSuccess={() => loadInstructors()} />
       <InstructorAssignModuleModal isOpen={assignModuleModalOpen} onClose={() => { setAssignModuleModalOpen(false); setAssigningModuleInstructor(null); }} instructor={assigningModuleInstructor} onSuccess={() => loadInstructors()} />

@@ -4,8 +4,16 @@ import React, { useState, useEffect, use, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@iconify/react";
 import { cptcService } from "@/libs/services/cptcService";
+import { cadetService } from "@/libs/services/cadetService";
+import { semesterService } from "@/libs/services/semesterService";
+import { CadetProfile } from "@/libs/types/user";
+import { SystemSemester } from "@/libs/types/system";
+import CadetPromotionModal from "@/components/cadets/CadetPromotionModal";
 import FullLogo from "@/components/ui/fulllogo";
 import { getOrdinal } from "@/libs/utils/formatter";
+import { Modal } from "@/components/ui/modal";
+import Input from "@/components/form/input/InputField";
+import Label from "@/components/form/Label";
 
 // ─── Sub-Components ────────────────────────────────────────────────────────
 
@@ -18,6 +26,17 @@ const OverallMasterConsolidatedTable = ({ data, atwData, ctwData, ftwData, olqDa
 }) => {
     const router = useRouter();
     const [filter, setFilter] = useState<"gdp" | "others">("gdp");
+
+    // Promote state
+    const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+    const [promotionModalOpen, setPromotionModalOpen] = useState(false);
+    const [promotingCadet, setPromotingCadet] = useState<CadetProfile | null>(null);
+    const [promoteFetching, setPromoteFetching] = useState(false);
+    const [bulkModalOpen, setBulkModalOpen] = useState(false);
+    const [bulkSemesters, setBulkSemesters] = useState<SystemSemester[]>([]);
+    const [bulkForm, setBulkForm] = useState({ next_semester_id: "", start_date: new Date().toISOString().split("T")[0], description: "" });
+    const [bulkLoading, setBulkLoading] = useState(false);
+    const [bulkError, setBulkError] = useState("");
 
     const semesters = useMemo(() => data?.semesters || [], [data]);
 
@@ -115,10 +134,87 @@ const OverallMasterConsolidatedTable = ({ data, atwData, ctwData, ftwData, olqDa
         router.push(path);
     };
 
+    const toggleSelect = (id: number) => {
+        setSelectedIds(prev => {
+            const next = new Set(prev);
+            if (next.has(id)) next.delete(id); else next.add(id);
+            return next;
+        });
+    };
+
+    const toggleSelectAll = () => {
+        if (selectedIds.size === filteredCadets.length) {
+            setSelectedIds(new Set());
+        } else {
+            setSelectedIds(new Set(filteredCadets.map((c: any) => c.id)));
+        }
+    };
+
+    const handlePromoteSingle = async (cadetId: number) => {
+        try {
+            setPromoteFetching(true);
+            const cadet = await cadetService.getCadet(cadetId);
+            setPromotingCadet(cadet);
+            setPromotionModalOpen(true);
+        } catch (err) {
+            console.error("Failed to fetch cadet:", err);
+        } finally {
+            setPromoteFetching(false);
+        }
+    };
+
+    const openBulkPromote = async () => {
+        setBulkError("");
+        setBulkForm({ next_semester_id: "", start_date: new Date().toISOString().split("T")[0], description: "" });
+        try {
+            const res = await semesterService.getAllSemesters({ per_page: 100 });
+            setBulkSemesters(res.data);
+        } catch { setBulkSemesters([]); }
+        setBulkModalOpen(true);
+    };
+
+    const handleBulkPromote = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!bulkForm.next_semester_id) { setBulkError("Please select the next semester."); return; }
+        setBulkLoading(true);
+        setBulkError("");
+        try {
+            const result = await cadetService.bulkPromoteSemester({
+                cadet_ids: Array.from(selectedIds),
+                next_semester_id: Number(bulkForm.next_semester_id),
+                start_date: bulkForm.start_date,
+                description: bulkForm.description || undefined,
+            });
+            
+            if (result?.data?.failed_count > 0) {
+                setBulkError(`${result.data.failed_count} cadet(s) failed to promote.`);
+            } else {
+                setBulkModalOpen(false); 
+                setSelectedIds(new Set());
+            }
+        } catch (error: any) {
+            setBulkError(error.message || "Failed to bulk promote cadets");
+        } finally {
+            setBulkLoading(false);
+        }
+    };
+
+    const currentSemester = semesters.length > 0 ? semesters[semesters.length - 1] : null;
+
     return (
         <div className="mt-8 mb-12">
             <div className="flex justify-between items-end gap-4 border-b border-dashed border-gray-400 mb-4 pb-2">
                 <h2 className="text-lg font-bold text-gray-900 uppercase text-base">Master Overall Course Consolidated Performance</h2>
+                <div className="flex items-center gap-3 no-print">
+                    {selectedIds.size > 0 && (
+                        <button
+                            onClick={openBulkPromote}
+                            className="px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-bold flex items-center gap-1 hover:bg-purple-700 transition-colors shadow-sm"
+                        >
+                            <Icon icon="hugeicons:graduation-scroll" className="w-4 h-4" />
+                            Bulk Promote ({selectedIds.size})
+                        </button>
+                    )}
                 <div className="flex items-center gap-1 bg-gray-100 border border-gray-200 p-1 rounded-full text-xs no-print">
                     <button 
                         onClick={() => setFilter("gdp")} 
@@ -126,12 +222,13 @@ const OverallMasterConsolidatedTable = ({ data, atwData, ctwData, ftwData, olqDa
                     >
                         GDP
                     </button>
-                    <button 
-                        onClick={() => setFilter("others")} 
+                    <button
+                        onClick={() => setFilter("others")}
                         className={`px-4 py-1.5 rounded-full transition-all ${filter === "others" ? "bg-blue-500 text-white shadow-sm" : "text-gray-500 hover:text-gray-900"}`}
                     >
                         Others
                     </button>
+                </div>
                 </div>
             </div>
             
@@ -139,12 +236,16 @@ const OverallMasterConsolidatedTable = ({ data, atwData, ctwData, ftwData, olqDa
                 <table className="w-full border-collapse border border-black text-sm">
                     <thead>
                         <tr>
+                            <th className="border border-black px-1 py-2 text-center w-8 no-print" rowSpan={3}>
+                                <input type="checkbox" checked={filteredCadets.length > 0 && selectedIds.size === filteredCadets.length} onChange={toggleSelectAll} className="w-4 h-4 cursor-pointer" />
+                            </th>
                             <th className="border border-black px-1 py-2 text-center w-8 font-bold" rowSpan={3}>Ser</th>
                             <th className="border border-black px-1 py-2 text-center font-bold" colSpan={4}>Particulars of Offr Cdts</th>
                             <th className="border border-black px-1 py-2 text-center font-bold" colSpan={8}>Marks Obtained</th>
                             <th className="border border-black px-2 py-2 text-center" rowSpan={2}>Grand Total</th>
                             <th className="border border-black px-2 py-2 text-center" rowSpan={3}>%</th>
                             <th className="border border-black px-2 py-2 text-center" rowSpan={3}>Posn</th>
+                            <th className="border border-black px-2 py-2 text-center no-print" rowSpan={3}>Action</th>
                         </tr>
                         <tr>
                             <th rowSpan={2} className="border border-black px-2 py-1 text-center">BD/No</th>
@@ -177,7 +278,10 @@ const OverallMasterConsolidatedTable = ({ data, atwData, ctwData, ftwData, olqDa
                     </thead>
                     <tbody>
                         {filteredCadets.length > 0 ? filteredCadets.map((cadet: any, cIdx: number) => (
-                            <tr key={cadet.id} className="transition-colors hover:bg-gray-50">
+                            <tr key={cadet.id} className={`transition-colors hover:bg-gray-50 ${selectedIds.has(cadet.id) ? "bg-purple-50" : ""}`}>
+                                <td className="border border-black px-2 py-2 text-center no-print">
+                                    <input type="checkbox" checked={selectedIds.has(cadet.id)} onChange={() => toggleSelect(cadet.id)} className="w-4 h-4 cursor-pointer" />
+                                </td>
                                 <td className="border border-black px-2 py-2 text-center font-medium">{cIdx + 1}</td>
                                 <td className="border border-black px-2 py-2 text-center">{cadet.bd_no}</td>
                                 <td className="border border-black px-2 py-2 text-center">{cadet.rank}</td>
@@ -201,15 +305,121 @@ const OverallMasterConsolidatedTable = ({ data, atwData, ctwData, ftwData, olqDa
                                 <td className="border border-black px-2 py-2 text-center font-bold">{cadet.overallWeightedTotal.toFixed(4)}</td>
                                 <td className="border border-black px-2 py-2 text-center">{cadet.overallPercentage.toFixed(4)}</td>
                                 <td className="border border-black px-2 py-2 text-center">{cadet.position !== 0 ? getOrdinal(cadet.position) : '-'}</td>
+                                <td className="border border-black px-2 py-2 text-center no-print">
+                                    <button
+                                        onClick={() => handlePromoteSingle(cadet.id)}
+                                        disabled={promoteFetching}
+                                        className="px-2 py-1 bg-purple-600 text-white rounded text-xs font-bold hover:bg-purple-700 transition-colors flex items-center gap-1 mx-auto"
+                                        title="Promote"
+                                    >
+                                        <Icon icon="hugeicons:graduation-scroll" className="w-3.5 h-3.5" />
+                                        Promote
+                                    </button>
+                                </td>
                             </tr>
                         )) : (
                             <tr>
-                                <td colSpan={16} className="px-4 py-8 text-center text-gray-400 italic font-medium">No results found for {filter.toUpperCase()}</td>
+                                <td colSpan={18} className="px-4 py-8 text-center text-gray-400 italic font-medium">No results found for {filter.toUpperCase()}</td>
                             </tr>
                         )}
                     </tbody>
                 </table>
             </div>
+
+            {/* Single Promote Modal */}
+            <CadetPromotionModal
+                isOpen={promotionModalOpen}
+                onClose={() => { setPromotionModalOpen(false); setPromotingCadet(null); }}
+                cadet={promotingCadet}
+                onSuccess={() => { setPromotionModalOpen(false); setPromotingCadet(null); }}
+            />
+
+            {/* Bulk Promote Modal */}
+            <Modal isOpen={bulkModalOpen} onClose={() => setBulkModalOpen(false)} showCloseButton={true} className="max-w-xl p-0">
+                <form onSubmit={handleBulkPromote} className="p-8">
+                    <div className="flex flex-col items-center mb-6">
+                        <FullLogo />
+                        <h2 className="text-xl font-bold text-gray-900 mt-4">Bulk Promote Cadets</h2>
+                        <p className="text-sm text-gray-500">
+                            {selectedIds.size} cadet(s) selected
+                        </p>
+                    </div>
+
+                    {bulkError && (
+                        <div className="p-4 mb-4 bg-red-50 border border-red-200 rounded-lg text-red-600 text-sm">
+                            {bulkError}
+                        </div>
+                    )}
+
+                    <div className="space-y-4">
+                        <div>
+                            <Label>Current Semester</Label>
+                            <div className="px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-gray-700 font-medium">
+                                {currentSemester?.name || "Current Semester"}
+                            </div>
+                        </div>
+
+                        <div>
+                            <Label>Next Semester <span className="text-red-500">*</span></Label>
+                            <select
+                                value={bulkForm.next_semester_id}
+                                onChange={(e) => setBulkForm({ ...bulkForm, next_semester_id: e.target.value })}
+                                required
+                                className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            >
+                                <option value="">Select Next Semester...</option>
+                                {bulkSemesters
+                                    .filter(s => s.id !== currentSemester?.id)
+                                    .map((semester) => (
+                                    <option key={semester.id} value={semester.id}>
+                                        {semester.name}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+
+                        <div>
+                            <Label>Promotion Date <span className="text-red-500">*</span></Label>
+                            <Input
+                                type="date"
+                                value={bulkForm.start_date}
+                                onChange={(e) => setBulkForm({ ...bulkForm, start_date: e.target.value })}
+                                required
+                            />
+                        </div>
+
+                        <div>
+                            <Label>Remarks</Label>
+                            <textarea
+                                value={bulkForm.description}
+                                onChange={(e) => setBulkForm({ ...bulkForm, description: e.target.value })}
+                                rows={3}
+                                className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                placeholder="Add any remarks for this promotion..."
+                            />
+                        </div>
+                    </div>
+
+                    <div className="flex items-center justify-end gap-3 mt-8">
+                        <button
+                            type="button"
+                            onClick={() => setBulkModalOpen(false)}
+                            className="px-6 py-2 border border-gray-300 rounded-xl text-gray-700 hover:bg-gray-50"
+                            disabled={bulkLoading}
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            type="submit"
+                            className="px-6 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 flex items-center gap-2"
+                            disabled={bulkLoading}
+                        >
+                            {bulkLoading && <Icon icon="hugeicons:fan-01" className="animate-spin w-4 h-4" />}
+                            Promote All
+                        </button>
+                    </div>
+                </form>
+            </Modal>
         </div>
     );
 };
@@ -261,14 +471,19 @@ export default function CourseConsolidatedResultsPage({ params }: { params: Prom
                 if (semData.programs) {
                     Object.values(semData.programs).forEach((program: any) => {
                         if (program.branches) {
+                            let fallback = 0;
                             Object.values(program.branches).forEach((branch: any) => {
                                 const bName = (branch.branch_name || "").toLowerCase();
+                                const mark = parseFloat(branch.total_mark || 0);
                                 if (bName.includes("pilot") || bName.includes("gdp")) {
-                                    flyingTotal = parseFloat(branch.total_mark || 0);
-                                } else if (othersTotal === 0) {
-                                    othersTotal = parseFloat(branch.total_mark || 0);
+                                    flyingTotal = mark;
+                                } else if (!bName.includes("common") && othersTotal === 0) {
+                                    othersTotal = mark;
                                 }
+                                if (fallback === 0 && mark > 0) fallback = mark;
                             });
+                            if (flyingTotal === 0) flyingTotal = fallback;
+                            if (othersTotal === 0) othersTotal = fallback;
                         }
                     });
                 }

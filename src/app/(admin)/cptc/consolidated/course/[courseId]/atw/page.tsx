@@ -9,7 +9,8 @@ import { getOrdinal } from "@/libs/utils/formatter";
 
 // ─── Sub-Components ────────────────────────────────────────────────────────
 
-const OverallCourseConsolidatedTable = ({ data }: { data: any | null }) => {
+const OverallCourseConsolidatedTable = ({ data, courseId }: { data: any | null, courseId: number }) => {
+    const router = useRouter();
     const [filter, setFilter] = useState<"gdp" | "others">("gdp");
 
     const semesters = useMemo(() => data?.course_details?.semesters || [], [data]);
@@ -22,32 +23,32 @@ const OverallCourseConsolidatedTable = ({ data }: { data: any | null }) => {
         Object.entries(data.subjects).forEach(([semIdStr, semData]: [string, any]) => {
             const semId = parseInt(semIdStr);
             let targetTotal = 0;
+            let fallbackTotal = 0;
 
-            // Iterate through programs and branches to find the matching total based on filter
             if (semData.programs) {
                 Object.values(semData.programs).forEach((program: any) => {
                     if (program.branches) {
                         Object.values(program.branches).forEach((branch: any) => {
                             const bName = (branch.branch_name || "").toLowerCase();
                             const isGdp = bName.includes("pilot") || bName.includes("gdp");
+                            const mark = parseFloat(branch.total_mark || 0);
 
-                            // If filter is GDP, look for GDP branch total
                             if (filter === "gdp" && isGdp) {
-                                targetTotal = parseFloat(branch.total_mark || 0);
+                                targetTotal = mark;
+                            } else if (filter === "others" && !isGdp && !bName.includes("common")) {
+                                if (targetTotal === 0) targetTotal = mark;
                             }
-                            // If filter is Others, look for non-GDP branch total (taking the first one found)
-                            else if (filter === "others" && !isGdp) {
-                                // If we haven't set a total yet, or if we want to ensure we capture *some* valid total for others
-                                // Assuming "Others" generally share the same total, or we pick the first one.
-                                if (targetTotal === 0) { 
-                                    targetTotal = parseFloat(branch.total_mark || 0);
-                                }
+
+                            // Fallback: use any branch total if no specific match found
+                            if (fallbackTotal === 0 && mark > 0) {
+                                fallbackTotal = mark;
                             }
                         });
                     }
                 });
             }
-            map.set(semId, targetTotal);
+
+            map.set(semId, targetTotal > 0 ? targetTotal : fallbackTotal);
         });
         return map;
     }, [data, filter]);
@@ -149,8 +150,12 @@ const OverallCourseConsolidatedTable = ({ data }: { data: any | null }) => {
                             
                             {/* Semester Headers */}
                             {semesters.map((sem: any) => (
-                                <th key={sem.id} className="border border-black px-2 py-2 text-center">
-                                    {sem.name}
+                                <th 
+                                    key={sem.id} 
+                                    className="border border-black px-2 py-2 text-center cursor-pointer hover:bg-gray-100 transition-colors group"
+                                    onClick={() => router.push(`/cptc/consolidated/course/${courseId}/atw/semester/${sem.id}`)}
+                                >
+                                    <span className="group-hover:text-blue-600 group-hover:underline">{sem.name}</span>
                                 </th>
                             ))}
                         </tr>
@@ -221,12 +226,12 @@ export default function CptcAtwConsolidatedPage({ params }: { params: Promise<{ 
     }, [courseId]);
 
     const handlePrint = () => window.print();
-    const handleBack = () => router.push("/cptc/consolidated");
+    const handleBack = () => router.push("/cptc/consolidated/course/" + courseId);
     const handleExport = () => console.log("Export data");
 
     if (loading) return (
         <div className="bg-white p-6 rounded-lg border border-gray-200">
-            <div className="text-cente2 py-22">
+            <div className="text-center py-12">
                 <Icon icon="hugeicons:fan-01" className="w-10 h-10 animate-spin mx-auto my-10 text-blue-500" />
             </div>
         </div>
@@ -234,7 +239,7 @@ export default function CptcAtwConsolidatedPage({ params }: { params: Promise<{ 
 
     if (!data) return (
         <div className="bg-white p-6 rounded-lg border border-gray-200">
-            <div className="text-cente2 py-22">
+            <div className="text-center py-12">
                 <Icon icon="hugeicons:alert-circle" className="w-10 h-10 mx-auto mb-4 text-red-500" />
                 <h2 className="text-xl font-bold text-gray-900">Course Data Not Found</h2>
                 <button onClick={handleBack} className="mt-4 px-6 py-2 bg-blue-500 text-white rounded-xl hover:bg-blue-600 transition-all font-bold">
@@ -279,7 +284,7 @@ export default function CptcAtwConsolidatedPage({ params }: { params: Promise<{ 
                 </div>
 
                 {/* Overall Table */}
-                <OverallCourseConsolidatedTable data={data} />
+                <OverallCourseConsolidatedTable data={data} courseId={courseId} />
 
                 {/* System Information */}
                 <div className="mb-6">

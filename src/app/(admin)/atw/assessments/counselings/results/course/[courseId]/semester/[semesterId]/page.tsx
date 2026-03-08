@@ -455,11 +455,11 @@ export default function CounselingCourseSemesterResultPage({ params }: { params:
       header: "Program",
       render: (res) => res.program?.name || "—"
     },
-    {
-      key: "branch",
-      header: "Branch",
-      render: (res) => res.branch?.name || "—"
-    },
+    // {
+    //   key: "branch",
+    //   header: "Branch",
+    //   render: (res) => res.branch?.name || "—"
+    // },
     {
       key: "approval_status",
       header: "Status",

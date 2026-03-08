@@ -409,11 +409,22 @@ export default function OlqResultForm({ initialData, onSubmit, onCancel, loading
     if (!formData.atw_assessment_olq_type_id) { setError("Please select an OLQ type"); return; }
 
     try {
+      // Find a valid branch_id from the loaded cadets as a fallback.
+      // Backend now allows null branch_id.
+      let branchId: number | null = null;
+
+      if (cadetRows.length > 0) {
+        const firstCadetId = cadetRows[0].cadet_id;
+        const res = await cadetService.getCadet(firstCadetId);
+        branchId = res?.assigned_branchs?.find((ab: any) => ab.is_current)?.branch_id || 
+                   res?.assigned_branchs?.[0]?.branch_id || null;
+      }
+
       const submitData: AtwAssessmentOlqResultCreateData = {
         course_id: formData.course_id,
         semester_id: formData.semester_id,
         program_id: formData.program_id,
-        branch_id: 0,
+        branch_id: branchId || undefined,
         atw_assessment_olq_type_id: formData.atw_assessment_olq_type_id,
         remarks: formData.remarks || undefined,
         is_active: formData.is_active,

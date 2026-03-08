@@ -15,7 +15,7 @@ export default function CreateResultPage() {
     setLoading(true);
     try {
       await atwResultService.createResult(data);
-      router.push("/atw/results");
+      router.push("/atw/results/view");
     } catch (err: any) {
       throw err;
     } finally {

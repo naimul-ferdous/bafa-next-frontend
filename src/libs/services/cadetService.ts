@@ -184,6 +184,16 @@ export const cadetService = {
     }
   },
 
+  async bulkPromoteSemester(data: { cadet_ids: number[]; next_semester_id: number; start_date: string; description?: string }): Promise<any | null> {
+    try {
+      const token = getToken();
+      return await apiClient.post<any>(`/cadet-progression/bulk-promote-semester`, data, token);
+    } catch (error) {
+      console.error(`Failed to bulk promote cadets:`, error);
+      throw error;
+    }
+  },
+
   async failSemester(cadetId: number, data: { semester_assignment_id: number; description?: string }): Promise<CadetActionApiResponse | null> {
     try {
       const token = getToken();

@@ -16,7 +16,7 @@ interface AssignSubjectQueryParams {
   semester_id?: number;
   program_id?: number;
   subject_id?: number;
-  is_active?: boolean;
+  is_active?: boolean | number;
 }
 
 interface AssignSubjectPaginatedResponse {

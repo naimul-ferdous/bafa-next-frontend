@@ -46,7 +46,7 @@ export default function EditResultPage() {
     setLoading(true);
     try {
       await atwResultService.updateResult(parseInt(resultId), data);
-      router.push("/atw/results");
+      router.push("/atw/results/view");
     } catch (err: any) {
       throw err;
     } finally {

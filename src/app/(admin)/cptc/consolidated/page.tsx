@@ -130,7 +130,7 @@ function CptcConsolidatedContent() {
   };
 
   const columns: Column<SystemCourse>[] = [
-    { key: "id", header: "SL.", className: "text-center text-gray-900", render: (course, index) => (pagination.from || 0) + (index + 1) },
+    { key: "id", header: "SL.", className: "text-center text-gray-900", render: (course, index) => (pagination.from || 0) + (index) },
     { key: "name", header: "Course Name", className: "font-medium text-gray-900" },
     { key: "code", header: "Code", className: "text-gray-700 font-mono text-sm" },
     {

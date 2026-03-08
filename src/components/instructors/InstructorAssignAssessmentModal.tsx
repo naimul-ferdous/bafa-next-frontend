@@ -7,6 +7,7 @@ import { Modal } from "@/components/ui/modal";
 import { InstructorBiodata, User } from "@/libs/types/user";
 import type { SystemCourse } from "@/libs/types/system";
 import { atwUserAssignService } from "@/libs/services/atwUserAssignService";
+import { useAuth } from "@/libs/hooks/useAuth";
 import {
   AtwPenpictureAssign,
   AtwCounselingAssign,
@@ -65,8 +66,10 @@ export default function InstructorAssignAssessmentModal({ isOpen, onClose, onSuc
     }
   }, [isOpen]);
 
+  const { userIsSuperAdmin } = useAuth(); // Import useAuth from @/libs/hooks/useAuth
+
   // Load existing assigns when course selected
-  // Query by course_id only — if ANY user has an assessment for this course, disable it
+  // Query by course_id only — if ANY user has an assessment for this course, show it
   useEffect(() => {
     if (!selectedCourseId) return;
 
@@ -116,10 +119,31 @@ export default function InstructorAssignAssessmentModal({ isOpen, onClose, onSuc
       const ops: Promise<unknown>[] = [];
 
       (["penpicture", "counseling", "olq", "warning"] as AssessmentType[]).forEach((key) => {
-        if (checks[key] && !existing[key]) {
-          ops.push(atwUserAssignService.store(key, payload));
+        const isCurrentlyAssignedToThisUser = !!existing[key] && existing[key].user_id === userId;
+
+        if (checks[key]) {
+          if (!existing[key]) {
+            // No one assigned, create new
+            ops.push(atwUserAssignService.store(key, payload));
+          } else if (existing[key].user_id !== userId) {
+            // Someone else assigned, replace them (delete old, then store new)
+            ops.push(
+              atwUserAssignService.destroy(key, existing[key].id).then(() => 
+                atwUserAssignService.store(key, payload)
+              )
+            );
+          }
+          // If already assigned to this user, do nothing
+        } else {
+          // Unchecked
+          if (isCurrentlyAssignedToThisUser) {
+            // Remove my assignment
+            ops.push(atwUserAssignService.destroy(key, existing[key]!.id));
+          } else if (existing[key] && userIsSuperAdmin) {
+            // Admin unchecking someone else's assignment to "free" the course
+            ops.push(atwUserAssignService.destroy(key, existing[key]!.id));
+          }
         }
-        // existing assigns are disabled — cannot be unchecked, so no destroy needed
       });
 
       await Promise.all(ops);
@@ -191,8 +215,8 @@ export default function InstructorAssignAssessmentModal({ isOpen, onClose, onSuc
             <div className="grid grid-cols-2 gap-2">
               {ASSESSMENTS.map(({ key, label, color }) => {
                 const isExisting = !!existing[key];
-                const isDisabled = !selectedCourseId || isExisting;
                 const assignedToCurrentUser = isExisting && existing[key]?.user_id === userId;
+                const isDisabled = !selectedCourseId || (isExisting && !assignedToCurrentUser && !userIsSuperAdmin);
                 const assignedUserName = isExisting && !assignedToCurrentUser
                   ? existing[key]?.user?.name
                   : null;
@@ -217,7 +241,10 @@ export default function InstructorAssignAssessmentModal({ isOpen, onClose, onSuc
                       />
                       <span className="text-sm font-medium flex-1">{label}</span>
                       {isExisting && (
-                        <Icon icon="hugeicons:checkmark-circle-02" className="w-3.5 h-3.5 opacity-60" />
+                        <Icon
+                          icon="hugeicons:checkmark-circle-02"
+                          className="w-3.5 h-3.5 opacity-60"
+                        />
                       )}
                     </div>
                     {assignedUserName && (

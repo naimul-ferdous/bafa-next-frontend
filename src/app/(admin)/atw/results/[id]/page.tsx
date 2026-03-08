@@ -111,6 +111,20 @@ export default function ResultDetailsPage() {
     ) ?? null;
   })();
 
+  const getNextAuthority = useCallback(() => {
+    const authorities = [...(result?.approval_authorities ?? [])]
+      .filter(a => a.is_active)
+      .sort((a, b) => (a.sort ?? 0) - (b.sort ?? 0));
+    
+    if (!myAuthority) {
+      // If user is instructor (initial), return the first non-initial authority
+      return authorities.find(a => !a.is_initial_cadet_approve) || null;
+    }
+    
+    // Find authorities with sort strictly greater than mine
+    return authorities.find(a => (a.sort ?? 0) > (myAuthority.sort ?? 0)) || null;
+  }, [result?.approval_authorities, myAuthority]);
+
   const allCadetsApproved = (() => {
     const cadets = result?.result_getting_cadets ?? [];
     if (cadets.length === 0) return false;
@@ -124,9 +138,21 @@ export default function ResultDetailsPage() {
     });
   })();
 
-  // For initial approvers (instructors): determine forwarding from THIS result's cadet records
-  // so that instructor 2 is not blocked by instructor 1's forward action on the shared subject_approval.
-  // For higher-level approvers: use the shared subject_approval.forwarded_by as before.
+  // Track if ALREADY forwarded to the NEXT authority in the chain
+  const isForwardedToNext = (() => {
+    const nextAuth = getNextAuthority();
+    if (!nextAuth) return false;
+    
+    const cadets = result?.result_getting_cadets ?? [];
+    if (cadets.length === 0) return false;
+    
+    // Check if ANY cadet has an approval record for the next authority
+    return (result?.cadet_approvals ?? []).some(
+      (a: any) => a.authority_id === nextAuth.id
+    );
+  })();
+
+  // For UI: isForwarded means "has the process moved past the initial step"
   const isForwarded = (() => {
     if (!canInitialForward) return !!(result?.subject_approval?.forwarded_by);
     const nonInitialAuthorityIds = new Set(
@@ -140,9 +166,10 @@ export default function ResultDetailsPage() {
       )
     );
   })();
+
   // Non-initial approver: all cadets approved by their authority_id
   const allCadetsApprovedByMe = (() => {
-    if (!myAuthority || canInitialForward) return false;
+    if (!myAuthority) return false;
     const cadets = result?.result_getting_cadets ?? [];
     if (cadets.length === 0) return false;
     return cadets.every((c) => {
@@ -155,17 +182,17 @@ export default function ResultDetailsPage() {
 
   // For non-initial approvers (e.g. ATW Admin): subject is only "approved" when
   // approved_by is set AND they have personally approved all their cadets.
-  // This prevents a stale or cross-instructor approved_by from showing the badge
-  // when this authority's cadets are still pending.
-  const isSubjectApproved = !!((result as any)?.subject_approval?.approved_by) &&
-    (canInitialForward || allCadetsApprovedByMe);
+  const isSubjectApproved = !!((result as any)?.subject_approval?.approved_by);
 
   // Initial approver (is_initial_cadet_approve) can act BEFORE forwarding.
-  // Non-initial cadet approver (is_cadet_approve only) can act ONLY AFTER forwarding.
-  const canApproveAction = canApprove && (canInitialForward ? !isForwarded : isForwarded) && !isSubjectApproved;
+  // Non-initial cadet approver (is_cadet_approve only) can act ONLY AFTER being forwarded to.
+  const canApproveAction = canApprove && (canInitialForward ? !isForwarded : (allCadetsApprovedByMe || !isForwardedToNext)) && !isSubjectApproved;
 
-  // Non-initial approver can approve the subject when all their cadets are done and subject not yet approved
-  const canApproveSubject = canApprove && !canInitialForward && isForwarded && allCadetsApprovedByMe && !isSubjectApproved;
+  // Show "Approve Subject" button logic for all authorities (Intermediate and Final)
+  const canApproveSubject = canApprove && allCadetsApprovedByMe && !isForwardedToNext && !isSubjectApproved;
+
+  // Show "Forward" button ONLY for the initial step (Instructor)
+  const showForwardButton = canInitialForward && !isForwarded && allCadetsApproved;
 
   // Authorities visible to this user: their own step + all steps below (sort <=)
   const visibleAuthorities = myAuthority
@@ -180,6 +207,9 @@ export default function ResultDetailsPage() {
   // other approvers look at their own authority_id records
   const pendingCadetIds = result?.result_getting_cadets
     ?.filter((c) => {
+      // ONLY show pending/approve buttons if this authority is ALLOWED to approve cadets
+      if (!myAuthority?.is_initial_cadet_approve && !myAuthority?.is_cadet_approve) return false;
+
       const authorityId = (myAuthority as any)?.id;
       const approval = myAuthority
         ? (result.cadet_approvals?.find((a) => a.cadet_id === c.cadet_id && a.authority_id === authorityId) ??
@@ -211,21 +241,23 @@ export default function ResultDetailsPage() {
     if (!result) return;
     setForwardModal((prev) => ({ ...prev, loading: true, error: "" }));
     try {
-      // Forward to only the NEXT authority in the sort chain, not all non-initial authorities
-      const nextAuthority = [...(result.approval_authorities ?? [])]
-        .filter((a: any) => !a.is_initial_cadet_approve && a.is_active)
-        .sort((a: any, b: any) => (a.sort ?? 0) - (b.sort ?? 0))[0];
+      // Correctly identify the NEXT authority relative to the current user's step
+      const nextAuthority = getNextAuthority();
+
+      if (!nextAuthority) {
+        throw new Error("No next authority found in the chain.");
+      }
 
       await atwApprovalService.approveSubject({
         course_id: result.course_id,
         semester_id: result.semester_id,
         program_id: result.program_id,
-        branch_id: result.branch_id,
+
         subject_id: result.atw_subject_id,
         instructor_id: result.instructor_id,
         status: "pending",
         cadet_ids: result.result_getting_cadets?.map((c) => c.cadet_id) ?? [],
-        authority_ids: nextAuthority ? [nextAuthority.id] : [],
+        authority_ids: [nextAuthority.id],
       });
       setForwardModal({ open: false, loading: false, error: "" });
       await loadData();
@@ -247,7 +279,7 @@ export default function ResultDetailsPage() {
         course_id: result.course_id,
         semester_id: result.semester_id,
         program_id: result.program_id,
-        branch_id: result.branch_id,
+
         subject_id: result.atw_subject_id,
         instructor_id: result.instructor_id,
         status: subjectApprovalModal.status,
@@ -273,7 +305,7 @@ export default function ResultDetailsPage() {
         course_id: result.course_id,
         semester_id: result.semester_id,
         program_id: result.program_id,
-        branch_id: result.branch_id,
+
         subject_id: result.atw_subject_id,
         cadet_ids: approvalModal.cadetIds,
         authority_id: (myAuthority as any)?.id ?? null,
@@ -375,6 +407,7 @@ export default function ResultDetailsPage() {
   const subjectModule = getSubjectModule();
   const totalMaxMarks = subjectModule?.subjects_full_mark || 100;
 
+
   // Only show the weighted "Total Marks" column if at least one mark has estimate_mark !== percentage
   const hasWeightedLogic = Object.values(markGroups).some(marks =>
     marks.some(m => parseFloat(String(m.estimate_mark || 0)) !== parseFloat(String(m.percentage || 0)))
@@ -475,27 +508,20 @@ export default function ResultDetailsPage() {
               Approve Selected ({selectedCadetIds.length})
             </button>
           )}
-          {canInitialForward && (
-            isForwarded ? (
-              <span className="px-4 py-2 rounded-lg flex items-center gap-2 text-sm font-medium bg-green-50 text-green-700 border border-green-200">
-                <Icon icon="hugeicons:checkmark-circle-02" className="w-4 h-4" />
-                Already Forwarded
-              </span>
-            ) : (
-              <button
-                onClick={() => setForwardModal({ open: true, loading: false, error: "" })}
-                disabled={!allCadetsApproved}
-                title={allCadetsApproved ? "Forward to higher authority" : "All cadets must be approved first"}
-                className={`px-4 py-2 rounded-lg flex items-center gap-2 text-sm font-medium transition-colors ${
-                  allCadetsApproved
-                    ? "bg-indigo-600 text-white hover:bg-indigo-700"
-                    : "bg-gray-100 text-gray-400 cursor-not-allowed"
-                }`}
-              >
-                <Icon icon="hugeicons:share-04" className="w-4 h-4" />
-                Forward
-              </button>
-            )
+          {showForwardButton && (
+            <button
+              onClick={() => setForwardModal({ open: true, loading: false, error: "" })}
+              className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 flex items-center gap-2 text-sm font-medium"
+            >
+              <Icon icon="hugeicons:share-04" className="w-4 h-4" />
+              Forward {getNextAuthority() ? `to ${getNextAuthority()?.role?.name || getNextAuthority()?.user?.name || "Next"}` : ""}
+            </button>
+          )}
+          {canInitialForward && isForwarded && (
+            <span className="px-4 py-2 rounded-lg flex items-center gap-2 text-sm font-medium bg-green-50 text-green-700 border border-green-200">
+              <Icon icon="hugeicons:checkmark-circle-02" className="w-4 h-4" />
+              Already Forwarded
+            </span>
           )}
           {isSubjectApproved && !canInitialForward && canApprove && (
             <span className="px-4 py-2 rounded-lg flex items-center gap-2 text-sm font-medium bg-green-50 text-green-700 border border-green-200">
@@ -946,7 +972,12 @@ export default function ResultDetailsPage() {
                 </tr>
                 <tr className="border-b border-gray-100 bg-gray-50">
                   <td className="px-3 py-2 text-gray-500 font-medium">Branch</td>
-                  <td className="px-3 py-2 text-gray-900">{result?.branch?.name || "—"}</td>
+                  <td className="px-3 py-2 text-gray-900">{(() => {
+                    const cadets = result?.result_getting_cadets;
+                    if (!cadets || cadets.length === 0) return "—";
+                    const cb = (cadets[0].cadet as any)?.assigned_branchs?.find((b: any) => b.is_current) || (cadets[0].cadet as any)?.assigned_branchs?.[0];
+                    return cb?.branch?.name || "—";
+                  })()}</td>
                 </tr>
                 <tr>
                   <td className="px-3 py-2 text-gray-500 font-medium">Total Cadets</td>
@@ -1085,9 +1116,14 @@ export default function ResultDetailsPage() {
         isOpen={approvalModal.open}
         onClose={() => setApprovalModal((prev) => ({ ...prev, open: false }))}
         showCloseButton
-        className="max-w-3xl"
+        className="max-w-3xl max-h-[90vh] overflow-y-auto scrollbar-thin"
       >
         <div className="p-6">
+          <div className="text-center mb-4">
+            <div className="flex justify-center mb-2"><FullLogo /></div>
+            <h1 className="text-lg font-bold text-gray-900 uppercase tracking-wider">Bangladesh Air Force Academy</h1>
+            <p className="text-sm font-medium text-gray-700 uppercase tracking-wider">Academic Training Wing</p>
+          </div>
           <h2 className="text-lg font-bold text-gray-900 mb-1">
             {approvalModal.cadetIds.length === 1 ? "Cadet Approval" : `Bulk Approval (${approvalModal.cadetIds.length} cadets)`}
           </h2>

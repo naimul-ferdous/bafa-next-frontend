@@ -455,13 +455,13 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
           </select>
         </div>
 
-        <div>
+        {/* <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Select Branch</label>
           <select value={formData.branch_id} onChange={(e) => handleChange("branch_id", parseInt(e.target.value))} className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 focus:outline-none">
             <option value={0}>Select Branch</option>
             {branches.map(branch => (<option key={branch.id} value={branch.id}>{branch.name}</option>))}
           </select>
-        </div>
+        </div> */}
 
       </div>
 

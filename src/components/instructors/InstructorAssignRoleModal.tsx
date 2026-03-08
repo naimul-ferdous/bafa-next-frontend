@@ -47,10 +47,27 @@ interface ExistingAssigns {
 export default function InstructorAssignRoleModal({
   isOpen,
   onClose,
-  instructor,
+  instructor: initialInstructor,
   onSuccess,
 }: InstructorAssignRoleModalProps) {
   const { user: currentUser, userIsSuperAdmin } = useAuth();
+  const [localInstructor, setLocalInstructor] = useState<InstructorBiodata | null>(initialInstructor);
+  
+  useEffect(() => {
+    setLocalInstructor(initialInstructor);
+  }, [initialInstructor]);
+
+  const refreshInstructor = async () => {
+    if (!initialInstructor) return;
+    try {
+      const { instructorService } = await import("@/libs/services/instructorService");
+      const updated = await instructorService.getInstructor(initialInstructor.id);
+      setLocalInstructor(updated);
+    } catch (err) {
+      console.error("Failed to refresh instructor data:", err);
+    }
+  };
+
   const [roles, setRoles] = useState<Role[]>([]);
   const [wings, setWings] = useState<Wing[]>([]);
   const [subWings, setSubWings] = useState<SubWing[]>([]);
@@ -83,7 +100,7 @@ export default function InstructorAssignRoleModal({
   });
   const [loadingAssigns, setLoadingAssigns] = useState(false);
 
-  const user = instructor?.user;
+  const user = localInstructor?.user;
 
   // Check if user already has instructor role
   const userHasInstructorRole = useMemo(() => {
@@ -265,10 +282,10 @@ export default function InstructorAssignRoleModal({
 
   // Load initial data
   useEffect(() => {
-    if (isOpen && instructor) {
+    if (isOpen && initialInstructor) {
       loadInitialData();
     }
-  }, [isOpen, instructor]);
+  }, [isOpen, initialInstructor]);
 
   // Load subwings when wing changes
   useEffect(() => {
@@ -381,8 +398,30 @@ export default function InstructorAssignRoleModal({
         const ops: Promise<unknown>[] = [];
 
         (["penpicture", "counseling", "olq", "warning"] as AssessmentType[]).forEach((key) => {
-          if (checks[key] && !existing[key]) {
-            ops.push(atwUserAssignService.store(key, payload));
+          const isCurrentlyAssignedToThisUser = !!existing[key] && existing[key].user_id === user.id;
+          
+          if (checks[key]) {
+            if (!existing[key]) {
+              // No one assigned, create new
+              ops.push(atwUserAssignService.store(key, payload));
+            } else if (existing[key].user_id !== user.id) {
+              // Someone else assigned, replace them (delete old, then store new)
+              ops.push(
+                atwUserAssignService.destroy(key, existing[key].id).then(() => 
+                  atwUserAssignService.store(key, payload)
+                )
+              );
+            }
+            // If already assigned to this user, do nothing
+          } else {
+            // Unchecked
+            if (isCurrentlyAssignedToThisUser) {
+              // Remove my assignment
+              ops.push(atwUserAssignService.destroy(key, existing[key]!.id));
+            } else if (existing[key] && userIsSuperAdmin) {
+              // Admin unchecking someone else's assignment to "free" the course
+              ops.push(atwUserAssignService.destroy(key, existing[key]!.id));
+            }
           }
         });
 
@@ -400,6 +439,7 @@ export default function InstructorAssignRoleModal({
       setChecks({ penpicture: false, counseling: false, olq: false, warning: false });
 
       onSuccess?.();
+      await refreshInstructor();
     } catch (err: any) {
       setError(err.message || "Failed to assign role");
     } finally {
@@ -411,8 +451,43 @@ export default function InstructorAssignRoleModal({
     if (!user || !confirm("Are you sure you want to remove this role assignment?")) return;
 
     try {
+      // Find the assignment to check if it's a Course Tutor role
+      const assignments = user.role_assignments || (user as any).roleAssignments || [];
+      const assignment = assignments.find((a: any) => a.id === assignmentId);
+      const roleSlug = assignment?.role?.slug?.toLowerCase() || "";
+      const roleName = assignment?.role?.name?.toLowerCase() || "";
+      const isCourseTutorRole = 
+        roleSlug.includes("course-tutor") || 
+        roleName.includes("course tutor") || 
+        roleSlug.includes("ct") ||
+        roleSlug.includes("cic") ||
+        roleName.includes("cic");
+
       await userService.removeRole(user.id, assignmentId);
+
+      // If it was a Course Tutor role, cleanup their assessment assignments
+      if (isCourseTutorRole) {
+        try {
+          const userAssigns = await atwUserAssignService.getAll({ user_id: user.id });
+          const cleanupOps: Promise<any>[] = [];
+          
+          (["penpicture", "counseling", "olq", "warning"] as AssessmentType[]).forEach((type) => {
+            const typeAssigns = userAssigns[type] || [];
+            typeAssigns.forEach((a: any) => {
+              cleanupOps.push(atwUserAssignService.destroy(type, a.id));
+            });
+          });
+
+          if (cleanupOps.length > 0) {
+            await Promise.all(cleanupOps);
+          }
+        } catch (cleanupErr) {
+          console.error("Failed to cleanup assessment assignments:", cleanupErr);
+        }
+      }
+
       onSuccess?.();
+      await refreshInstructor();
     } catch (err) {
       console.error("Failed to remove role:", err);
       setError("Failed to remove assignment");
@@ -490,9 +565,9 @@ export default function InstructorAssignRoleModal({
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2">
               {ASSESSMENTS.map(({ key, label, color }) => {
                 const isExisting = !!existing[key];
-                const isDisabled = !selectedCourseId || isExisting;
                 const assignedToCurrentUser =
                   isExisting && existing[key]?.user_id === user?.id;
+                const isDisabled = !selectedCourseId || (isExisting && !assignedToCurrentUser && !userIsSuperAdmin);
                 const assignedUserName =
                   isExisting && !assignedToCurrentUser
                     ? existing[key]?.user?.name

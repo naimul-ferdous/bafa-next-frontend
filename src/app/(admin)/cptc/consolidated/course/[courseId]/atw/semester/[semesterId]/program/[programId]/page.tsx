@@ -1,15 +1,19 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useMemo } from "react";
-import { useParams, useRouter } from "next/navigation";
+import React, { useState, useEffect, useCallback, useMemo, use } from "react";
+import { useRouter } from "next/navigation";
 import { Icon } from "@iconify/react";
 import { atwResultService } from "@/libs/services/atwResultService";
-import { atwApprovalService } from "@/libs/services/atwApprovalService";
+import { cadetService } from "@/libs/services/cadetService";
+import { semesterService } from "@/libs/services/semesterService";
 import FullLogo from "@/components/ui/fulllogo";
 import type { FilePrintType } from "@/libs/types/filePrintType";
 import PrintTypeModal from "@/components/ui/modal/PrintTypeModal";
+import CadetPromotionModal from "@/components/cadets/CadetPromotionModal";
+import { SystemSemester } from "@/libs/types/system";
 import { Modal } from "@/components/ui/modal";
-import { useCan } from "@/context/PagePermissionsContext";
+import Input from "@/components/form/input/InputField";
+import Label from "@/components/form/Label";
 
 interface SubjectComponent {
     id: number;
@@ -34,7 +38,7 @@ interface Cadet {
     bd_no: string;
     rank: string | null;
     branch: string | null;
-    marks: Record<number, Record<number, number>>; // New scoped structure: [subjectId][markId]
+    marks: Record<number, Record<number, number>>; 
     result_ids: Record<number, number>;
     total_achieved: number;
     total_estimated: number;
@@ -43,80 +47,22 @@ interface Cadet {
     remarks: string;
 }
 
-interface CadetApproval {
-    cadet_id: number;
-    subject_id: number;
-    authority_id: number | null;
-    branch_id: number;
-    status: 'pending' | 'approved' | 'rejected';
-    rejected_reason?: string | null;
-}
-
-interface SubjectApproval {
-    subject_id: number;
-    branch_id: number;
-    status: 'pending' | 'approved' | 'rejected';
-    rejected_reason?: string | null;
-    forwarded_by?: number | null;
-    approved_by?: number | null;
-}
-
-interface ProgramApproval {
-    branch_id: number;
-    status: 'pending' | 'approved' | 'rejected';
-    rejected_reason?: string | null;
-    approved_by: number;
-    approved_at: string;
-    approver?: {
-        id: number;
-        name: string;
-        rank?: { id: number; name: string; short_name: string } | null;
-    } | null;
-}
-
-interface SemesterApproval {
-    status: 'pending' | 'approved' | 'rejected';
-    rejected_reason?: string | null;
-    approved_by: number;
-    approved_at: string;
-    approver?: {
-        id: number;
-        name: string;
-        rank?: { id: number; name: string; short_name: string } | null;
-    } | null;
-}
-
-interface ApprovalAuthority {
-    id: number;
-    role?: { id: number; name: string } | null;
-    user?: { id: number; name: string; rank?: { id: number; name: string; short_name: string } | null } | null;
-    is_initial_cadet_approve?: boolean;
-    is_final?: boolean;
-    sort?: number;
-}
-
 interface ApiResponseData {
     course_details: { id: number; name: string; code?: string } | null;
     semester_details: { id: number; name: string; code?: string } | null;
     program_details: { id: number; name: string } | null;
     subjects: Subject[];
     cadets: Cadet[];
-    atw_result_approval_authorities?: ApprovalAuthority[];
-    atw_result_mark_cadet_approvals?: CadetApproval[];
-    atw_result_subject_approvals?: SubjectApproval[];
-    atw_result_program_approvals?: ProgramApproval[];
-    atw_result_semester_approvals?: SemesterApproval[];
 }
 
 type ActiveTab = 'consolidated' | 'breakdown';
 
-export default function AtwCourseSemesterProgramResultsPage() {
-    const params = useParams();
+export default function CptcAtwCourseSemesterProgramResultsPage({ params }: { params: Promise<{ courseId: string; semesterId: string; programId: string }> }) {
+    const resolvedParams = use(params);
     const router = useRouter();
-    const can = useCan("/atw/results");
-    const courseId = params.courseId as string;
-    const semesterId = params.semesterId as string;
-    const programId = params.programId as string;
+    const courseId = resolvedParams.courseId;
+    const semesterId = resolvedParams.semesterId;
+    const programId = resolvedParams.programId;
 
     const [data, setData] = useState<ApiResponseData | null>(null);
     const [loading, setLoading] = useState(true);
@@ -127,11 +73,16 @@ export default function AtwCourseSemesterProgramResultsPage() {
     const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
     const [selectedPrintType, setSelectedPrintType] = useState<FilePrintType | null>(null);
 
-    const [programForwardModal, setProgramForwardModal] = useState<{
-        open: boolean;
-        loading: boolean;
-        error: string;
-    }>({ open: false, loading: false, error: '' });
+    // Promote State
+    const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+    const [promotionModalOpen, setPromotionModalOpen] = useState(false);
+    const [promotingCadet, setPromotingCadet] = useState<any | null>(null);
+    const [promoteFetching, setPromoteFetching] = useState(false);
+    const [bulkModalOpen, setBulkModalOpen] = useState(false);
+    const [bulkSemesters, setBulkSemesters] = useState<SystemSemester[]>([]);
+    const [bulkForm, setBulkForm] = useState({ next_semester_id: "", start_date: new Date().toISOString().split("T")[0], description: "" });
+    const [bulkLoading, setBulkLoading] = useState(false);
+    const [bulkError, setBulkError] = useState("");
 
     const loadResults = useCallback(async () => {
         if (!courseId || !semesterId || !programId) return;
@@ -159,28 +110,8 @@ export default function AtwCourseSemesterProgramResultsPage() {
         loadResults();
     }, [loadResults]);
 
-    const handleBack = () => history.back();
-    const handleViewResultDetails = (resultId: number) => router.push(`/atw/results/${resultId}`);
+    const handleBack = () => router.push(`/cptc/consolidated/course/${courseId}/atw/semester/${semesterId}`);
     const handlePrintClick = () => setIsPrintModalOpen(true);
-
-    const handleForwardProgram = async () => {
-        if (!data) return;
-        setProgramForwardModal(prev => ({ ...prev, loading: true, error: '' }));
-        try {
-            // Updated to not use branch_id as it is dropped from schema
-            await atwApprovalService.approveProgram({
-                course_id: parseInt(courseId),
-                semester_id: parseInt(semesterId),
-                program_id: parseInt(programId),
-                status: 'approved',
-            });
-            setProgramForwardModal({ open: false, loading: false, error: '' });
-            await loadResults();
-        } catch (err: any) {
-            const msg = err?.message || 'Failed to forward program.';
-            setProgramForwardModal(prev => ({ ...prev, loading: false, error: msg }));
-        }
-    };
 
     const confirmPrint = (type: FilePrintType) => {
         setSelectedPrintType(type);
@@ -270,28 +201,70 @@ export default function AtwCourseSemesterProgramResultsPage() {
             : <Icon icon="hugeicons:sorting-05" className="w-3 h-3 text-blue-600 ml-1 inline" />;
     };
 
-    // Subjects that have marks entered (any cadet has a result_id for this subject)
-    const enteredSubjectMappingIds = data
-        ? data.subjects
-            .filter(sub => data.cadets.some(c => c.result_ids[sub.mapping_id] !== undefined))
-            .map(sub => sub.mapping_id)
-        : [];
+    const toggleSelect = (id: number) => {
+        setSelectedIds(prev => {
+            const next = new Set(prev);
+            if (next.has(id)) next.delete(id); else next.add(id);
+            return next;
+        });
+    };
 
-    // Only subjects with approved_by set count as "forwarded" (approved by authority → forwarded to program level)
-    const approvedSubjectIds = new Set(
-        (data?.atw_result_subject_approvals ?? [])
-            .filter(sa => sa.approved_by)
-            .map(sa => sa.subject_id)
-    );
+    const toggleSelectAll = () => {
+        if (selectedIds.size === sortedCadets.length) {
+            setSelectedIds(new Set());
+        } else {
+            setSelectedIds(new Set(sortedCadets.map((c: any) => c.id)));
+        }
+    };
 
-    // Button enabled when all entered subjects are approved (approved_by set) AND program not yet approved
-    const allEnteredSubjectsForwarded =
-        enteredSubjectMappingIds.length > 0 &&
-        enteredSubjectMappingIds.every(id => approvedSubjectIds.has(id));
+    const handlePromoteSingle = async (cadetId: number) => {
+        try {
+            setPromoteFetching(true);
+            const cadet = await cadetService.getCadet(cadetId);
+            setPromotingCadet(cadet);
+            setPromotionModalOpen(true);
+        } catch (err) {
+            console.error("Failed to fetch cadet:", err);
+        } finally {
+            setPromoteFetching(false);
+        }
+    };
 
-    const programAlreadyApproved = (data?.atw_result_program_approvals ?? []).some(
-        pa => pa.status === 'approved'
-    );
+    const openBulkPromote = async () => {
+        setBulkError("");
+        setBulkForm({ next_semester_id: "", start_date: new Date().toISOString().split("T")[0], description: "" });
+        try {
+            const res = await semesterService.getAllSemesters({ per_page: 100 });
+            setBulkSemesters(res.data);
+        } catch { setBulkSemesters([]); }
+        setBulkModalOpen(true);
+    };
+
+    const handleBulkPromote = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!bulkForm.next_semester_id) { setBulkError("Please select the next semester."); return; }
+        setBulkLoading(true);
+        setBulkError("");
+        try {
+            const result = await cadetService.bulkPromoteSemester({
+                cadet_ids: Array.from(selectedIds),
+                next_semester_id: Number(bulkForm.next_semester_id),
+                start_date: bulkForm.start_date,
+                description: bulkForm.description || undefined,
+            });
+            
+            if (result?.data?.failed_count > 0) {
+                setBulkError(`${result.data.failed_count} cadet(s) failed to promote.`);
+            } else {
+                setBulkModalOpen(false); 
+                setSelectedIds(new Set());
+            }
+        } catch (error: any) {
+            setBulkError(error.message || "Failed to bulk promote cadets");
+        } finally {
+            setBulkLoading(false);
+        }
+    };
 
     if (loading) {
         return (
@@ -334,37 +307,16 @@ export default function AtwCourseSemesterProgramResultsPage() {
             <div className="p-4 flex items-center justify-between no-print">
                 <button onClick={handleBack} className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 flex items-center gap-2">
                     <Icon icon="hugeicons:arrow-left-01" className="w-4 h-4" />
-                    Back to List
+                    Back to Programs
                 </button>
                 <div className="flex items-center gap-3">
-                    {/* Forward Program button */}
-                    {programAlreadyApproved ? (
-                        <span className="px-4 py-2 rounded-lg flex items-center gap-2 text-sm font-medium bg-green-50 text-green-700 border border-green-200">
-                            <Icon icon="hugeicons:checkmark-circle-02" className="w-4 h-4" />
-                            Program Approved
-                        </span>
-                    ) : (
+                    {selectedIds.size > 0 && (
                         <button
-                            onClick={() => setProgramForwardModal({ open: true, loading: false, error: '' })}
-                            disabled={!allEnteredSubjectsForwarded}
-                            title={
-                                allEnteredSubjectsForwarded
-                                    ? 'Forward program for final approval'
-                                    : `${approvedSubjectIds.size}/${enteredSubjectMappingIds.length} subjects forwarded — forward all subjects first`
-                            }
-                            className={`px-4 py-2 rounded-lg flex items-center gap-2 text-sm font-medium transition-colors ${
-                                allEnteredSubjectsForwarded
-                                    ? 'bg-indigo-600 text-white hover:bg-indigo-700'
-                                    : 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                            }`}
+                            onClick={openBulkPromote}
+                            className="px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-bold flex items-center gap-1 hover:bg-purple-700 transition-colors shadow-sm"
                         >
-                            <Icon icon="hugeicons:share-04" className="w-4 h-4" />
-                            Forward Program
-                            {!allEnteredSubjectsForwarded && enteredSubjectMappingIds.length > 0 && (
-                                <span className="text-[10px] font-bold opacity-70">
-                                    ({approvedSubjectIds.size}/{enteredSubjectMappingIds.length})
-                                </span>
-                            )}
+                            <Icon icon="hugeicons:graduation-scroll" className="w-4 h-4" />
+                            Bulk Promote ({selectedIds.size})
                         </button>
                     )}
                     <button onClick={handlePrintClick} className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 flex items-center gap-2">
@@ -424,6 +376,9 @@ export default function AtwCourseSemesterProgramResultsPage() {
                             <table className="w-full border-collapse border border-black text-sm">
                                 <thead className="font-bold">
                                     <tr>
+                                        <th rowSpan={4} className="border border-black p-2 text-center align-middle w-10 no-print">
+                                            <input type="checkbox" checked={sortedCadets.length > 0 && selectedIds.size === sortedCadets.length} onChange={toggleSelectAll} className="w-4 h-4 cursor-pointer" />
+                                        </th>
                                         <th rowSpan={4} className="border border-black p-2 text-center align-middle">Sl.</th>
                                         <th rowSpan={4} className="border border-black p-2 cursor-pointer hover:bg-gray-100 no-print" onClick={() => handleSort('bd_no')}>
                                             <div className="flex items-center justify-between">BD/No <SortIcon columnKey="bd_no" /></div>
@@ -440,12 +395,13 @@ export default function AtwCourseSemesterProgramResultsPage() {
                                         <th rowSpan={4} className="border border-black p-2 text-center align-middle">Branch</th>
                                         <th colSpan={data.subjects.length} className="border border-black p-2 text-center tracking-wider">BUP Subjects</th>
                                         <th rowSpan={4} className="border border-black p-2 text-center align-middle">Total<br />({grandTotalFullMark})</th>
-                                        <th rowSpan={4} className="border border-black p-2 text-center align-middle">Percentile</th>
+                                        <th rowSpan={4} className="border border-black p-2 text-center align-middle">%</th>
                                         <th rowSpan={4} className="border border-black p-2 text-center cursor-pointer hover:bg-gray-100 no-print" onClick={() => handleSort('position')}>
-                                            <div className="flex items-center justify-center gap-1">Position <SortIcon columnKey="position" /></div>
+                                            <div className="flex items-center justify-center gap-1">Posn. <SortIcon columnKey="position" /></div>
                                         </th>
-                                        <th rowSpan={4} className="border border-black p-2 text-center align-middle only-print">Position</th>
+                                        <th rowSpan={4} className="border border-black p-2 text-center align-middle only-print">Posn.</th>
                                         <th rowSpan={4} className="border border-black p-2 text-center align-middle">Remarks</th>
+                                        <th rowSpan={4} className="border border-black p-2 text-center align-middle no-print">Action</th>
                                     </tr>
                                     <tr>
                                         {data.subjects.map((_, idx) => (
@@ -454,14 +410,10 @@ export default function AtwCourseSemesterProgramResultsPage() {
                                     </tr>
                                     <tr>
                                         {data.subjects.map((sub, idx) => {
-                                            const resultId = data.cadets.find(c => c.result_ids[sub.mapping_id])?.result_ids[sub.mapping_id];
-                                            const canView = can('view');
                                             return (
                                                 <th
                                                     key={idx}
-                                                    className={`border border-black p-2 text-center text-xs ${resultId && canView ? 'cursor-pointer hover:bg-gray-100 transition-colors' : ''}`}
-                                                    onClick={() => canView && resultId && handleViewResultDetails(resultId)}
-                                                    title={resultId && canView ? "Click to view subject result details" : ""}
+                                                    className="border border-black p-2 text-center text-xs"
                                                 >
                                                     <div className="truncate" title={sub.name}>{sub.code}</div>
                                                 </th>
@@ -487,7 +439,10 @@ export default function AtwCourseSemesterProgramResultsPage() {
                                         const finalRemarks = [failMessage, cadet.remarks].filter(Boolean).join('. ');
 
                                         return (
-                                            <tr key={cadet.id} className="hover:bg-gray-50/50 transition-colors font-medium">
+                                            <tr key={cadet.id} className={`hover:bg-gray-50/50 transition-colors font-medium ${selectedIds.has(cadet.id) ? "bg-purple-50" : ""}`}>
+                                                <td className="border border-black p-2 text-center no-print">
+                                                    <input type="checkbox" checked={selectedIds.has(cadet.id)} onChange={() => toggleSelect(cadet.id)} className="w-4 h-4 cursor-pointer" />
+                                                </td>
                                                 <td className="border border-black p-2 text-center">{index + 1}</td>
                                                 <td className="border border-black p-2 text-center">{cadet.bd_no}</td>
                                                 <td className="border border-black p-2">{cadet.rank || "—"}</td>
@@ -496,14 +451,10 @@ export default function AtwCourseSemesterProgramResultsPage() {
                                                 {data.subjects.map((sub) => {
                                                     const subTotal = calculateSubjectTotal(cadet, sub);
                                                     const roundedTotal = subTotal !== null ? Math.ceil(subTotal) : null;
-                                                    const resultId = cadet.result_ids[sub.mapping_id];
-                                                    const canView = can('view');
                                                     return (
                                                         <td
                                                             key={`${cadet.id}-${sub.id}`}
-                                                            onClick={() => canView && resultId && handleViewResultDetails(resultId)}
-                                                            className={`border border-black p-2 text-center font-bold ${roundedTotal !== null && roundedTotal < 50 ? 'text-red-600' : ''} ${resultId && canView ? 'cursor-pointer hover:bg-blue-50 transition-colors no-print' : 'no-print'}`}
-                                                            title={resultId && canView ? "Click to view result details" : ""}
+                                                            className={`border border-black p-2 text-center font-bold no-print ${roundedTotal !== null && roundedTotal < 50 ? 'text-red-600' : ''}`}
                                                         >
                                                             {roundedTotal !== null ? roundedTotal : "—"}
                                                         </td>
@@ -523,6 +474,17 @@ export default function AtwCourseSemesterProgramResultsPage() {
                                                 <td className="border border-black p-2 text-center">{getOrdinal(cadet.position)}</td>
                                                 <td className={`border border-black p-2 text-center text-xs italic ${failedSubjects.length > 0 ? 'text-red-600 font-bold' : 'text-gray-500'}`}>
                                                     {finalRemarks || "—"}
+                                                </td>
+                                                <td className="border border-black p-2 text-center no-print">
+                                                    <button
+                                                        onClick={() => handlePromoteSingle(cadet.id)}
+                                                        disabled={promoteFetching}
+                                                        className="px-2 py-1 bg-purple-600 text-white rounded text-xs font-bold hover:bg-purple-700 transition-colors flex items-center gap-1 mx-auto"
+                                                        title="Promote"
+                                                    >
+                                                        <Icon icon="hugeicons:graduation-scroll" className="w-3.5 h-3.5" />
+                                                        Promote
+                                                    </button>
                                                 </td>
                                             </tr>
                                         );
@@ -547,61 +509,15 @@ export default function AtwCourseSemesterProgramResultsPage() {
                             </div>
 
                             <div className="mt-12 mb-6 break-inside-avoid grid grid-cols-1 md:grid-cols-3 gap-6">
-                                {(() => {
-                                    const authorities = [...(data.atw_result_approval_authorities || [])].sort((a, b) => a.sort - b.sort);
-                                    const formalAuthorities = authorities.filter(a => !a.is_initial_cadet_approve);
-
-                                    // Check Program Approval (for Prepared/Checked)
-                                    const programApproval = data.atw_result_program_approvals?.find(pa => pa.status === 'approved');
-                                    const isProgramApproved = !!programApproval;
-
-                                    // Check Semester Approval (for Final CI/OC signature)
-                                    const semesterApproval = data.atw_result_semester_approvals?.find(sa => sa.status === 'approved');
-                                    const isSemesterApproved = !!semesterApproval;
-
-                                    const preparedBy = formalAuthorities[0];
-                                    const checkedBy = formalAuthorities[1];
-                                    const finalAuth = formalAuthorities.find(a => a.is_final) || formalAuthorities[formalAuthorities.length - 1];
-
-                                    const renderSignature = (title: string, auth: ApprovalAuthority | undefined, approved: boolean, actualApprover: any = null) => {
-                                        // Use the person who actually signed if the authority is role-based
-                                        const displayName = actualApprover?.approver?.name || auth?.user?.name || "—";
-                                        const displayRank = actualApprover?.approver?.rank?.short_name || auth?.user?.rank?.short_name || "—";
-                                        const displayRole = auth?.role?.name || "—";
-
-                                        return (
-                                            <div className="flex flex-col items-start min-w-[200px]">
-                                                <div className="mt-16 text-left w-full">
-                                                    <p className="font-bold uppercase text-[11px] text-gray-900 mb-3">{title}</p>
-                                                    {auth ? (
-                                                        <div className="text-[11px] space-y-1 transition-all">
-                                                            {approved ? (
-                                                                <div className="flex flex-col gap-0.5">
-                                                                    <div className="italic text-green-600 font-bold mb-1">Digitally Signed</div>
-                                                                    <p className="font-bold text-gray-900">{displayName}</p>
-                                                                    <p className="text-gray-800">{displayRank}</p>
-                                                                    <p className="font-bold text-gray-900 uppercase tracking-tight">{displayRole}</p>
-                                                                </div>
-                                                            ) : (
-                                                                <div className="h-24"></div>
-                                                            )}
-                                                        </div>
-                                                    ) : (
-                                                        <div className="h-24"></div>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        );
-                                    };
-
-                                    return (
-                                        <>
-                                            {renderSignature("Prepared By", preparedBy, isProgramApproved, programApproval)}
-                                            {renderSignature("Checked By", checkedBy, isProgramApproved, programApproval)}
-                                            {renderSignature("Approved By", finalAuth, isSemesterApproved, semesterApproval)}
-                                        </>
-                                    );
-                                })()}
+                                <div className="flex flex-col items-center">
+                                    <div className="w-48 border-t border-black mt-16 text-center pt-2 font-bold uppercase text-sm">Prepared By</div>
+                                </div>
+                                <div className="flex flex-col items-center">
+                                    <div className="w-48 border-t border-black mt-16 text-center pt-2 font-bold uppercase text-sm">Checked By</div>
+                                </div>
+                                <div className="flex flex-col items-center">
+                                    <div className="w-48 border-t border-black mt-16 text-center pt-2 font-bold uppercase text-sm">CI / OC ATW</div>
+                                </div>
                             </div>
                         </div>
                     </>
@@ -616,64 +532,20 @@ export default function AtwCourseSemesterProgramResultsPage() {
                             // Show ALL cadets; only hide the subject entirely if nobody has marks
                             const hasAnyMarksForSubject = sortedCadets.some(c => c.result_ids[subject.mapping_id] !== undefined);
                             const subjectCadets = sortedCadets;
-                            // Subject-level approval (may have multiple per branch — show distinct statuses)
-                            const subjectApprovals = data.atw_result_subject_approvals?.filter(
-                                a => a.subject_id === subject.mapping_id
-                            ) ?? [];
-                            const allSubjApproved = subjectApprovals.length > 0 && subjectApprovals.every(a => a.approved_by);
-                            const anySubjRejected = subjectApprovals.some(a => a.status === 'rejected');
-                            const anySubjForwarded = subjectApprovals.some(a => a.forwarded_by && !a.approved_by);
-
-                            // Helper: get ALL cadet-level approvals for this subject (all authority levels)
-                            const getCadetSubjectApprovals = (cadetId: number) =>
-                                data.atw_result_mark_cadet_approvals?.filter(
-                                    a => a.cadet_id === cadetId && a.subject_id === subject.mapping_id
-                                ) ?? [];
-
-                            const statusColors: Record<string, string> = {
-                                pending: 'bg-yellow-100 text-yellow-800',
-                                approved: 'bg-green-100 text-green-800',
-                                rejected: 'bg-red-100 text-red-800',
-                            };
-
-                            const authorities = (data.atw_result_approval_authorities ?? [])
-                                .slice()
-                                .sort((a, b) => (a.sort ?? 0) - (b.sort ?? 0));
 
                             return (
                                 <div key={subject.id} className="break-inside-avoid">
                                     {/* Subject header */}
                                     <div className="flex justify-between items-center mb-3 flex-wrap gap-2">
                                         <div className="flex items-center gap-3">
-                                            <div 
-                                                className={`flex items-center gap-2 ${data.cadets.find(c => c.result_ids[subject.mapping_id])?.result_ids[subject.mapping_id] && can('view') ? 'cursor-pointer group' : ''}`}
-                                                onClick={() => {
-                                                    const resultId = data.cadets.find(c => c.result_ids[subject.mapping_id])?.result_ids[subject.mapping_id];
-                                                    if (resultId && can('view')) handleViewResultDetails(resultId);
-                                                }}
-                                            >
+                                            <div className="flex items-center gap-2">
                                                 <p className="text-sm">
                                                     <span className="font-bold text-gray-900 uppercase mr-2">Subject</span>
-                                                    <span className={`border-b border-dashed border-black ${data.cadets.find(c => c.result_ids[subject.mapping_id])?.result_ids[subject.mapping_id] && can('view') ? 'group-hover:text-blue-600 group-hover:border-blue-600 transition-colors' : ''}`}>
+                                                    <span className="border-b border-dashed border-black">
                                                         : {subject.name} ({subject.code})
                                                     </span>
                                                 </p>
-                                                {data.cadets.find(c => c.result_ids[subject.mapping_id])?.result_ids[subject.mapping_id] && can('view') && (
-                                                    <Icon icon="hugeicons:view" className="w-4 h-4 text-gray-400 group-hover:text-blue-600 transition-colors no-print" />
-                                                )}
                                             </div>
-                                            {/* Subject-level approval badge */}
-                                            {subjectApprovals.length > 0 && (
-                                                <span className={`no-print inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
-                                                    allSubjApproved ? 'bg-green-100 text-green-800' :
-                                                    anySubjRejected ? 'bg-red-100 text-red-800' :
-                                                    'bg-yellow-100 text-yellow-800'
-                                                }`}>
-                                                    {allSubjApproved ? '↑ Forwarded' :
-                                                     anySubjRejected ? '✗ Subject Rejected' :
-                                                     '⏳ Pending'}
-                                                </span>
-                                            )}
                                         </div>
                                         <p className="text-sm">
                                             <span className="font-bold text-gray-900 uppercase mr-2">Full Mark</span>
@@ -699,9 +571,6 @@ export default function AtwCourseSemesterProgramResultsPage() {
                                                             Total Marks<br />{subject.full_mark}
                                                         </th>
                                                     )}
-                                                    <th rowSpan={2} className="border border-black px-2 py-2 text-center align-middle no-print">
-                                                        Status
-                                                    </th>
                                                 </tr>
                                                 {/* Header Row 2 – component names */}
                                                 <tr>
@@ -766,44 +635,6 @@ export default function AtwCourseSemesterProgramResultsPage() {
                                                                         {subTotal !== null ? Math.ceil(subTotal) : "—"}
                                                                     </td>
                                                                 )}
-
-                                                                {/* Cadet approval status — per-authority timeline */}
-                                                                <td className="border border-black px-2 py-2 no-print">
-                                                                    {(() => {
-                                                                        const cadetApprovals = getCadetSubjectApprovals(cadet.id);
-                                                                        if (authorities.length === 0 && cadetApprovals.length === 0) {
-                                                                            return <span className="text-gray-400 text-xs">—</span>;
-                                                                        }
-                                                                        if (authorities.length > 0) {
-                                                                            return (
-                                                                                <div className="flex flex-col gap-0.5">
-                                                                                    {authorities.map((auth, idx) => {
-                                                                                        const label = auth.role?.name || auth.user?.name || `Step ${idx + 1}`;
-                                                                                        const rec = auth.is_initial_cadet_approve
-                                                                                            ? (cadetApprovals.find(a => a.authority_id === auth.id) ?? cadetApprovals.find(a => !a.authority_id))
-                                                                                            : cadetApprovals.find(a => a.authority_id === auth.id);
-                                                                                        const st = rec?.status;
-                                                                                        return (
-                                                                                            <div key={auth.id} className="flex items-center gap-1 whitespace-nowrap">
-                                                                                                <span className="text-[9px] text-gray-500 truncate max-w-[70px]" title={label}>{label}:</span>
-                                                                                                {st ? (
-                                                                                                    <span className={`inline-flex items-center px-1.5 py-0.5 text-[9px] font-bold rounded-full uppercase ${statusColors[st] ?? ''}`}>{st}</span>
-                                                                                                ) : (
-                                                                                                    <span className="text-[9px] text-gray-300">—</span>
-                                                                                                )}
-                                                                                            </div>
-                                                                                        );
-                                                                                    })}
-                                                                                </div>
-                                                                            );
-                                                                        }
-                                                                        // Fallback: no authorities configured, show first record
-                                                                        const first = cadetApprovals[0];
-                                                                        return first
-                                                                            ? <span className={`inline-flex items-center px-2 py-0.5 text-[10px] font-bold rounded-full uppercase ${statusColors[first.status] ?? ''}`}>{first.status}</span>
-                                                                            : <span className="text-gray-400 text-xs">—</span>;
-                                                                    })()}
-                                                                </td>
                                                             </tr>
                                                         );
                                                     })
@@ -822,70 +653,99 @@ export default function AtwCourseSemesterProgramResultsPage() {
                 </div>
             </div>
 
-            {/* Forward Program confirm modal */}
-            <Modal
-                isOpen={programForwardModal.open}
-                onClose={() => !programForwardModal.loading && setProgramForwardModal({ open: false, loading: false, error: '' })}
-                showCloseButton
-                className="max-w-lg"
-            >
-                <div className="p-6">
-                    <div className="flex flex-col items-center text-center mb-6">
+            {/* Single Promote Modal */}
+            <CadetPromotionModal
+                isOpen={promotionModalOpen}
+                onClose={() => { setPromotionModalOpen(false); setPromotingCadet(null); }}
+                cadet={promotingCadet}
+                onSuccess={() => { setPromotionModalOpen(false); setPromotingCadet(null); }}
+            />
+
+            {/* Bulk Promote Modal */}
+            <Modal isOpen={bulkModalOpen} onClose={() => setBulkModalOpen(false)} showCloseButton={true} className="max-w-xl p-0">
+                <form onSubmit={handleBulkPromote} className="p-8">
+                    <div className="flex flex-col items-center mb-6">
                         <FullLogo />
-                        <h2 className="text-lg font-bold text-gray-900 mt-4 uppercase">Forward Program for Approval</h2>
-                        <div className="h-1 w-20 bg-green-500 rounded-full mt-2"></div>
-                    </div>
-
-                    <div className="bg-gray-50 rounded-xl p-4 border border-gray-100 mb-6">
-                        <div className="space-y-3 text-sm">
-                            <div className="flex justify-between border-b border-gray-200 pb-2">
-                                <span className="text-gray-500">Course</span>
-                                <span className="font-bold text-gray-900">{data?.course_details?.name}</span>
-                            </div>
-                            <div className="flex justify-between border-b border-gray-200 pb-2">
-                                <span className="text-gray-500">Semester</span>
-                                <span className="font-bold text-gray-900">{data?.semester_details?.name}</span>
-                            </div>
-                            <div className="flex justify-between">
-                                <span className="text-gray-500">Program</span>
-                                <span className="font-bold text-gray-900">{data?.program_details?.name}</span>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="flex items-start gap-3 p-4 bg-blue-50 rounded-xl border border-blue-100 mb-6">
-                        <Icon icon="hugeicons:information-circle" className="w-5 h-5 text-blue-600 mt-0.5" />
-                        <p className="text-sm text-blue-800 leading-relaxed">
-                            Are you sure you want to forward the <strong>entire program result</strong> for final approval? This will mark all forwarded subjects within this program as program-approved.
+                        <h2 className="text-xl font-bold text-gray-900 mt-4">Bulk Promote Cadets</h2>
+                        <p className="text-sm text-gray-500">
+                            {selectedIds.size} cadet(s) selected
                         </p>
                     </div>
 
-                    {programForwardModal.error && (
-                        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm flex items-center gap-2">
-                            <Icon icon="hugeicons:alert-circle" className="w-4 h-4 flex-shrink-0" />
-                            {programForwardModal.error}
+                    {bulkError && (
+                        <div className="p-4 mb-4 bg-red-50 border border-red-200 rounded-lg text-red-600 text-sm">
+                            {bulkError}
                         </div>
                     )}
 
-                    <div className="flex gap-3 justify-end pt-2">
+                    <div className="space-y-4">
+                        <div>
+                            <Label>Current Semester</Label>
+                            <div className="px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-gray-700 font-medium">
+                                {data?.semester_details?.name || "Current Semester"}
+                            </div>
+                        </div>
+
+                        <div>
+                            <Label>Next Semester <span className="text-red-500">*</span></Label>
+                            <select
+                                value={bulkForm.next_semester_id}
+                                onChange={(e) => setBulkForm({ ...bulkForm, next_semester_id: e.target.value })}
+                                required
+                                className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            >
+                                <option value="">Select Next Semester...</option>
+                                {bulkSemesters
+                                    .filter(s => s.id !== data?.semester_details?.id)
+                                    .map((semester) => (
+                                    <option key={semester.id} value={semester.id}>
+                                        {semester.name}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+
+                        <div>
+                            <Label>Promotion Date <span className="text-red-500">*</span></Label>
+                            <Input
+                                type="date"
+                                value={bulkForm.start_date}
+                                onChange={(e) => setBulkForm({ ...bulkForm, start_date: e.target.value })}
+                                required
+                            />
+                        </div>
+
+                        <div>
+                            <Label>Remarks</Label>
+                            <textarea
+                                value={bulkForm.description}
+                                onChange={(e) => setBulkForm({ ...bulkForm, description: e.target.value })}
+                                rows={3}
+                                className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                placeholder="Add any remarks for this promotion..."
+                            />
+                        </div>
+                    </div>
+
+                    <div className="flex items-center justify-end gap-3 mt-8">
                         <button
-                            onClick={() => setProgramForwardModal({ open: false, loading: false, error: '' })}
-                            disabled={programForwardModal.loading}
-                            className="px-5 py-2.5 border border-gray-300 rounded-xl text-gray-700 text-sm font-bold hover:bg-gray-50 transition-colors disabled:opacity-50"
+                            type="button"
+                            onClick={() => setBulkModalOpen(false)}
+                            className="px-6 py-2 border border-gray-300 rounded-xl text-gray-700 hover:bg-gray-50"
+                            disabled={bulkLoading}
                         >
                             Cancel
                         </button>
                         <button
-                            onClick={handleForwardProgram}
-                            disabled={programForwardModal.loading}
-                            className="px-8 py-2.5 bg-green-600 text-white rounded-xl text-sm font-bold hover:bg-green-700 transition-all shadow-lg shadow-green-200 flex items-center gap-2 disabled:opacity-50"
+                            type="submit"
+                            className="px-6 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 flex items-center gap-2"
+                            disabled={bulkLoading}
                         >
-                            {programForwardModal.loading && <Icon icon="hugeicons:fan-01" className="w-4 h-4 animate-spin" />}
-                            <Icon icon="hugeicons:share-04" className="w-4 h-4" />
-                            Confirm Forward
+                            {bulkLoading && <Icon icon="hugeicons:fan-01" className="animate-spin w-4 h-4" />}
+                            Promote All
                         </button>
                     </div>
-                </div>
+                </form>
             </Modal>
 
             <PrintTypeModal

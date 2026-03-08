@@ -94,7 +94,7 @@ export default function AtwViewCadetWarningsPage() {
       header: "Total Cadets",
       headerAlign: "center",
       className: "text-center font-bold text-green-600",
-      render: (row) => row.total_cadets || 0,
+      render: (row) => `${row.total_entry || 0}/${row.total_cadets || 0}`,
     },
     {
       key: "actions",

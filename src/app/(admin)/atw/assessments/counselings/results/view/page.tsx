@@ -163,20 +163,14 @@ export default function AtwViewAssessmentCounselingResultsPage() {
       key: "course",
       header: "Course Name",
       render: (row) => (
-        <div>
-          <div className="font-medium text-gray-900">{row.course_details?.name || "N/A"}</div>
-          <div className="text-xs text-gray-500">{row.course_details?.code || ""}</div>
-        </div>
+        <div className="font-medium text-gray-900">{row.course_details?.name || "N/A"}</div>
       ),
     },
     {
       key: "semester",
       header: "Semester",
       render: (row) => (
-        <div>
-          <div className="font-medium text-gray-900">{row.semester_details?.name || "N/A"}</div>
-          <div className="text-xs text-gray-500">{row.semester_details?.code || ""}</div>
-        </div>
+        <div className="font-medium text-gray-900">{row.semester_details?.name || "N/A"}</div>
       ),
     },
     {
@@ -191,15 +185,7 @@ export default function AtwViewAssessmentCounselingResultsPage() {
       header: "Total Cadets",
       headerAlign: "center",
       className: "text-center font-bold text-green-600",
-      render: (row) => (
-        <div className="flex flex-col items-center">
-          <span title="Assigned Cadets">{row.total_cadets || 0}</span>
-          <div className="flex gap-1 mt-0.5">
-            <span className="text-[10px] text-blue-500 font-medium" title="Unique Counseled Cadets">C: {row.total_counseled || 0}</span>
-            <span className="text-[10px] text-green-500 font-medium" title="Unique Approved Cadets">A: {row.total_approved || 0}</span>
-          </div>
-        </div>
-      ),
+      render: (row) => `${row.total_counseled || 0}/${row.total_cadets || 0}`,
     },
     {
       key: "status",

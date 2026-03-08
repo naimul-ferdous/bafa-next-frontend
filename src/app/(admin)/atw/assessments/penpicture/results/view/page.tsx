@@ -110,8 +110,8 @@ export default function AtwViewAssessmentPenpictureResultsPage() {
       key: "total_cadets",
       header: "Total Cadets",
       headerAlign: "center",
-      className: "text-center",
-      render: (row) => row.total_cadets || 0,
+      className: "text-center font-bold text-green-600",
+      render: (row) => `${row.total_entry || 0}/${row.total_cadets || 0}`,
     },
     {
       key: "actions",
