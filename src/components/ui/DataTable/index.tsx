@@ -18,6 +18,7 @@ interface DataTableProps<T> {
   emptyMessage?: string;
   hoverable?: boolean;
   onRowClick?: (item: T) => void;
+  rowClassName?: (item: T, index: number) => string;
 }
 
 export default function DataTable<T>({
@@ -27,6 +28,7 @@ export default function DataTable<T>({
   emptyMessage = "No data found",
   hoverable = true,
   onRowClick,
+  rowClassName,
 }: DataTableProps<T>) {
   return (
     <div className="bg-white rounded-lg border border-black overflow-hidden">
@@ -70,8 +72,9 @@ export default function DataTable<T>({
                   key={keyExtractor(item, rowIndex)}
                   onClick={() => onRowClick && onRowClick(item)}
                   className={`
-                    ${hoverable ? "hover:bg-gray-50" : ""} 
+                    ${hoverable ? "hover:bg-gray-50" : ""}
                     ${onRowClick ? "cursor-pointer" : ""}
+                    ${rowClassName ? rowClassName(item, rowIndex) : ""}
                   `}
                 >
                   {columns.map((column, colIndex) => (

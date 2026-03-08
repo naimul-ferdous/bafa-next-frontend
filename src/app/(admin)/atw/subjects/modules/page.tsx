@@ -132,9 +132,7 @@ export default function AtwSubjectModulesPage() {
     if (!statusSubject) return;
     try {
       setStatusLoading(true);
-      await atwSubjectModuleService.updateSubject(statusSubject.id, {
-        is_active: !statusSubject.is_active,
-      });
+      await atwSubjectModuleService.toggleStatus(statusSubject.id);
       await loadSubjects();
       setStatusModalOpen(false);
       setStatusSubject(null);

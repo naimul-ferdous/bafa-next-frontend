@@ -241,7 +241,7 @@ export default function ViewUserPage() {
                 </div>
 
                 {/* System Information Section */}
-                <div className="mb-6">
+                {/* <div className="mb-6">
                     <h2 className="text-lg font-bold text-gray-900 mb-4 pb-1 border-b border-dashed border-gray-400">
                         System Information
                     </h2>
@@ -256,23 +256,8 @@ export default function ViewUserPage() {
                             <span className="mr-4">:</span>
                             <span className="text-gray-900 flex-1">{formatDate(user.locked_until) || "Not Locked"}</span>
                         </div>
-                        <div className="flex">
-                            <span className="w-48 text-gray-900 font-medium">Email Verified At</span>
-                            <span className="mr-4">:</span>
-                            <span className="text-gray-900 flex-1">{formatDate(user.email_verified_at) || "Not Verified"}</span>
-                        </div>
-                        <div className="flex">
-                            <span className="w-48 text-gray-900 font-medium">Record Created</span>
-                            <span className="mr-4">:</span>
-                            <span className="text-gray-900 flex-1">{formatDate(user.created_at)}</span>
-                        </div>
-                        <div className="flex">
-                            <span className="w-48 text-gray-900 font-medium">Last Updated</span>
-                            <span className="mr-4">:</span>
-                            <span className="text-gray-900 flex-1">{formatDate(user.updated_at)}</span>
-                        </div>
                     </div>
-                </div>
+                </div> */}
 
                 {/* Signature Section */}
                 {user.signature && (
@@ -292,6 +277,53 @@ export default function ViewUserPage() {
                         </div>
                     </div>
                 )}
+
+                {/* Signature Blocks - Created by + Last Edited by */}
+                <div className="mt-16 flex justify-end gap-10">
+                  {/* Created by */}
+                  <div className="text-left min-w-[180px]">
+                    <p className="text-xs text-gray-900 uppercase tracking-wider">Created by</p>
+                    <div className="border-b border-gray-400">
+                      <p className="text-sm text-gray-900">
+                        {(user as any).creator ? (
+                          <>
+                            {(user as any).creator.rank?.short_name && <>{(user as any).creator.rank.short_name} </>}
+                            {(user as any).creator.name}
+                          </>
+                        ) : "N/A"}
+                      </p>
+                      {(user as any).creator?.roles?.length > 0 && (
+                        <p className="text-xs text-gray-900 mt-0.5">{(user as any).creator.roles[0].name}</p>
+                      )}
+                    </div>
+                    <p className="text-xs text-gray-900">
+                      {user.created_at ? new Date(user.created_at).toLocaleDateString("en-GB", {
+                        day: "2-digit", month: "long", year: "numeric"
+                      }) : "N/A"}
+                    </p>
+                  </div>
+
+                  {/* Last Edited by */}
+                  {(user as any).editor && (
+                    <div className="text-left min-w-[180px]">
+                      <p className="text-xs text-gray-900 uppercase tracking-wider">Last Edited by</p>
+                      <div className="border-b border-gray-400">
+                        <p className="text-sm text-gray-900">
+                          {(user as any).editor.rank?.short_name && <>{(user as any).editor.rank.short_name} </>}
+                          {(user as any).editor.name}
+                        </p>
+                        {(user as any).editor.roles?.length > 0 && (
+                          <p className="text-xs text-gray-900 mt-0.5">{(user as any).editor.roles[0].name}</p>
+                        )}
+                      </div>
+                      <p className="text-xs text-gray-900">
+                        {user.updated_at ? new Date(user.updated_at).toLocaleDateString("en-GB", {
+                          day: "2-digit", month: "long", year: "numeric"
+                        }) : "N/A"}
+                      </p>
+                    </div>
+                  )}
+                </div>
 
                 {/* Footer with date */}
                 <div className="mt-12 text-center text-sm text-gray-600">

@@ -730,9 +730,9 @@ export default function InstructorAssignRoleModal({
             )}
 
             <form onSubmit={handleSubmit} className="border-t border-gray-100 pt-6">
-              <h4 className="text-sm font-semibold text-gray-700 mb-3">Add New Role</h4>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                {/* Role Selection */}
+              {/* <h4 className="text-sm font-semibold text-gray-700 mb-3">Add New Role</h4> */}
+              {/* <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Select Role {isMergeMode ? "(Optional)" : <span className="text-red-500">*</span>}
@@ -754,7 +754,6 @@ export default function InstructorAssignRoleModal({
                   </select>
                 </div>
 
-                {/* Merge Mode Toggle for NEW selection */}
                 {isSelectedRoleMargeable && (
                   <div className="flex items-center gap-2 md:col-span-2 py-2">
                     <input
@@ -772,12 +771,8 @@ export default function InstructorAssignRoleModal({
                     </label>
                   </div>
                 )}
-
-                {/* Merge Role Selection (Conditional) for NEW selection */}
-                {/* (Only show here if user is NOT already an instructor, to avoid double forms) */}
                 {isMergeMode && !userHasInstructorRole && <div className="md:col-span-2"><MergeConfigurationFields /></div>}
 
-                {/* Wing Selection */}
                 {(userIsSuperAdmin || !currentUser?.role?.wing_id) && (
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -799,8 +794,6 @@ export default function InstructorAssignRoleModal({
                     </select>
                   </div>
                 )}
-
-                {/* SubWing Selection */}
                 {(userIsSuperAdmin || !(currentUser?.role as any)?.subwing_id) && !selectedRole?.subwing_id && selectedWingId && subWings.length > 0 && (
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -822,9 +815,7 @@ export default function InstructorAssignRoleModal({
                     </select>
                   </div>
                 )}
-              </div>
-
-              {/* Is Primary */}
+              </div> */}
               <div className="flex items-center gap-2 mb-6">
                 <input
                   type="checkbox"
@@ -840,8 +831,6 @@ export default function InstructorAssignRoleModal({
                   Set as Primary Assignment
                 </label>
               </div>
-
-              {/* Action Buttons */}
               <div className="flex items-center justify-end gap-3">
                 <button
                   type="button"

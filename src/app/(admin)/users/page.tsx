@@ -24,7 +24,7 @@ import InstructorAssignAssessmentModal from "@/components/instructors/Instructor
 
 export default function UsersPage() {
   const router = useRouter();
-  const { user: authUser } = useAuth();
+  const { user: authUser, userIsSuperAdmin } = useAuth();
   const can = useCan();
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
@@ -64,7 +64,12 @@ export default function UsersPage() {
   const [courses, setCourses] = useState<SystemCourse[]>([]);
   const [userAssignMap, setUserAssignMap] = useState<Record<number, Record<string, string[]>>>({});
 
+  // Blocked users warning (Super Admin only)
+  const [blockedUsers, setBlockedUsers] = useState<User[]>([]);
+  const [showBlockedWarning, setShowBlockedWarning] = useState(true);
+
   const [searchTerm, setSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "blocked">("all");
   const [perPage, setPerPage] = useState(10);
   const [currentPage, setCurrentPage] = useState(1);
   const [pagination, setPagination] = useState({ current_page: 1, last_page: 1, per_page: 10, total: 0, from: 0, to: 0 });
@@ -72,7 +77,7 @@ export default function UsersPage() {
   const loadUsers = useCallback(async () => {
     try {
       setLoading(true);
-      const response = await userService.getAllUsers({ page: currentPage, per_page: perPage, search: searchTerm || undefined });
+      const response = await userService.getAllUsers({ page: currentPage, per_page: perPage, search: searchTerm || undefined, status: statusFilter !== 'all' ? statusFilter : undefined });
       setUsers(response.data);
       setPagination({ current_page: response.current_page, last_page: response.last_page, per_page: response.per_page, total: response.total, from: response.from, to: response.to });
     } catch (error) {
@@ -80,7 +85,7 @@ export default function UsersPage() {
     } finally {
       setLoading(false);
     }
-  }, [currentPage, perPage, searchTerm]);
+  }, [currentPage, perPage, searchTerm, statusFilter]);
 
   const loadAssignMap = useCallback(async () => {
     try {
@@ -105,10 +110,17 @@ export default function UsersPage() {
   const refreshData = useCallback(() => {
     loadUsers();
     loadAssignMap();
-  }, [loadUsers, loadAssignMap]);
+    if (userIsSuperAdmin) userService.getBlockedUsers().then(setBlockedUsers);
+  }, [loadUsers, loadAssignMap, userIsSuperAdmin]);
 
   useEffect(() => { loadUsers(); }, [loadUsers]);
   useEffect(() => { loadAssignMap(); }, [loadAssignMap]);
+
+  useEffect(() => {
+    if (userIsSuperAdmin) {
+      userService.getBlockedUsers().then(setBlockedUsers);
+    }
+  }, [userIsSuperAdmin]);
 
   useEffect(() => {
     const handleUserUpdate = () => refreshData();
@@ -265,10 +277,18 @@ export default function UsersPage() {
       key: "roles", 
       header: "Role", 
       className: "text-gray-700", 
-      render: (user) => (
+      render: (user) => {
+        const instructorSlugs = ['instructor', 'atw-cic', 'atw-course-tutor'];
+        const instructorRoleNames = ['instructor', 'atw cic', 'atw course tutor', 'cic', 'course tutor'];
+        const uniqueRoles = user.roles ? Array.from(new Map(user.roles.map((r) => [r.id, r])).values()) : [];
+        const filteredRoles = uniqueRoles.filter(r =>
+          !instructorSlugs.includes(r.slug || '') &&
+          !instructorRoleNames.includes(r.name.toLowerCase())
+        );
+        return (
         <div className="flex flex-wrap items-center gap-1 max-w-xs">
-          {user.roles && user.roles.length > 0 ? (
-            Array.from(new Map(user.roles.map((r) => [r.id, r])).values()).map((role) => (
+          {filteredRoles.length > 0 ? (
+            filteredRoles.map((role) => (
               <span
                 key={role.id}
                 className={`inline-flex items-center px-2 py-0.5 text-[10px] font-bold uppercase rounded ${
@@ -293,9 +313,10 @@ export default function UsersPage() {
             </button>
           )}
         </div>
-      )
+      );
+      }
     },
-    { 
+    {
       key: "assessments" as keyof User, 
       header: "Assessments", 
       className: "text-center", 
@@ -356,12 +377,41 @@ export default function UsersPage() {
         <h2 className="text-md font-semibold text-gray-700 mt-2 uppercase">All Users List</h2>
       </div>
 
+      {userIsSuperAdmin && blockedUsers.length > 0 && showBlockedWarning && (
+        <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <Icon icon="hugeicons:alert-02" className="w-5 h-5 text-red-600 flex-shrink-0" />
+              <div>
+                <p className="text-sm font-semibold text-red-800">
+                  {blockedUsers.length} user{blockedUsers.length > 1 ? 's are' : ' is'} currently blocked and unable to access the system. Please review and take necessary action.
+                </p>
+              </div>
+            </div>
+            <button onClick={() => setShowBlockedWarning(false)} className="p-1 text-red-400 hover:text-red-600 rounded">
+              <Icon icon="hugeicons:cancel-01" className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="flex items-center justify-between gap-4 mb-6">
         <div className="relative w-80">
           <Icon icon="hugeicons:search-01" className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
           <input type="text" placeholder="Search by name, service number, email..." value={searchTerm} onChange={(e) => handleSearchChange(e.target.value)} className="pl-10 pr-4 py-2 border border-gray-200 rounded-lg bg-white text-gray-900 w-full focus:outline-none focus:ring-0" />
         </div>
         <div className="flex items-center gap-3">
+          {userIsSuperAdmin && (
+            <select
+              value={statusFilter}
+              onChange={(e) => { setStatusFilter(e.target.value as "all" | "active" | "blocked"); setCurrentPage(1); }}
+              className="px-4 py-2 border border-gray-200 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="all">All Users</option>
+              <option value="active">Active</option>
+              <option value="blocked">Blocked</option>
+            </select>
+          )}
           {can('add') && (
             <button onClick={handleAddUser} className="px-4 py-2 rounded-lg text-white flex items-center gap-1 bg-blue-600 hover:bg-blue-700"><Icon icon="hugeicons:add-circle" className="w-4 h-4 mr-2" />Add User</button>
           )}
@@ -369,7 +419,7 @@ export default function UsersPage() {
         </div>
       </div>
 
-      {loading ? <TableLoading /> : <DataTable columns={columns} data={users} keyExtractor={(user) => user.id.toString()} emptyMessage="No users found" onRowClick={can('view') ? (user) => handleViewUser(user) : undefined} />}
+      {loading ? <TableLoading /> : <DataTable columns={columns} data={users} keyExtractor={(user) => user.id.toString()} emptyMessage="No users found" onRowClick={can('view') ? (user) => handleViewUser(user) : undefined} rowClassName={userIsSuperAdmin ? (user) => !user.is_active ? "bg-red-50" : "" : undefined} />}
 
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">

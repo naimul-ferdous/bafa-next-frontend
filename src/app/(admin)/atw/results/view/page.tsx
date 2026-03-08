@@ -251,7 +251,7 @@ export default function AtwViewResultsPage() {
   const roles = user?.roles || [];
   const primaryRole = roles.find((r: any) => r.pivot?.is_primary) || roles[0] || user?.role;
   const isInstructorActive = primaryRole?.slug === 'instructor';
-  
+
   const assignWings = user?.assign_wings || [];
   const hasPendingInstructorWings = assignWings.some((aw: any) => aw.status === "pending");
 
@@ -401,10 +401,10 @@ export default function AtwViewResultsPage() {
         course_id: firstRes.course_id,
         semester_id: firstRes.semester_id,
         program_id: firstRes.program_id,
-        status: "approved", 
+        status: "approved",
         authority_ids: nextAuthority ? [nextAuthority.id] : [],
       });
-      
+
       setProgramForwardModal({ open: false, programNode: null, loading: false, error: "" });
       await loadResults();
     } catch (err: any) {
@@ -440,41 +440,40 @@ export default function AtwViewResultsPage() {
       </div>
 
       <div className="flex flex-col items-center gap-6 mb-6">
-        {!isInstructor && (
-          <div className="flex items-center gap-1 rounded-xl p-1 bg-gray-50 border border-gray-200 no-print w-fit">
-            <button
-              onClick={() => setViewMode('subjects')}
-              className={`px-6 py-2 text-sm font-bold rounded-lg transition-all ${
-                viewMode === 'subjects'
-                  ? 'bg-white text-blue-600 shadow-sm border border-gray-200'
-                  : 'text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              <div className="flex items-center gap-2">
-                <Icon icon="hugeicons:book-open-01" className="w-4 h-4" />
-                Subject Wise
-              </div>
-            </button>
-            <button
-              onClick={() => setViewMode('consolidated')}
-              className={`px-6 py-2 text-sm font-bold rounded-lg transition-all ${
-                viewMode === 'consolidated'
-                  ? 'bg-white text-indigo-600 shadow-sm border border-gray-200'
-                  : 'text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              <div className="flex items-center gap-2">
-                <Icon icon="hugeicons:file-02" className="w-4 h-4" />
-                Consolidated
-              </div>
-            </button>
-          </div>
-        )}
-
         <div className="flex items-center justify-between w-full">
-          <div className="relative w-80">
-            <Icon icon="hugeicons:search-01" className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
-            <input type="text" placeholder="Search results..." value={searchTerm} onChange={(e) => handleSearchChange(e.target.value)} className="pl-10 pr-4 py-2 border border-gray-200 rounded-lg bg-white text-gray-900 w-full focus:outline-none focus:ring-0" />
+          <div className="flex gap-2">
+            <div className="relative w-80">
+              <Icon icon="hugeicons:search-01" className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+              <input type="text" placeholder="Search results..." value={searchTerm} onChange={(e) => handleSearchChange(e.target.value)} className="pl-10 pr-4 py-2 border border-gray-200 rounded-lg bg-white text-gray-900 w-full focus:outline-none focus:ring-0" />
+            </div>
+            {!isInstructor && (
+              <div className="flex items-center gap-1 rounded-full p-1 border border-gray-200 no-print w-fit">
+                <button
+                  onClick={() => setViewMode('subjects')}
+                  className={`px-4 py-1 text-sm font-bold rounded-full transition-all ${viewMode === 'subjects'
+                    ? 'text-blue-600 bg-gray-100'
+                    : 'text-gray-500 hover:text-gray-700'
+                    }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <Icon icon="hugeicons:book-open-01" className="w-4 h-4" />
+                    Subject Wise
+                  </div>
+                </button>
+                <button
+                  onClick={() => setViewMode('consolidated')}
+                  className={`px-4 py-1 text-sm font-bold rounded-full transition-all ${viewMode === 'consolidated'
+                    ? 'text-indigo-600 bg-gray-100'
+                    : 'text-gray-500 hover:text-gray-700'
+                    }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <Icon icon="hugeicons:file-02" className="w-4 h-4" />
+                    Consolidated
+                  </div>
+                </button>
+              </div>
+            )}
           </div>
           <div className="flex items-center gap-2">
             {can('add') && viewMode === 'subjects' && (
@@ -493,14 +492,14 @@ export default function AtwViewResultsPage() {
       ) : viewMode === 'consolidated' ? (
         <div className="overflow-x-auto">
           <table className="w-full border-collapse border border-black text-sm text-left">
-            <thead className="uppercase font-bold tracking-wider bg-gray-50">
+            <thead className="font-bold">
               <tr>
-                <th className="px-3 py-3 border border-black text-center w-12">SL.</th>
-                <th className="px-4 py-3 border border-black">Course</th>
-                <th className="px-4 py-3 border border-black">Semester</th>
-                <th className="px-4 py-3 border border-black">Program</th>
-                <th className="px-4 py-3 border border-black text-center">Subject Approval Status</th>
-                <th className="px-4 py-3 border border-black text-center no-print">Actions</th>
+                <th className="px-4 py-2 border border-black">Course</th>
+                <th className="px-4 py-2 border border-black">Semester</th>
+                <th className="px-3 py-2 border border-black text-center w-12">SL.</th>
+                <th className="px-4 py-2 border border-black">Program</th>
+                <th className="px-4 py-2 border border-black text-center">Subject Approval Status</th>
+                <th className="px-4 py-2 border border-black text-center no-print">Actions</th>
               </tr>
             </thead>
             <tbody className="bg-white">
@@ -529,27 +528,23 @@ export default function AtwViewResultsPage() {
 
                       return (
                         <tr key={`${firstRes?.course_id}-${firstRes?.semester_id}-${pNode.program?.id}`} className="hover:bg-indigo-50/20 transition-colors group cursor-pointer" onClick={() => router.push(`/atw/results/course/${firstRes?.course_id}/semester/${firstRes?.semester_id}/program/${firstRes?.program_id}`)}>
-                          <td className="px-3 py-4 border border-black text-center font-medium text-gray-500 group-hover:text-indigo-600">{globalIdx}</td>
-
                           {isFirstInCourse && (
-                            <td rowSpan={courseProgCount} className="px-4 py-4 border border-black font-bold text-gray-900 align-middle bg-white cursor-default" onClick={(e) => e.stopPropagation()}>
+                            <td rowSpan={courseProgCount} className="px-4 py-2 border border-black font-bold text-gray-900 align-middle bg-white cursor-default" onClick={(e) => e.stopPropagation()}>
                               {cNode.course?.name || "—"}
                             </td>
                           )}
 
                           {isFirstInSem && (
-                            <td rowSpan={semProgCount} className="px-4 py-4 border border-black font-medium text-gray-700 align-middle bg-white cursor-default" onClick={(e) => e.stopPropagation()}>
+                            <td rowSpan={semProgCount} className="px-4 py-2 border border-black font-medium text-gray-700 align-middle bg-white cursor-default" onClick={(e) => e.stopPropagation()}>
                               {sNode.semester?.name || "—"}
                             </td>
                           )}
-
-                          <td className="px-4 py-4 border border-black font-bold text-gray-900">{pNode.program?.name || "—"}</td>
-
-                          <td className="px-4 py-4 border border-black text-center">
+                          <td className="px-3 py-2 border border-black text-center font-medium text-gray-500 group-hover:text-indigo-600">{globalIdx}</td>
+                          <td className="px-4 py-2 border border-black font-bold text-gray-900">{pNode.program?.name || "—"}</td>
+                          <td className="px-4 py-2 border border-black text-center">
                             <div className="flex flex-col items-center gap-1">
-                              <span className={`px-3 py-1 rounded-full text-xs font-bold ${
-                                isFullyApproved ? 'bg-gray-100 text-gray-700' : 'bg-blue-50 text-blue-700'
-                              }`}>
+                              <span className={`px-3 py-1 rounded-full text-xs font-bold ${isFullyApproved ? 'bg-gray-100 text-gray-700' : 'bg-blue-50 text-blue-700'
+                                }`}>
                                 {approvedCount} / {totalCount} Subjects Approved
                               </span>
                               {isFullyApproved && (
@@ -557,9 +552,9 @@ export default function AtwViewResultsPage() {
                               )}
                             </div>
                           </td>
-                          <td className="px-4 py-4 border border-black text-center no-print">
+                          <td className="px-4 py-2 border border-black text-center no-print">
                             <div className="flex items-center justify-center gap-2" onClick={(e) => e.stopPropagation()}>
-                              <button 
+                              <button
                                 onClick={() => router.push(`/atw/results/course/${firstRes?.course_id}/semester/${firstRes?.semester_id}/program/${firstRes?.program_id}`)}
                                 className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
                                 title="View Consolidated Result & Approve"
@@ -567,7 +562,7 @@ export default function AtwViewResultsPage() {
                                 <Icon icon="hugeicons:view" className="w-5 h-5" />
                               </button>
                               {isFullyApproved && (
-                                <button 
+                                <button
                                   onClick={() => handleProgramForward(pNode)}
                                   className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors"
                                   title="Forward Program for Final Approval"
@@ -590,7 +585,7 @@ export default function AtwViewResultsPage() {
         <>
           <div className="overflow-x-auto">
             <table className="w-full border-collapse border border-black text-sm text-left">
-              <thead className="uppercase font-bold tracking-wider bg-gray-50">
+              <thead className="font-bold">
                 <tr>
                   <th className="px-3 py-3 border border-black text-center w-12">SL.</th>
                   <th className="px-4 py-3 border border-black">Course</th>
@@ -751,12 +746,12 @@ export default function AtwViewResultsPage() {
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full border-collapse border border-black text-sm text-left">
-            <thead className="uppercase font-bold tracking-wider bg-gray-50">
+            <thead className="font-bold">
               <tr>
-                <th className="px-3 py-3 border border-black text-center w-12">SL.</th>
                 <th className="px-4 py-3 border border-black">Course</th>
                 <th className="px-4 py-3 border border-black">Semester</th>
                 <th className="px-4 py-3 border border-black">Program</th>
+                <th className="px-3 py-3 border border-black text-center w-12">SL.</th>
                 <th className="px-4 py-3 border border-black">Subject</th>
                 <th className="px-4 py-3 border border-black">Instructor</th>
                 <th className="px-4 py-3 border border-black text-center">Cadets</th>
@@ -793,8 +788,6 @@ export default function AtwViewResultsPage() {
 
                         return (
                           <tr key={r.id} className={`hover:bg-blue-50/20 transition-colors group ${isPlaceholder ? 'cursor-default' : 'cursor-pointer'}`} onClick={() => !isPlaceholder && can('view') && handleViewResult(r.id)}>
-                            <td className="px-3 py-3 border border-black text-center font-medium text-gray-500 group-hover:text-blue-600">{globalIdx}</td>
-
                             {isFirstInCourse && (
                               <td rowSpan={cNode.cRowSpan} className="px-4 py-3 border border-black text-gray-900 font-bold align-middle bg-white cursor-default" onClick={(e) => e.stopPropagation()}>
                                 {cNode.course?.name || "—"}
@@ -812,7 +805,7 @@ export default function AtwViewResultsPage() {
                                 {pNode.program?.name || "—"}
                               </td>
                             )}
-
+                            <td className="px-3 py-3 border border-black text-center font-medium text-gray-500 group-hover:text-blue-600">{globalIdx}</td>
                             <td className="px-4 py-3 border border-black group-hover:text-blue-700">
                               <div className="flex flex-col">
                                 <span className="font-bold">{subjectModule?.subject_name || "N/A"}</span>
@@ -842,13 +835,13 @@ export default function AtwViewResultsPage() {
                                 if (isPlaceholder) return <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-orange-100 text-orange-700">Waiting for Result</span>;
                                 if (sa?.status === 'approved') return <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-green-100 text-green-800">✓ Approved</span>;
                                 if (sa?.status === 'rejected') return <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-100 text-red-800">✗ Rejected</span>;
-                                
+
                                 // Enhanced progress tracking for intermediate steps
                                 if (sa?.forwarded_by) {
                                   // If the result has been forwarded, check if there's an authority matching the forwarder
                                   const forwarderId = sa.forwarded_by;
                                   const authority = approvalAuthorities.find(a => a.user_id === forwarderId || (a.role_id && user?.roles?.some((r: any) => r.id === a.role_id)));
-                                  
+
                                   return (
                                     <div className="flex flex-col items-center gap-0.5">
                                       <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-800">⏳ Under Review</span>
@@ -858,7 +851,7 @@ export default function AtwViewResultsPage() {
                                     </div>
                                   );
                                 }
-                                
+
                                 return <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-gray-100 text-gray-500">Not Forwarded</span>;
                               })()}
                             </td>
@@ -1048,14 +1041,14 @@ export default function AtwViewResultsPage() {
         <div className="flex flex-col gap-4 text-center">
           <div className="flex justify-center mb-2"><FullLogo /></div>
           <h1 className="text-xl font-bold text-gray-900 uppercase">Bangladesh Air Force Academy</h1>
-          
+
           <div className="mt-2">
             <h2 className="text-md font-semibold text-red-600 uppercase flex items-center justify-center gap-2">
               <Icon icon="hugeicons:alert-square" className="w-5 h-5" />
               Access Denied
             </h2>
             <p className="text-sm text-gray-600 mt-3">
-              {hasPendingInstructorWings 
+              {hasPendingInstructorWings
                 ? "Your Instructor assignment is currently pending admin approval. You will be able to input marks once approved."
                 : "To input marks, please switch your active role to Instructor from the top-right menu."}
             </p>

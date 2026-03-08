@@ -259,11 +259,14 @@ export const instructorService = {
     try {
       const token = getToken();
       const result = await apiClient.get<InstructorApiResponse>(`/instructors?search=${serviceNumber}`, token);
-      
+
       if (result && result.success && result.data && result.data.length > 0) {
-        // Find exact match just in case
+        // Only return exact match
         const exactMatch = result.data.find(i => i.user?.service_number === serviceNumber);
-        return exactMatch || result.data[0];
+        if (!exactMatch) return null;
+        // Fetch full instructor details to get user.roles
+        const fullInstructor = await this.getInstructor(exactMatch.id);
+        return fullInstructor || exactMatch;
       }
       return null;
     } catch (error) {

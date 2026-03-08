@@ -11,6 +11,7 @@ interface UserQueryParams {
   page?: number;
   per_page?: number;
   search?: string;
+  status?: string;
 }
 
 interface UserPaginatedResponse {
@@ -68,12 +69,24 @@ interface UserCreateData {
 }
 
 export const userService = {
+  async getBlockedUsers(): Promise<User[]> {
+    try {
+      const token = getToken();
+      const result = await apiClient.get<{ success: boolean; data: User[] }>('/users/blocked', token);
+      return result?.data || [];
+    } catch (error) {
+      console.error('Failed to fetch blocked users:', error);
+      return [];
+    }
+  },
+
   async getAllUsers(params?: UserQueryParams): Promise<UserPaginatedResponse> {
     try {
       const query = new URLSearchParams();
       if (params?.page) query.append('page', params.page.toString());
       if (params?.per_page) query.append('per_page', params.per_page.toString());
       if (params?.search) query.append('search', params.search);
+      if (params?.status) query.append('status', params.status);
 
       const endpoint = `/users${query.toString() ? `?${query.toString()}` : ''}`;
       const token = getToken();
@@ -159,11 +172,14 @@ export const userService = {
     try {
       const token = getToken();
       const result = await apiClient.get<UserApiResponse>(`/users?search=${serviceNumber}`, token);
-      
+
       if (result && result.success && result.data && result.data.length > 0) {
-        // Find exact match just in case
+        // Only return exact match
         const exactMatch = result.data.find(u => u.service_number === serviceNumber);
-        return exactMatch || result.data[0];
+        if (!exactMatch) return null;
+        // Fetch full user details to get roles
+        const fullUser = await this.getUser(exactMatch.id);
+        return fullUser || exactMatch;
       }
       return null;
     } catch (error) {

@@ -353,7 +353,7 @@ function InstructorsPageContent() {
               </div>
             </div>
           ) : (
-            (isApprovedForUserWing && can('edit')) ? (
+            (userIsSystemAdmin || (isApprovedForUserWing && can('edit'))) ? (
               <button
                 onClick={(e) => { e.stopPropagation(); handleUpdateSignature(instructor); }}
                 className="p-1 text-blue-600 hover:bg-blue-50 rounded-full border border-blue-100"
@@ -374,7 +374,7 @@ function InstructorsPageContent() {
             {instructor.user?.rank ? (
               <>
                 <span className="flex-1">{instructor.user.rank.name}</span>
-                {isApprovedForUserWing && can('edit') && (
+                {(userIsSystemAdmin || (isApprovedForUserWing && can('edit'))) && (
                   <button
                     onClick={(e) => { e.stopPropagation(); handleAssignRank(instructor); }}
                     className="p-0.5 text-blue-600 hover:bg-blue-50 rounded border border-blue-100"
@@ -385,7 +385,7 @@ function InstructorsPageContent() {
                 )}
               </>
             ) : (
-              (isApprovedForUserWing && can('edit')) ? (
+              (userIsSystemAdmin || (isApprovedForUserWing && can('edit'))) ? (
                 <button
                   onClick={(e) => { e.stopPropagation(); handleAssignRank(instructor); }}
                   className="p-1 text-blue-600 hover:bg-blue-50 rounded border border-blue-100 flex items-center gap-1"
@@ -443,24 +443,35 @@ function InstructorsPageContent() {
     {
       key: "user", header: "Roles", className: "text-gray-700", render: (instructor) => {
         const isApprovedForUserWing = hasApprovedWingForUser(instructor);
-        const roleAssignments = instructor.user?.role_assignments || instructor.user?.roleAssignments || [];
-        const activeRoles = roleAssignments.filter(ra => ra.is_active && ra.role);
+        const userRoles = instructor.user?.roles || [];
+        const uniqueRoles = Array.from(new Map(userRoles.map(r => [r.id, r])).values());
+        // Only show instructor-related roles (Instructor, ATW CIC, ATW Course Tutor)
+        const instructorSlugs = ['instructor', 'atw-cic', 'atw-course-tutor'];
+        const instructorRoleNames = ['instructor', 'atw cic', 'atw course tutor', 'cic', 'course tutor'];
+        const instructorRoles = uniqueRoles.filter(r =>
+          instructorSlugs.includes(r.slug || '') ||
+          instructorRoleNames.includes(r.name.toLowerCase())
+        );
         return (
           <div className="flex flex-wrap items-center gap-1">
-            {activeRoles.length > 0 ? (
-              activeRoles.map(ra => (
+            {instructorRoles.length > 0 ? (
+              instructorRoles.map(role => (
                 <span
-                  key={ra.id}
-                  className={`px-2 py-0.5 text-xs rounded-full font-medium ${ra.is_primary ? "bg-blue-100 text-blue-700" : "bg-gray-100 text-gray-600"}`}
-                  title={ra.role?.description || ra.role?.name}
+                  key={role.id}
+                  className={`px-2 py-0.5 text-xs rounded-full font-medium ${
+                    role.name.toLowerCase() === 'instructor'
+                      ? "bg-purple-100 text-purple-700"
+                      : "bg-indigo-100 text-indigo-700"
+                  }`}
+                  title={role.description || role.name}
                 >
-                  {ra.role?.name}
+                  {role.name}
                 </span>
               ))
             ) : (
-              <span className="text-gray-400 text-xs">No roles</span>
+              <span className="text-gray-400 text-xs">—</span>
             )}
-            {isApprovedForUserWing && can('edit') && (
+            {(userIsSystemAdmin || (isApprovedForUserWing && can('edit'))) && (
               <button
                 onClick={(e) => { e.stopPropagation(); handleAssignRole(instructor); }}
                 className="ml-1 p-0.5 text-purple-600 hover:bg-purple-50 rounded border border-purple-100"
@@ -604,7 +615,7 @@ function InstructorsPageContent() {
             )}
             {pendingAssignment ? (
               can('edit') && <button onClick={() => handleApproveWing(pendingAssignment.id, instructor)} className="p-1 text-green-600 hover:bg-green-50 rounded" title="Approve Wing"><Icon icon="hugeicons:checkmark-circle-02" className="w-4 h-4" /></button>
-            ) : isApprovedForUserWing && can('edit') && (
+            ) : ( userIsSystemAdmin || (isApprovedForUserWing && can('edit'))) && (
               <div className="flex gap-1">
                 {isItATWingUser && (
                   <>

@@ -243,6 +243,22 @@ export const atwSubjectModuleService = {
   },
 
   /**
+   * Toggle subject active status
+   */
+  async toggleStatus(id: number): Promise<AtwSubjectModule | null> {
+    try {
+      const token = getToken();
+      if (!token) throw new Error('Authentication token not found. Please login again.');
+      const result = await apiClient.patch<SubjectActionApiResponse>(`/atw-subject-modules/${id}/toggle-status`, {}, token);
+      if (!result || !result.success) throw new Error(result?.message || 'Failed to toggle status');
+      return result.data || null;
+    } catch (error: unknown) {
+      console.error(`Failed to toggle subject ${id} status:`, error);
+      throw error;
+    }
+  },
+
+  /**
    * Bulk disable subjects
    */
   async bulkDisable(ids: number[]): Promise<boolean> {

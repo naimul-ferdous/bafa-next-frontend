@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { Icon } from "@iconify/react";
+import FullLogo from "@/components/ui/fulllogo";
 import { Modal } from "@/components/ui/modal";
 import { instructorAssignWingService } from "@/libs/services/instructorAssignWingService";
 import { wingService } from "@/libs/services/wingService";
@@ -144,16 +145,17 @@ export default function InstructorAssignWingModal({
     <Modal isOpen={isOpen} onClose={handleClose} showCloseButton className="max-w-2xl">
       <div className="p-6">
         {/* Header */}
-        <div className="flex items-center gap-3 mb-6">
-          <div className="w-12 h-12 rounded-xl bg-blue-100 flex items-center justify-center">
-            <Icon icon="hugeicons:hierarchy-square-01" className="w-6 h-6 text-blue-600" />
+        <div className="text-center mb-8">
+          <div className="flex justify-center mb-4">
+            <FullLogo />
           </div>
-          <div>
-            <h3 className="text-xl font-bold text-gray-900">Assign Wing</h3>
-            <p className="text-sm text-gray-600">
-              {instructor?.user?.name || "Instructor"} ({instructor?.user?.service_number || "N/A"})
-            </p>
-          </div>
+          <h1 className="text-xl font-bold text-gray-900 uppercase">Bangladesh Air Force Academy</h1>
+          <h2 className="text-md font-semibold text-gray-700 mt-2 uppercase">
+            Assign Wing
+          </h2>
+          <p className="text-sm text-gray-500">
+            Manage wing assignments for {instructor?.user?.name || "Instructor"} ({instructor?.user?.service_number || "N/A"})
+          </p>
         </div>
 
         {loadingData ? (
@@ -208,9 +210,8 @@ export default function InstructorAssignWingModal({
 
             {/* Add New Assignment Form */}
             <form onSubmit={handleSubmit}>
-              <h4 className="text-sm font-semibold text-gray-700 mb-3">Add New Assignment</h4>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+              <div className={`grid grid-cols-1 ${selectedWingId && subWings.length > 0 ? 'md:grid-cols-2' : ''} gap-4 mb-4`}>
                 {/* Wing Selection */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -231,14 +232,14 @@ export default function InstructorAssignWingModal({
                   </select>
                 </div>
 
-                {/* SubWing Selection */}
+                {/* SubWing Selection - only show when wing has sub-wings */}
+                {selectedWingId && subWings.length > 0 && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Sub-Wing (Optional)</label>
                   <select
                     value={selectedSubWingId || ""}
                     onChange={(e) => setSelectedSubWingId(e.target.value ? Number(e.target.value) : null)}
                     className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    disabled={!selectedWingId || subWings.length === 0}
                   >
                     <option value="">Select Sub-Wing</option>
                     {subWings.map((subWing) => (
@@ -248,6 +249,7 @@ export default function InstructorAssignWingModal({
                     ))}
                   </select>
                 </div>
+                )}
               </div>
 
               {/* Action Buttons */}

@@ -2,6 +2,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import Image from "next/image";
 import Input from "@/components/form/input/InputField";
 import Label from "@/components/form/Label";
@@ -9,6 +10,7 @@ import { roleService } from "@/libs/services/roleService";
 import { rankService } from "@/libs/services/rankService";
 import { wingService } from "@/libs/services/wingService";
 import { subWingService } from "@/libs/services/subWingService";
+import { userService } from "@/libs/services/userService";
 import FullLogo from "@/components/ui/fulllogo";
 import type { User, Role, Rank, Wing, SubWing } from "@/libs/types/user";
 import { Icon } from "@iconify/react";
@@ -24,6 +26,7 @@ interface UserFormProps {
 }
 
 export default function UserForm({ initialData, onSubmit, onCancel, loading: externalLoading, isEdit = false }: UserFormProps) {
+  const router = useRouter();
   const [formData, setFormData] = useState({
     service_number: "",
     name: "",
@@ -41,6 +44,7 @@ export default function UserForm({ initialData, onSubmit, onCancel, loading: ext
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({});
 
   // Image states
   const [profilePhoto, setProfilePhoto] = useState<string>("");
@@ -58,6 +62,21 @@ export default function UserForm({ initialData, onSubmit, onCancel, loading: ext
   const [wingsLoading, setWingsLoading] = useState(false);
   const [subWings, setSubWings] = useState<SubWing[]>([]);
   const [subWingsLoading, setSubWingsLoading] = useState(false);
+
+  // Searchable dropdown states
+  const [rankSearch, setRankSearch] = useState("");
+  const [rankDropdownOpen, setRankDropdownOpen] = useState(false);
+  const [bloodGroupSearch, setBloodGroupSearch] = useState("");
+  const [bloodGroupDropdownOpen, setBloodGroupDropdownOpen] = useState(false);
+
+  // Real-time search states
+  const [searchStatus, setSearchStatus] = useState<{
+    type: 'idle' | 'loading' | 'found' | 'not_found' | 'already_exists';
+    message: string;
+  }>({ type: 'idle', message: '' });
+  const [foundUserId, setFoundUserId] = useState<number | null>(null);
+  const [autoFilledFields, setAutoFilledFields] = useState<Set<string>>(new Set());
+  const searchTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
 
   // Format date from YYYY-MM-DD to DD/MM/YYYY
   const formatDateForDisplay = (dateStr?: string | null) => {
@@ -154,7 +173,13 @@ export default function UserForm({ initialData, onSubmit, onCancel, loading: ext
     try {
       setRolesLoading(true);
       const response = await roleService.getAllRoles({ per_page: 1000 });
-      setRoles(response.data.filter(r => r.is_active !== false));
+      const hiddenSlugs = ['instructor', 'atw-cic', 'atw-course-tutor'];
+      const hiddenNames = ['ATW CIC', 'ATW Course Tutor', 'Instructor'];
+      setRoles(response.data.filter(r =>
+        r.is_active !== false &&
+        !hiddenSlugs.includes(r.slug || '') &&
+        !hiddenNames.includes(r.name)
+      ));
     } catch (error) {
       console.error("Failed to load roles:", error);
     } finally {
@@ -199,6 +224,59 @@ export default function UserForm({ initialData, onSubmit, onCancel, loading: ext
     }
   };
 
+  // Real-time BD number search
+  const handleSearchBdNumber = async (query: string) => {
+    if (!query || query.length < 2) {
+      if (!query) {
+        setSearchStatus({ type: 'idle', message: '' });
+        setFoundUserId(null);
+        setAutoFilledFields(new Set());
+      }
+      return;
+    }
+
+    setSearchStatus({ type: 'loading', message: 'Searching...' });
+
+    try {
+      const user = await userService.findUserByServiceNumber(query);
+      if (user) {
+        setFoundUserId(user.id);
+        setSearchStatus({
+          type: 'already_exists',
+          message: `User "${user.name}" already exists with BD No ${query}.`
+        });
+      } else {
+        setFoundUserId(null);
+        setAutoFilledFields(new Set());
+        setSearchStatus({
+          type: 'not_found',
+          message: `No existing user found. You can create a new user.`
+        });
+      }
+    } catch (err: any) {
+      setSearchStatus({ type: 'idle', message: '' });
+    }
+  };
+
+  const handleServiceNumberChange = (value: string) => {
+    handleChange("service_number", value);
+    setFoundUserId(null);
+    setAutoFilledFields(new Set());
+    if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+    if (!value || value.length < 2) {
+      if (!value) setSearchStatus({ type: 'idle', message: '' });
+      return;
+    }
+    searchTimeoutRef.current = setTimeout(() => {
+      handleSearchBdNumber(value);
+    }, 600);
+  };
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => { if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current); };
+  }, []);
+
   const handleChange = (field: string, value: any) => {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
@@ -214,6 +292,17 @@ export default function UserForm({ initialData, onSubmit, onCancel, loading: ext
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+    setFieldErrors({});
+
+    if (!formData.phone) { setError("Phone is required"); return; }
+    if (!formData.rank_id) { setError("Rank is required"); return; }
+    if (!formData.blood_group) { setError("Blood Group is required"); return; }
+    if (!formData.date_of_birth) { setError("Date of Birth is required"); return; }
+    if (!formData.date_of_joining) { setError("Date of Joining is required"); return; }
+    if (!formData.address) { setError("Address is required"); return; }
+    if (!formData.wing_id) { setError("Wing is required"); return; }
+    if (selectedRoles.length === 0) { setError("At least one role must be selected"); return; }
+
     setLoading(true);
 
     try {
@@ -228,7 +317,12 @@ export default function UserForm({ initialData, onSubmit, onCancel, loading: ext
 
       await onSubmit(submitData, selectedRoles);
     } catch (err: any) {
-      setError(err.message || "Failed to save user");
+      if (err.errors && typeof err.errors === 'object') {
+        setFieldErrors(err.errors);
+        setError(err.message || "Validation failed. Please fix the errors below.");
+      } else {
+        setError(err.message || "Failed to save user");
+      }
     } finally {
       setLoading(false);
     }
@@ -252,7 +346,16 @@ export default function UserForm({ initialData, onSubmit, onCancel, loading: ext
 
         {error && (
           <div className="p-4 mb-6 bg-red-50 border border-red-200 rounded-lg text-red-600">
-            {error}
+            <p className="font-semibold">{error}</p>
+            {Object.keys(fieldErrors).length > 0 && (
+              <ul className="mt-2 list-disc list-inside space-y-1 text-sm">
+                {Object.entries(fieldErrors).map(([field, messages]) =>
+                  messages.map((msg, i) => (
+                    <li key={`${field}-${i}`}>{msg}</li>
+                  ))
+                )}
+              </ul>
+            )}
           </div>
         )}
 
@@ -262,6 +365,65 @@ export default function UserForm({ initialData, onSubmit, onCancel, loading: ext
             <h2 className="text-lg font-bold text-gray-900 mb-4 pb-2 border-b border-dashed border-gray-300">
               1. Basic Information
             </h2>
+
+            {/* BD Number Search Section (only on create) */}
+            {!isEdit && (
+              <div className="mb-6">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+                  <div>
+                    <Label>BD/Service Number <span className="text-red-500">*</span></Label>
+                    <div className="flex gap-2">
+                      <div className="flex-1">
+                        <Input value={formData.service_number} onChange={(e) => handleServiceNumberChange(e.target.value)} placeholder="e.g. 123456" required />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleSearchBdNumber(formData.service_number)}
+                        disabled={searchStatus.type === 'loading'}
+                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex-shrink-0 h-[42px] flex items-center justify-center min-w-[42px]"
+                      >
+                        {searchStatus.type === 'loading' ? (
+                          <Icon icon="hugeicons:loading-03" className="w-5 h-5 animate-spin" />
+                        ) : (
+                          <Icon icon="hugeicons:search-01" className="w-5 h-5" />
+                        )}
+                      </button>
+                    </div>
+                    {fieldErrors.service_number && <p className="text-xs text-red-500 mt-1">{fieldErrors.service_number[0]}</p>}
+                  </div>
+                  <div className="col-span-3">
+                    {searchStatus.type === 'not_found' && (
+                      <div className="p-2.5 text-sm flex items-center gap-2 text-blue-700">
+                        <Icon icon="hugeicons:information-circle" className="w-5 h-5" />
+                        <span>{searchStatus.message}</span>
+                      </div>
+                    )}
+                    {searchStatus.type === 'loading' && (
+                      <div className="p-2.5 text-sm flex items-center gap-2 text-gray-700">
+                        <Icon icon="hugeicons:loading-03" className="w-5 h-5 animate-spin" />
+                        <span>Searching...</span>
+                      </div>
+                    )}
+                    {searchStatus.type === 'already_exists' && (
+                      <div className="p-3 bg-orange-50 border border-orange-200 rounded-lg flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2 text-orange-700 text-sm">
+                          <Icon icon="hugeicons:alert-02" className="w-5 h-5 flex-shrink-0" />
+                          <span>{searchStatus.message}</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => router.push(`/users/${foundUserId}/edit`)}
+                          className="px-4 py-1.5 bg-orange-600 text-white text-sm rounded-lg hover:bg-orange-700 flex items-center gap-1.5 flex-shrink-0"
+                        >
+                          <Icon icon="hugeicons:pencil-edit-01" className="w-4 h-4" />
+                          Edit User
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
 
             <div className="grid grid-cols-2 gap-6 mb-6">
               {/* Profile Picture */}
@@ -300,68 +462,104 @@ export default function UserForm({ initialData, onSubmit, onCancel, loading: ext
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              {/* Show BD Number field in edit mode (non-searchable) */}
+              {isEdit && (
               <div>
                 <Label>BD/Service Number <span className="text-red-500">*</span></Label>
                 <Input value={formData.service_number} onChange={(e) => handleChange("service_number", e.target.value)} placeholder="e.g. 123456" required />
+                {fieldErrors.service_number && <p className="text-xs text-red-500 mt-1">{fieldErrors.service_number[0]}</p>}
               </div>
+              )}
               <div>
                 <Label>Full Name <span className="text-red-500">*</span></Label>
                 <Input value={formData.name} onChange={(e) => handleChange("name", e.target.value)} placeholder="e.g. John Doe" required />
+                {fieldErrors.name && <p className="text-xs text-red-500 mt-1">{fieldErrors.name[0]}</p>}
               </div>
               <div>
                 <Label>Email <span className="text-red-500">*</span></Label>
                 <Input type="email" value={formData.email} onChange={(e) => handleChange("email", e.target.value)} placeholder="e.g. john@example.com" required />
+                {fieldErrors.email && <p className="text-xs text-red-500 mt-1">{fieldErrors.email[0]}</p>}
               </div>
               <div>
                 <Label>Password {!isEdit && <span className="text-red-500">*</span>} {isEdit && <span className="text-xs text-gray-500">(leave blank to keep current)</span>}</Label>
                 <Input type="password" value={formData.password} onChange={(e) => handleChange("password", e.target.value)} placeholder="••••••••" required={!isEdit} />
+                {fieldErrors.password && <p className="text-xs text-red-500 mt-1">{fieldErrors.password[0]}</p>}
               </div>
               <div>
-                <Label>Phone</Label>
-                <Input value={formData.phone} onChange={(e) => handleChange("phone", e.target.value)} placeholder="e.g. +8801712345678" />
+                <Label>Phone <span className="text-red-500">*</span></Label>
+                <Input value={formData.phone} onChange={(e) => handleChange("phone", e.target.value)} placeholder="e.g. +8801712345678" required />
+                {fieldErrors.phone && <p className="text-xs text-red-500 mt-1">{fieldErrors.phone[0]}</p>}
               </div>
-              <div>
-                <Label>Rank</Label>
-                <select 
-                  value={formData.rank_id} 
-                  onChange={(e) => handleChange("rank_id", e.target.value)} 
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  disabled={ranksLoading}
+              <div className="relative">
+                <Label>Rank <span className="text-red-500">*</span></Label>
+                <div
+                  onClick={() => !ranksLoading && setRankDropdownOpen(!rankDropdownOpen)}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 cursor-pointer flex items-center justify-between"
                 >
-                  <option value="">Select Rank</option>
-                  {ranks.map((rank) => (
-                    <option key={rank.id} value={rank.id}>
-                      {rank.name} ({rank.short_name})
-                    </option>
-                  ))}
-                </select>
+                  <span className={formData.rank_id ? "text-gray-900" : "text-gray-400"}>
+                    {formData.rank_id ? ranks.find(r => r.id === Number(formData.rank_id))?.name || "Select Rank" : "Select Rank"}
+                  </span>
+                  <Icon icon={rankDropdownOpen ? "hugeicons:arrow-up-01" : "hugeicons:arrow-down-01"} className="w-4 h-4 text-gray-400" />
+                </div>
+                {rankDropdownOpen && (
+                  <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-hidden">
+                    <div className="p-2 border-b border-gray-100">
+                      <input type="text" value={rankSearch} onChange={(e) => setRankSearch(e.target.value)} placeholder="Search ranks..." className="w-full px-3 py-1.5 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" autoFocus />
+                    </div>
+                    <div className="overflow-y-auto max-h-48">
+                      {ranks.filter(r => `${r.name} ${r.short_name}`.toLowerCase().includes(rankSearch.toLowerCase())).map((rank) => (
+                        <div key={rank.id} onClick={() => { handleChange("rank_id", rank.id.toString()); setRankDropdownOpen(false); setRankSearch(""); }} className={`px-3 py-2 text-sm cursor-pointer ${formData.rank_id == rank.id ? "bg-blue-50 text-blue-700" : "hover:bg-gray-50 text-gray-900"}`}>
+                          {rank.name} ({rank.short_name})
+                        </div>
+                      ))}
+                      {ranks.filter(r => `${r.name} ${r.short_name}`.toLowerCase().includes(rankSearch.toLowerCase())).length === 0 && (
+                        <div className="px-3 py-2 text-sm text-gray-400 text-center">No ranks found</div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+              <div className="relative">
+                <Label>Blood Group <span className="text-red-500">*</span></Label>
+                <div
+                  onClick={() => setBloodGroupDropdownOpen(!bloodGroupDropdownOpen)}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 cursor-pointer flex items-center justify-between"
+                >
+                  <span className={formData.blood_group ? "text-gray-900" : "text-gray-400"}>
+                    {formData.blood_group || "Select Blood Group"}
+                  </span>
+                  <Icon icon={bloodGroupDropdownOpen ? "hugeicons:arrow-up-01" : "hugeicons:arrow-down-01"} className="w-4 h-4 text-gray-400" />
+                </div>
+                {bloodGroupDropdownOpen && (
+                  <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-hidden">
+                    <div className="p-2 border-b border-gray-100">
+                      <input type="text" value={bloodGroupSearch} onChange={(e) => setBloodGroupSearch(e.target.value)} placeholder="Search blood group..." className="w-full px-3 py-1.5 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" autoFocus />
+                    </div>
+                    <div className="overflow-y-auto max-h-48">
+                      {["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"].filter(bg => bg.toLowerCase().includes(bloodGroupSearch.toLowerCase())).map((bg) => (
+                        <div key={bg} onClick={() => { handleChange("blood_group", bg); setBloodGroupDropdownOpen(false); setBloodGroupSearch(""); }} className={`px-3 py-2 text-sm cursor-pointer ${formData.blood_group === bg ? "bg-blue-50 text-blue-700" : "hover:bg-gray-50 text-gray-900"}`}>
+                          {bg}
+                        </div>
+                      ))}
+                      {["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"].filter(bg => bg.toLowerCase().includes(bloodGroupSearch.toLowerCase())).length === 0 && (
+                        <div className="px-3 py-2 text-sm text-gray-400 text-center">No match found</div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
               <div>
-                <Label>Blood Group</Label>
-                <select value={formData.blood_group} onChange={(e) => handleChange("blood_group", e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500">
-                  <option value="">Select Blood Group</option>
-                  <option value="A+">A+</option>
-                  <option value="A-">A-</option>
-                  <option value="B+">B+</option>
-                  <option value="B-">B-</option>
-                  <option value="AB+">AB+</option>
-                  <option value="AB-">AB-</option>
-                  <option value="O+">O+</option>
-                  <option value="O-">O-</option>
-                </select>
+                <Label>Date of Birth <span className="text-red-500">*</span></Label>
+                <DatePicker value={formData.date_of_birth} onChange={(e) => handleChange("date_of_birth", e.target.value)} placeholder="dd/mm/yyyy" required />
               </div>
               <div>
-                <Label>Date of Birth</Label>
-                <DatePicker value={formData.date_of_birth} onChange={(e) => handleChange("date_of_birth", e.target.value)} placeholder="dd/mm/yyyy" />
-              </div>
-              <div>
-                <Label>Date of Joining</Label>
-                <DatePicker value={formData.date_of_joining} onChange={(e) => handleChange("date_of_joining", e.target.value)} placeholder="dd/mm/yyyy" />
+                <Label>Date of Joining <span className="text-red-500">*</span></Label>
+                <DatePicker value={formData.date_of_joining} onChange={(e) => handleChange("date_of_joining", e.target.value)} placeholder="dd/mm/yyyy" required />
               </div>
             </div>
             <div className="mt-4">
-              <Label>Address</Label>
-              <textarea value={formData.address} onChange={(e) => handleChange("address", e.target.value)} placeholder="Enter address (optional)" rows={2} className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              <Label>Address <span className="text-red-500">*</span></Label>
+              <textarea value={formData.address} onChange={(e) => handleChange("address", e.target.value)} placeholder="Enter address" rows={2} className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500" required />
             </div>
 
             <div className="mt-4">
@@ -405,28 +603,29 @@ export default function UserForm({ initialData, onSubmit, onCancel, loading: ext
                 {wingsLoading && <p className="text-xs text-gray-500 mt-1 italic">Loading wings...</p>}
               </div>
 
-              <div>
-                <Label> Sub-Wing</Label>
-                <select 
-                  value={formData.sub_wing_id} 
-                  onChange={(e) => handleChange("sub_wing_id", e.target.value)} 
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  disabled={subWingsLoading || !formData.wing_id}
-                >
-                  <option value="">No Sub-Wing Assignment</option>
-                  {subWings.map((sw) => (
-                    <option key={sw.id} value={sw.id}>
-                      {sw.name} ({sw.code})
-                    </option>
-                  ))}
-                </select>
-                {subWingsLoading && <p className="text-xs text-gray-500 mt-1 italic">Loading sub-wings...</p>}
-                {!formData.wing_id && <p className="text-xs text-gray-400 mt-1 italic">Select a wing first</p>}
-              </div>
+              {formData.wing_id && subWings.length > 0 && (
+                <div>
+                  <Label> Sub-Wing</Label>
+                  <select
+                    value={formData.sub_wing_id}
+                    onChange={(e) => handleChange("sub_wing_id", e.target.value)}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    disabled={subWingsLoading}
+                  >
+                    <option value="">No Sub-Wing Assignment</option>
+                    {subWings.map((sw) => (
+                      <option key={sw.id} value={sw.id}>
+                        {sw.name} ({sw.code})
+                      </option>
+                    ))}
+                  </select>
+                  {subWingsLoading && <p className="text-xs text-gray-500 mt-1 italic">Loading sub-wings...</p>}
+                </div>
+              )}
             </div>
 
             <h3 className="text-md font-bold text-gray-700 mb-3">
-              Assign Roles 
+              Assign Roles <span className="text-red-500">*</span>
               <span className="ml-2 text-sm font-normal text-gray-500">
                 ({selectedRoles.length} selected)
               </span>

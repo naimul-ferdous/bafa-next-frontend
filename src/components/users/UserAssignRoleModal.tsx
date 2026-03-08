@@ -99,6 +99,9 @@ export default function UserAssignRoleModal({
     warning: null,
   });
   const [loadingAssigns, setLoadingAssigns] = useState(false);
+  const [removingAssignmentId, setRemovingAssignmentId] = useState<number | null>(null);
+  const [roleSearch, setRoleSearch] = useState("");
+  const [roleDropdownOpen, setRoleDropdownOpen] = useState(false);
 
   const user = localUser;
 
@@ -131,8 +134,12 @@ export default function UserAssignRoleModal({
   const filteredRoles = useMemo(() => {
     if (!roles.length) return [];
 
-    // Super admins see all switchable roles
-    if (userIsSuperAdmin) return roles.filter((r) => !!r.is_role_switch);
+    const hiddenNames = ['ATW CIC', 'ATW Course Tutor', 'Instructor'];
+    const hiddenSlugs = ['instructor', 'atw-cic', 'atw-course-tutor'];
+    const isHidden = (r: Role) => hiddenNames.includes(r.name) || hiddenSlugs.includes(r.slug || '');
+
+    // Super admins see all switchable roles except hidden ones
+    if (userIsSuperAdmin) return roles.filter((r) => !!r.is_role_switch && !isHidden(r));
 
     const { authorizedWingIds } = authContext;
 
@@ -140,8 +147,8 @@ export default function UserAssignRoleModal({
       // 1. Only show switchable roles (handles both boolean true and integer 1)
       if (!role.is_role_switch) return false;
 
-      // 2. Instructor role is always available
-      if (role.slug === "instructor" || role.name?.toLowerCase() === "instructor") return true;
+      // 2. Hide Instructor, ATW CIC, Course Tutor
+      if (isHidden(role)) return false;
 
       const roleWingId =
         role.wing_id !== null && role.wing_id !== undefined ? Number(role.wing_id) : null;
@@ -210,6 +217,17 @@ export default function UserAssignRoleModal({
     });
   }, [roles, userIsSuperAdmin, authContext, selectedWingId, selectedSubWingId]);
 
+  // ─── Set of already-assigned role IDs (to disable in dropdowns) ─────────────
+  const assignedRoleIds = useMemo(() => {
+    const ids = new Set<number>();
+    const assignments = user?.role_assignments || (user as any)?.roleAssignments || [];
+    assignments.forEach((a: any) => {
+      const roleId = a.role_id || a.role?.id;
+      if (roleId) ids.add(Number(roleId));
+    });
+    return ids;
+  }, [user]);
+
   // ─── Fix: use !! so both boolean true and integer 1 are treated as truthy ───
   const selectedRole = useMemo(
     () => roles.find((r) => r.id === Number(selectedRoleId)),
@@ -222,6 +240,16 @@ export default function UserAssignRoleModal({
            selectedRole.slug === "instructor" || 
            selectedRole.name?.toLowerCase() === "instructor";
   }, [selectedRole]);
+
+  // Check if user already has an Instructor role assigned
+  const userHasInstructorRole = useMemo(() => {
+    if (!user?.role_assignments) return false;
+    return user.role_assignments.some((a: any) => {
+      const roleName = a.role?.name?.toLowerCase() || "";
+      const roleSlug = a.role?.slug?.toLowerCase() || "";
+      return roleName === "instructor" || roleSlug === "instructor" || !!a.role?.is_marge_role;
+    });
+  }, [user?.role_assignments]);
 
   // ─── Filtered Wings and SubWings based on Admin Authorization ───────────
   const filteredWings = useMemo(() => {
@@ -434,6 +462,7 @@ export default function UserAssignRoleModal({
   const handleRemoveAssignment = async (assignmentId: number) => {
     if (!user || !confirm("Are you sure you want to remove this role assignment?")) return;
 
+    setRemovingAssignmentId(assignmentId);
     try {
       // Find the assignment to check if it's a Course Tutor role
       const assignments = user.role_assignments || (user as any).roleAssignments || [];
@@ -475,6 +504,8 @@ export default function UserAssignRoleModal({
     } catch (err) {
       console.error("Failed to remove role:", err);
       setError("Failed to remove assignment");
+    } finally {
+      setRemovingAssignmentId(null);
     }
   };
 
@@ -488,6 +519,8 @@ export default function UserAssignRoleModal({
     setIsMergeMode(false);
     setChecks({ penpicture: false, counseling: false, olq: false, warning: false });
     setError(null);
+    setRoleSearch("");
+    setRoleDropdownOpen(false);
     onClose();
   };
 
@@ -667,10 +700,15 @@ export default function UserAssignRoleModal({
                           </div>
                           <button
                             onClick={() => handleRemoveAssignment(assignment.id)}
-                            className="p-1 text-red-600 hover:bg-red-50 rounded"
+                            disabled={removingAssignmentId === assignment.id}
+                            className="p-1 text-red-600 hover:bg-red-50 rounded disabled:opacity-50 disabled:cursor-not-allowed"
                             title="Remove Assignment"
                           >
-                            <Icon icon="hugeicons:delete-02" className="w-4 h-4" />
+                            {removingAssignmentId === assignment.id ? (
+                              <Icon icon="hugeicons:loading-03" className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <Icon icon="hugeicons:delete-02" className="w-4 h-4" />
+                            )}
                           </button>
                         </div>
 
@@ -721,21 +759,59 @@ export default function UserAssignRoleModal({
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Select Role {isMergeMode ? "(Optional)" : <span className="text-red-500">*</span>}
                   </label>
-                  <select
-                    value={selectedRoleId}
-                    onChange={(e) => {
-                      setSelectedRoleId(e.target.value ? Number(e.target.value) : "");
-                    }}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    required={!isMergeMode}
-                  >
-                    <option value="">Select Role</option>
-                    {filteredRoles.map((role) => (
-                      <option key={role.id} value={role.id} disabled={assignedRoleIds.has(role.id)}>
-                        {role.name} {role.is_super_admin ? "(Super Admin)" : ""} {assignedRoleIds.has(role.id) ? "(Assigned)" : ""}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="relative">
+                    <div
+                      onClick={() => setRoleDropdownOpen(!roleDropdownOpen)}
+                      className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-white text-gray-900 cursor-pointer flex items-center justify-between focus-within:ring-2 focus-within:ring-blue-500"
+                    >
+                      <span className={selectedRoleId ? "text-gray-900" : "text-gray-400"}>
+                        {selectedRoleId ? filteredRoles.find(r => r.id === Number(selectedRoleId))?.name || "Select Role" : "Select Role"}
+                      </span>
+                      <Icon icon={roleDropdownOpen ? "hugeicons:arrow-up-01" : "hugeicons:arrow-down-01"} className="w-4 h-4 text-gray-400" />
+                    </div>
+                    {roleDropdownOpen && (
+                      <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-hidden">
+                        <div className="p-2 border-b border-gray-100">
+                          <input
+                            type="text"
+                            value={roleSearch}
+                            onChange={(e) => setRoleSearch(e.target.value)}
+                            placeholder="Search roles..."
+                            className="w-full px-3 py-1.5 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            autoFocus
+                          />
+                        </div>
+                        <div className="overflow-y-auto max-h-48">
+                          {filteredRoles
+                            .filter(role => role.name.toLowerCase().includes(roleSearch.toLowerCase()))
+                            .map((role) => (
+                              <div
+                                key={role.id}
+                                onClick={() => {
+                                  if (!assignedRoleIds.has(role.id)) {
+                                    setSelectedRoleId(role.id);
+                                    setRoleDropdownOpen(false);
+                                    setRoleSearch("");
+                                  }
+                                }}
+                                className={`px-3 py-2 text-sm cursor-pointer ${
+                                  assignedRoleIds.has(role.id)
+                                    ? "text-gray-400 bg-gray-50 cursor-not-allowed"
+                                    : selectedRoleId === role.id
+                                    ? "bg-blue-50 text-blue-700"
+                                    : "hover:bg-gray-50 text-gray-900"
+                                }`}
+                              >
+                                {role.name} {role.is_super_admin ? "(Super Admin)" : ""} {assignedRoleIds.has(role.id) ? "(Assigned)" : ""}
+                              </div>
+                            ))}
+                          {filteredRoles.filter(role => role.name.toLowerCase().includes(roleSearch.toLowerCase())).length === 0 && (
+                            <div className="px-3 py-2 text-sm text-gray-400 text-center">No roles found</div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 {/* Merge Mode Toggle for NEW selection */}

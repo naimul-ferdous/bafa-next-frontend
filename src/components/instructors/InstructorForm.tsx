@@ -2,6 +2,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { Icon } from "@iconify/react";
 import FullLogo from "@/components/ui/fulllogo";
@@ -53,6 +54,7 @@ interface InstructorFormProps {
 }
 
 export default function InstructorForm({ initialData, onSubmit, onCancel, loading: externalLoading, isEdit: propIsEdit = false }: InstructorFormProps) {
+  const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [bdNumberSearch, setBdNumberSearch] = useState("");
@@ -65,6 +67,9 @@ export default function InstructorForm({ initialData, onSubmit, onCancel, loadin
   const [instructorId, setInstructorId] = useState<number | null>(null);
   const [isExistingUser, setIsExistingUser] = useState(false);
   const [changePassword, setChangePassword] = useState(false);
+  const [autoFilledFields, setAutoFilledFields] = useState<Set<string>>(new Set());
+  const [foundInstructorId, setFoundInstructorId] = useState<number | null>(null);
+  const searchTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
 
   // Basic Information
   const [profilePicture, setProfilePicture] = useState<string>("");
@@ -191,6 +196,7 @@ export default function InstructorForm({ initialData, onSubmit, onCancel, loadin
     setLocalIsEdit(propIsEdit);
     setIsExistingUser(false);
     setChangePassword(false);
+    setAutoFilledFields(new Set());
     setProfilePicture("");
     setProfilePicturePreview("");
     setSignature("");
@@ -260,12 +266,12 @@ export default function InstructorForm({ initialData, onSubmit, onCancel, loadin
     setSelectedRoleIds([]);
   }, [propIsEdit]);
 
-  const populateForm = useCallback((data: InstructorBiodata) => {
+  const populateForm = useCallback((data: InstructorBiodata, preserveBdNumber = false) => {
     const u = data.user;
     setInstructorId(data.id);
     setIsExistingUser(true);
     setChangePassword(false);
-    setBdNumberSearch(u?.service_number || "");
+    if (!preserveBdNumber) setBdNumberSearch(u?.service_number || "");
     setName(u?.name || "");
     setEmail(u?.email || "");
     setMobile(u?.phone || "");
@@ -374,12 +380,10 @@ export default function InstructorForm({ initialData, onSubmit, onCancel, loadin
     setYearsOfExperience(data.years_of_experience?.toString() || "");
     setInstructorSince(formatDateForDisplay(data.instructor_since));
 
-    // Pre-select existing role assignments (API returns role_assignments snake_case)
-    const roleAssignments = u?.role_assignments || u?.roleAssignments || [];
-    if (roleAssignments.length > 0) {
-      setSelectedRoleIds(roleAssignments.map(ra => ra.role_id));
-    } else {
-      setSelectedRoleIds([]);
+    // Pre-select existing user roles (Instructor role merge handled in roles useEffect)
+    const userRoles = u?.roles || [];
+    if (userRoles.length > 0) {
+      setSelectedRoleIds(userRoles.map(r => r.id));
     }
 
     if (u?.profile_photo) setProfilePicturePreview(getImageUrl(u.profile_photo));
@@ -392,56 +396,80 @@ export default function InstructorForm({ initialData, onSubmit, onCancel, loadin
     }
   }, [initialData, populateForm]);
 
-  // Fetch all available roles on mount; auto-select "Instructor" role for add mode
+  // Fetch all available roles on mount; auto-select "Instructor" role
   useEffect(() => {
     roleService.getAllRoles({ per_page: 100 }).then(res => {
       setAvailableRoles(res.data);
-      if (!propIsEdit) {
-        const instructorRole = res.data.find(r => r.name.toLowerCase().includes('instructor'));
-        if (instructorRole) {
+      const instructorRole = res.data.find(r => r.name.toLowerCase().includes('instructor'));
+      if (instructorRole) {
+        if (propIsEdit && initialData?.user?.roles) {
+          // Edit mode: merge existing user roles + Instructor role
+          const existingRoleIds = initialData.user.roles.map(r => r.id);
+          const merged = [...new Set([...existingRoleIds, instructorRole.id])];
+          setSelectedRoleIds(merged);
+        } else {
+          // Add mode: ensure Instructor role is selected
           setSelectedRoleIds(prev =>
             prev.includes(instructorRole.id) ? prev : [...prev, instructorRole.id]
           );
         }
       }
     });
-  }, [propIsEdit]);
+  }, [propIsEdit, initialData]);
 
-  const handleSearchBdNumber = async () => {
-    if (!bdNumberSearch) return;
+  const handleSearchBdNumber = async (searchValue?: string) => {
+    const query = searchValue ?? bdNumberSearch;
+    if (!query || query.length < 2) {
+      if (!query) {
+        resetForm();
+        const instrRole = availableRoles.find(r => r.name.toLowerCase().includes('instructor'));
+        if (instrRole) setSelectedRoleIds([instrRole.id]);
+        setSearchStatus({ type: 'idle', message: '' });
+      }
+      return;
+    }
 
     // Clear the form first before searching
     resetForm();
+    // Re-select Instructor role after reset
+    const instrRole = availableRoles.find(r => r.name.toLowerCase().includes('instructor'));
+    if (instrRole) setSelectedRoleIds([instrRole.id]);
 
     setSearchStatus({ type: 'loading', message: 'Searching...' });
     setError("");
 
     try {
       // 1. Check if already an instructor
-      const existingInstructor = await instructorService.findInstructorByServiceNumber(bdNumberSearch);
+      const existingInstructor = await instructorService.findInstructorByServiceNumber(query);
       if (existingInstructor) {
-        populateForm(existingInstructor);
-        setLocalIsEdit(true);
-        setIsExistingUser(true);
+        setFoundInstructorId(existingInstructor.id);
         setSearchStatus({
-          type: 'found',
-          message: `Instructor found with BD No ${bdNumberSearch}. Switched to edit mode.`
+          type: 'already_instructor',
+          message: `Instructor "${existingInstructor.user?.name || query}" already exists with BD No ${query}.`
         });
         return;
       }
 
       // 2. Search in users table
-      const user = await userService.findUserByServiceNumber(bdNumberSearch);
+      const user = await userService.findUserByServiceNumber(query);
       if (user) {
-        // Auto-fill basic user data
-        setName(user.name || "");
-        setEmail(user.email || "");
-        setMobile(user.phone || "");
-        if (user.date_of_birth) setDateOfBirth(formatDateForDisplay(user.date_of_birth.toString()));
-        if (user.blood_group) setBloodGroup(user.blood_group);
+        // Auto-fill basic user data & track which fields were auto-filled
+        const filled = new Set<string>();
+        if (user.name) { setName(user.name); filled.add('name'); }
+        if (user.email) { setEmail(user.email); filled.add('email'); }
+        if (user.phone) { setMobile(user.phone); filled.add('mobile'); }
+        if (user.date_of_birth) { setDateOfBirth(formatDateForDisplay(user.date_of_birth.toString())); filled.add('dateOfBirth'); }
+        if (user.blood_group) { setBloodGroup(user.blood_group); filled.add('bloodGroup'); }
         if (user.profile_photo) setProfilePicturePreview(getImageUrl(user.profile_photo));
         if (user.signature) setSignaturePreview(getImageUrl(user.signature));
 
+        // Auto-select existing user roles + Instructor role
+        const existingRoleIds = user.roles?.map(r => r.id) || [];
+        const instructorRole = availableRoles.find(r => r.name.toLowerCase().includes('instructor'));
+        const mergedRoleIds = [...new Set([...existingRoleIds, ...(instructorRole ? [instructorRole.id] : [])])];
+        setSelectedRoleIds(mergedRoleIds);
+
+        setAutoFilledFields(filled);
         setLocalIsEdit(false);
         setInstructorId(null);
         setIsExistingUser(true);
@@ -450,12 +478,14 @@ export default function InstructorForm({ initialData, onSubmit, onCancel, loadin
           message: `User ${user.name} found and basic data auto-filled.`
         });
       } else {
+        setAutoFilledFields(new Set());
+        setFoundInstructorId(null);
         setLocalIsEdit(false);
         setInstructorId(null);
         setIsExistingUser(false);
         setSearchStatus({
           type: 'not_found',
-          message: `No user found with BD No ${bdNumberSearch}. You can fill the form manually.`
+          message: `No user found with BD No ${query}. You can fill the form manually.`
         });
       }
     } catch (err: any) {
@@ -463,6 +493,29 @@ export default function InstructorForm({ initialData, onSubmit, onCancel, loadin
       setError("Search failed: " + (err.message || "Unknown error"));
     }
   };
+
+  // Real-time debounced search when BD number changes
+  const handleBdNumberChange = (value: string) => {
+    setBdNumberSearch(value);
+    if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+    if (!value || value.length < 2) {
+      if (!value) {
+        resetForm();
+        const instrRole = availableRoles.find(r => r.name.toLowerCase().includes('instructor'));
+        if (instrRole) setSelectedRoleIds([instrRole.id]);
+        setSearchStatus({ type: 'idle', message: '' });
+      }
+      return;
+    }
+    searchTimeoutRef.current = setTimeout(() => {
+      handleSearchBdNumber(value);
+    }, 600);
+  };
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => { if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current); };
+  }, []);
 
   const convertToBase64 = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
@@ -573,6 +626,12 @@ export default function InstructorForm({ initialData, onSubmit, onCancel, loadin
     setLoading(true);
     setError("");
 
+    if (!bdNumberSearch.trim()) {
+      setError("BD/Service Number is required.");
+      setLoading(false);
+      return;
+    }
+
     if (selectedRoleIds.length === 0) {
       setError("Please select at least one role before saving.");
       setLoading(false);
@@ -677,19 +736,19 @@ export default function InstructorForm({ initialData, onSubmit, onCancel, loadin
           <div className="mb-8">
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
               <div>
-                <Label className="mb-2">BD/service Number</Label>
+                <Label className="mb-2">BD/service Number <span className="text-red-500">*</span></Label>
                 <div className="flex gap-2">
                   <div className="flex-1">
                     <Input
                       value={bdNumberSearch}
-                      onChange={(e) => setBdNumberSearch(e.target.value)}
+                      onChange={(e) => handleBdNumberChange(e.target.value)}
                       placeholder="Enter BD Number"
                       className="w-full"
                     />
                   </div>
                   <button
                     type="button"
-                    onClick={handleSearchBdNumber}
+                    onClick={() => handleSearchBdNumber()}
                     disabled={searchStatus.type === 'loading'}
                     className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex-shrink-0 h-[42px] flex items-center justify-center min-w-[42px]"
                   >
@@ -702,16 +761,29 @@ export default function InstructorForm({ initialData, onSubmit, onCancel, loadin
                 </div>
               </div>
               <div className="col-span-3">
-                {searchStatus.type !== 'idle' && (
+                {searchStatus.type !== 'idle' && searchStatus.type !== 'already_instructor' && (
                   <div className={`p-2.5 text-sm flex items-center gap-2 ${searchStatus.type === 'found' ? 'text-green-700' :
-                      searchStatus.type === 'not_found' ? 'text-blue-700' :
-                        searchStatus.type === 'already_instructor' ? 'text-red-700' :
-                          'text-gray-700'
+                      searchStatus.type === 'not_found' ? 'text-blue-700' : 'text-gray-700'
                     }`}>
                     {searchStatus.type === 'found' && <Icon icon="hugeicons:checkmark-circle-01" className="w-5 h-5" />}
                     {searchStatus.type === 'not_found' && <Icon icon="hugeicons:information-circle" className="w-5 h-5" />}
-                    {searchStatus.type === 'already_instructor' && <Icon icon="hugeicons:alert-circle" className="w-5 h-5" />}
                     <span>{searchStatus.message}</span>
+                  </div>
+                )}
+                {searchStatus.type === 'already_instructor' && (
+                  <div className="p-3 bg-orange-50 border border-orange-200 rounded-lg flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2 text-orange-700 text-sm">
+                      <Icon icon="hugeicons:alert-02" className="w-5 h-5 flex-shrink-0" />
+                      <span>{searchStatus.message}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => router.push(`/users/instructors/${foundInstructorId}/edit`)}
+                      className="px-4 py-1.5 bg-orange-600 text-white text-sm rounded-lg hover:bg-orange-700 flex items-center gap-1.5 flex-shrink-0"
+                    >
+                      <Icon icon="hugeicons:pencil-edit-01" className="w-4 h-4" />
+                      Edit Instructor
+                    </button>
                   </div>
                 )}
               </div>
@@ -739,7 +811,7 @@ export default function InstructorForm({ initialData, onSubmit, onCancel, loadin
           </div>
 
           <div className="grid grid-cols-4 gap-4">
-            <div><Label>Name <span className="text-red-500">*</span></Label><Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Enter full name" required /></div>
+            <div><Label>Name <span className="text-red-500">*</span></Label><Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Enter full name" required disabled={autoFilledFields.has('name')} className={autoFilledFields.has('name') ? 'bg-gray-100 cursor-not-allowed' : ''} />{autoFilledFields.has('name') && <p className="text-xs text-green-600 mt-1">Auto-filled from user data</p>}</div>
             <div><Label>নাম (Bangla) <span className="text-red-500">*</span></Label><Input value={nameBangla} onChange={(e) => setNameBangla(e.target.value)} placeholder="নাম বাংলায় লিখুন" required /></div>
             <div><Label>Short Name</Label><Input value={shortName} onChange={(e) => setShortName(e.target.value)} placeholder="Enter short name" /></div>
             <div><Label>Gender <span className="text-red-500">*</span></Label><select value={gender} onChange={(e) => setGender(e.target.value)} required className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"><option value="">Select Gender</option><option value="male">Male</option><option value="female">Female</option><option value="other">Other</option></select></div>
@@ -748,13 +820,13 @@ export default function InstructorForm({ initialData, onSubmit, onCancel, loadin
           <div className="grid grid-cols-4 gap-4 mt-4">
             <div><Label>Marital Status <span className="text-red-500">*</span></Label><select value={maritalStatus} onChange={(e) => setMaritalStatus(e.target.value)} required className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"><option value="">Select Status</option><option value="single">Single</option><option value="married">Married</option><option value="divorced">Divorced</option><option value="widowed">Widowed</option></select></div>
             <div><Label>Religion <span className="text-red-500">*</span></Label><select value={religion} onChange={(e) => setReligion(e.target.value)} required className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"><option value="">Select Religion</option><option value="islam">Islam</option><option value="hinduism">Hinduism</option><option value="buddhism">Buddhism</option><option value="christianity">Christianity</option><option value="other">Other</option></select></div>
-            <div><Label>Date of Birth <span className="text-red-500">*</span></Label><DatePicker value={dateOfBirth} onChange={(e) => setDateOfBirth(e.target.value)} placeholder="dd/mm/yyyy" required /><p className="text-xs text-gray-500 mt-1">Birth date is required</p></div>
+            <div><Label>Date of Birth <span className="text-red-500">*</span></Label><DatePicker value={dateOfBirth} onChange={(e) => setDateOfBirth(e.target.value)} placeholder="dd/mm/yyyy" required disabled={autoFilledFields.has('dateOfBirth')} />{autoFilledFields.has('dateOfBirth') ? <p className="text-xs text-green-600 mt-1">Auto-filled from user data</p> : <p className="text-xs text-gray-500 mt-1">Birth date is required</p>}</div>
             <div><Label>Weight</Label><Input value={weight} onChange={(e) => setWeight(e.target.value)} placeholder="Weight (kg)" /></div>
           </div>
 
           <div className="grid grid-cols-4 gap-4 mt-4">
             <div><Label>Height</Label><Input value={height} onChange={(e) => setHeight(e.target.value)} placeholder="Height (ft)" /></div>
-            <div><Label>Blood Group <span className="text-red-500">*</span></Label><select value={bloodGroup} onChange={(e) => setBloodGroup(e.target.value)} required className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"><option value="">Select Blood Group</option><option value="A+">A+</option><option value="A-">A-</option><option value="B+">B+</option><option value="B-">B-</option><option value="O+">O+</option><option value="O-">O-</option><option value="AB+">AB+</option><option value="AB-">AB-</option></select></div>
+            <div><Label>Blood Group <span className="text-red-500">*</span></Label><select value={bloodGroup} onChange={(e) => setBloodGroup(e.target.value)} required disabled={autoFilledFields.has('bloodGroup')} className={`w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${autoFilledFields.has('bloodGroup') ? 'bg-gray-100 cursor-not-allowed' : ''}`}><option value="">Select Blood Group</option><option value="A+">A+</option><option value="A-">A-</option><option value="B+">B+</option><option value="B-">B-</option><option value="O+">O+</option><option value="O-">O-</option><option value="AB+">AB+</option><option value="AB-">AB-</option></select>{autoFilledFields.has('bloodGroup') && <p className="text-xs text-green-600 mt-1">Auto-filled from user data</p>}</div>
             <div><Label>Hair Color</Label><Input value={hairColor} onChange={(e) => setHairColor(e.target.value)} placeholder="Hair color" /></div>
             <div><Label>Eye Color</Label><Input value={eyeColor} onChange={(e) => setEyeColor(e.target.value)} placeholder="Eye color" /></div>
           </div>
@@ -773,7 +845,7 @@ export default function InstructorForm({ initialData, onSubmit, onCancel, loadin
         <div className="mb-8">
           <h2 className="text-lg font-bold text-gray-900 mb-4 pb-2 border-b border-dashed border-gray-300">2. Contact Information</h2>
           <div className="grid grid-cols-4 gap-4">
-            <div><Label>Email <span className="text-red-500">*</span></Label><Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email address" required /></div>
+            <div><Label>Email <span className="text-red-500">*</span></Label><Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email address" required disabled={autoFilledFields.has('email')} className={autoFilledFields.has('email') ? 'bg-gray-100 cursor-not-allowed' : ''} />{autoFilledFields.has('email') && <p className="text-xs text-green-600 mt-1">Auto-filled from user data</p>}</div>
 
             <div className="col-span-1">
               {!isExistingUser ? (
@@ -814,7 +886,7 @@ export default function InstructorForm({ initialData, onSubmit, onCancel, loadin
               )}
             </div>
 
-            <div><Label>Mobile No <span className="text-red-500">*</span></Label><Input value={mobile} onChange={(e) => setMobile(e.target.value)} placeholder="Mobile number" required /></div>
+            <div><Label>Mobile No <span className="text-red-500">*</span></Label><Input value={mobile} onChange={(e) => setMobile(e.target.value)} placeholder="Mobile number" required disabled={autoFilledFields.has('mobile')} className={autoFilledFields.has('mobile') ? 'bg-gray-100 cursor-not-allowed' : ''} />{autoFilledFields.has('mobile') && <p className="text-xs text-green-600 mt-1">Auto-filled from user data</p>}</div>
             <div><Label>National ID Number</Label><Input value={nationalId} onChange={(e) => setNationalId(e.target.value)} placeholder="National ID Number" /></div>
           </div>
           <div className="grid grid-cols-4 gap-4 mt-4">
@@ -979,18 +1051,20 @@ export default function InstructorForm({ initialData, onSubmit, onCancel, loadin
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
               {availableRoles.map(role => {
                 const isSelected = selectedRoleIds.includes(role.id);
-                const isInstructorRole = role.name.toLowerCase().includes('instructor');
-                const isDisabled = localIsEdit || (!localIsEdit && isInstructorRole);
+                // All roles are always disabled - auto-selected based on user data
+                const isDisabled = true;
                 return (
                   <label
                     key={role.id}
                     className={`flex items-center gap-3 p-3 rounded-lg border transition-all select-none ${
-                      isDisabled
-                        ? 'cursor-not-allowed opacity-70'
-                        : 'cursor-pointer'
+                      isDisabled && !isSelected
+                        ? 'cursor-not-allowed opacity-50'
+                        : isDisabled && isSelected
+                          ? 'cursor-not-allowed'
+                          : 'cursor-pointer'
                     } ${
                       isSelected
-                        ? 'border-blue-400 bg-blue-50'
+                        ? 'border-green-400 bg-green-50'
                         : 'border-gray-200 bg-white hover:border-gray-300'
                     }`}
                   >
@@ -999,40 +1073,36 @@ export default function InstructorForm({ initialData, onSubmit, onCancel, loadin
                       checked={isSelected}
                       onChange={() => !isDisabled && toggleRole(role.id)}
                       disabled={isDisabled}
-                      className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 disabled:cursor-not-allowed"
+                      className={`w-4 h-4 rounded focus:ring-blue-500 ${isSelected && isDisabled ? 'text-green-600 border-green-400 cursor-not-allowed' : 'text-blue-600 border-gray-300 disabled:cursor-not-allowed'}`}
                     />
                     <div className="flex-1 min-w-0">
-                      <p className={`text-sm font-semibold truncate ${isSelected ? 'text-blue-700' : 'text-gray-900'}`}>
+                      <p className={`text-sm font-semibold truncate ${isSelected ? 'text-green-700' : 'text-gray-900'}`}>
                         {role.name}
                       </p>
-                      {role.description && (
+                      {isSelected && isDisabled && (
+                        <p className="text-xs text-green-600 truncate">Auto-selected</p>
+                      )}
+                      {role.description && !isSelected && (
                         <p className="text-xs text-gray-500 truncate">{role.description}</p>
                       )}
                     </div>
                     {isSelected && (
-                      <Icon icon="hugeicons:checkmark-circle-02" className="w-4 h-4 text-blue-500 flex-shrink-0" />
+                      <Icon icon="hugeicons:checkmark-circle-02" className="w-5 h-5 text-green-500 flex-shrink-0" />
                     )}
                   </label>
                 );
               })}
             </div>
           )}
-          {localIsEdit ? (
-            <p className="mt-3 text-xs text-gray-500 flex items-center gap-1">
-              <Icon icon="hugeicons:information-circle" className="w-3.5 h-3.5 flex-shrink-0" />
-              Role assignments are locked in edit mode. Use the <strong className="mx-1">Assign Role</strong> button on the instructors list to manage roles.
-            </p>
-          ) : selectedRoleIds.length > 0 ? (
-            <p className="mt-3 text-xs text-blue-600">
-              <Icon icon="hugeicons:information-circle" className="w-3.5 h-3.5 inline mr-1" />
-              {selectedRoleIds.length} role{selectedRoleIds.length > 1 ? 's' : ''} selected. The first selected role will be set as primary.
-            </p>
-          ) : (
-            <p className="mt-3 text-xs text-red-500 flex items-center gap-1">
-              <Icon icon="hugeicons:alert-circle" className="w-3.5 h-3.5 flex-shrink-0" />
-              At least one role must be selected.
-            </p>
-          )}
+          <p className="mt-3 text-xs text-gray-500 flex items-center gap-1">
+            <Icon icon="hugeicons:information-circle" className="w-3.5 h-3.5 flex-shrink-0" />
+            {localIsEdit
+              ? <>Roles are locked in edit mode. Use the <strong className="mx-1">Assign Role</strong> button on the instructors list to manage roles.</>
+              : isExistingUser
+                ? <>{selectedRoleIds.length} role{selectedRoleIds.length > 1 ? 's' : ''} auto-selected (Instructor + existing roles). Manage roles from the instructors list after saving.</>
+                : <>Instructor role is auto-assigned. Additional roles can be managed after creation.</>
+            }
+          </p>
         </div>
 
         <div className="mb-8">
