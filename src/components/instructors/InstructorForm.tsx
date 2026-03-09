@@ -1,6 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
-
 import React, { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
@@ -10,6 +9,7 @@ import Input from "@/components/form/input/InputField";
 import Label from "@/components/form/Label";
 import { geoLocationService, type Division, type District, type PostOffice } from "@/libs/services/geoLocationService";
 import DatePicker from "@/components/form/input/DatePicker";
+import SearchableSelect from "@/components/form/SearchableSelect";
 import type { InstructorBiodata, Role } from "@/libs/types/user";
 import { getImageUrl } from "@/libs/utils/formatter";
 import userService from "@/libs/services/userService";
@@ -576,9 +576,25 @@ export default function InstructorForm({ initialData, onSubmit, onCancel, loadin
   useEffect(() => { if (presentDivision) handleGeoData('present', presentDivision); else { setPresentDistricts([]); setPresentDistrict(""); } }, [presentDivision]);
   useEffect(() => { if (permanentDivision) handleGeoData('permanent', permanentDivision); else { setPermanentDistricts([]); setPermanentDistrict(""); } }, [permanentDivision]);
   useEffect(() => { if (guardianDivision) handleGeoData('guardian', guardianDivision); else { setGuardianDistricts([]); setGuardianDistrict(""); } }, [guardianDivision]);
-  useEffect(() => { if (presentDistrict) handleGeoData('present', undefined, presentDistrict); else { setPresentPostOffices([]); setPresentPostOffice(""); } }, [presentDistrict]);
-  useEffect(() => { if (permanentDistrict) handleGeoData('permanent', undefined, permanentDistrict); else { setPermanentPostOffices([]); setPermanentPostOffice(""); } }, [permanentDistrict]);
-  useEffect(() => { if (guardianDistrict) handleGeoData('guardian', undefined, guardianDistrict); else { setGuardianPostOffices([]); setGuardianPostOffice(""); } }, [guardianDistrict]);
+  useEffect(() => { if (presentDistrict) handleGeoData('present', undefined, presentDistrict); else { setPresentPostOffices([]); setPresentPostOffice(""); setPresentPostCode(""); } }, [presentDistrict]);
+  useEffect(() => { if (permanentDistrict) handleGeoData('permanent', undefined, permanentDistrict); else { setPermanentPostOffices([]); setPermanentPostOffice(""); setPermanentPostCode(""); } }, [permanentDistrict]);
+  useEffect(() => { if (guardianDistrict) handleGeoData('guardian', undefined, guardianDistrict); else { setGuardianPostOffices([]); setGuardianPostOffice(""); setGuardianPostCode(""); } }, [guardianDistrict]);
+
+  const handlePostOfficeChange = (type: 'present' | 'permanent' | 'guardian', postOfficeId: string) => {
+    if (type === 'present') {
+      setPresentPostOffice(postOfficeId);
+      const po = presentPostOffices.find(p => p.id === Number(postOfficeId));
+      setPresentPostCode(po?.post_code || "");
+    } else if (type === 'permanent') {
+      setPermanentPostOffice(postOfficeId);
+      const po = permanentPostOffices.find(p => p.id === Number(postOfficeId));
+      setPermanentPostCode(po?.post_code || "");
+    } else if (type === 'guardian') {
+      setGuardianPostOffice(postOfficeId);
+      const po = guardianPostOffices.find(p => p.id === Number(postOfficeId));
+      setGuardianPostCode(po?.post_code || "");
+    }
+  };
 
   const addChild = () => setChildren([...children, { name: "", gender: "son" }]);
   const removeChild = (index: number) => setChildren(children.filter((_, i) => i !== index));
@@ -814,19 +830,19 @@ export default function InstructorForm({ initialData, onSubmit, onCancel, loadin
             <div><Label>Name <span className="text-red-500">*</span></Label><Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Enter full name" required disabled={autoFilledFields.has('name')} className={autoFilledFields.has('name') ? 'bg-gray-100 cursor-not-allowed' : ''} />{autoFilledFields.has('name') && <p className="text-xs text-green-600 mt-1">Auto-filled from user data</p>}</div>
             <div><Label>নাম (Bangla) <span className="text-red-500">*</span></Label><Input value={nameBangla} onChange={(e) => setNameBangla(e.target.value)} placeholder="নাম বাংলায় লিখুন" required /></div>
             <div><Label>Short Name</Label><Input value={shortName} onChange={(e) => setShortName(e.target.value)} placeholder="Enter short name" /></div>
-            <div><Label>Gender <span className="text-red-500">*</span></Label><select value={gender} onChange={(e) => setGender(e.target.value)} required className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"><option value="">Select Gender</option><option value="male">Male</option><option value="female">Female</option><option value="other">Other</option></select></div>
+            <div><Label>Gender <span className="text-red-500">*</span></Label><SearchableSelect options={[{ value: "male", label: "Male" }, { value: "female", label: "Female" }, { value: "other", label: "Other" }]} value={gender} onChange={(val) => setGender(val)} placeholder="Select Gender" required /></div>
           </div>
 
           <div className="grid grid-cols-4 gap-4 mt-4">
-            <div><Label>Marital Status <span className="text-red-500">*</span></Label><select value={maritalStatus} onChange={(e) => setMaritalStatus(e.target.value)} required className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"><option value="">Select Status</option><option value="single">Single</option><option value="married">Married</option><option value="divorced">Divorced</option><option value="widowed">Widowed</option></select></div>
-            <div><Label>Religion <span className="text-red-500">*</span></Label><select value={religion} onChange={(e) => setReligion(e.target.value)} required className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"><option value="">Select Religion</option><option value="islam">Islam</option><option value="hinduism">Hinduism</option><option value="buddhism">Buddhism</option><option value="christianity">Christianity</option><option value="other">Other</option></select></div>
+            <div><Label>Marital Status <span className="text-red-500">*</span></Label><SearchableSelect options={[{ value: "single", label: "Single" }, { value: "married", label: "Married" }, { value: "divorced", label: "Divorced" }, { value: "widowed", label: "Widowed" }]} value={maritalStatus} onChange={(val) => setMaritalStatus(val)} placeholder="Select Status" required /></div>
+            <div><Label>Religion <span className="text-red-500">*</span></Label><SearchableSelect options={[{ value: "islam", label: "Islam" }, { value: "hinduism", label: "Hinduism" }, { value: "buddhism", label: "Buddhism" }, { value: "christianity", label: "Christianity" }, { value: "other", label: "Other" }]} value={religion} onChange={(val) => setReligion(val)} placeholder="Select Religion" required /></div>
             <div><Label>Date of Birth <span className="text-red-500">*</span></Label><DatePicker value={dateOfBirth} onChange={(e) => setDateOfBirth(e.target.value)} placeholder="dd/mm/yyyy" required disabled={autoFilledFields.has('dateOfBirth')} />{autoFilledFields.has('dateOfBirth') ? <p className="text-xs text-green-600 mt-1">Auto-filled from user data</p> : <p className="text-xs text-gray-500 mt-1">Birth date is required</p>}</div>
             <div><Label>Weight</Label><Input value={weight} onChange={(e) => setWeight(e.target.value)} placeholder="Weight (kg)" /></div>
           </div>
 
           <div className="grid grid-cols-4 gap-4 mt-4">
             <div><Label>Height</Label><Input value={height} onChange={(e) => setHeight(e.target.value)} placeholder="Height (ft)" /></div>
-            <div><Label>Blood Group <span className="text-red-500">*</span></Label><select value={bloodGroup} onChange={(e) => setBloodGroup(e.target.value)} required disabled={autoFilledFields.has('bloodGroup')} className={`w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${autoFilledFields.has('bloodGroup') ? 'bg-gray-100 cursor-not-allowed' : ''}`}><option value="">Select Blood Group</option><option value="A+">A+</option><option value="A-">A-</option><option value="B+">B+</option><option value="B-">B-</option><option value="O+">O+</option><option value="O-">O-</option><option value="AB+">AB+</option><option value="AB-">AB-</option></select>{autoFilledFields.has('bloodGroup') && <p className="text-xs text-green-600 mt-1">Auto-filled from user data</p>}</div>
+            <div><Label>Blood Group <span className="text-red-500">*</span></Label><SearchableSelect options={[{ value: "A+", label: "A+" }, { value: "A-", label: "A-" }, { value: "B+", label: "B+" }, { value: "B-", label: "B-" }, { value: "O+", label: "O+" }, { value: "O-", label: "O-" }, { value: "AB+", label: "AB+" }, { value: "AB-", label: "AB-" }]} value={bloodGroup} onChange={(val) => setBloodGroup(val)} placeholder="Select Blood Group" required disabled={autoFilledFields.has('bloodGroup')} />{autoFilledFields.has('bloodGroup') && <p className="text-xs text-green-600 mt-1">Auto-filled from user data</p>}</div>
             <div><Label>Hair Color</Label><Input value={hairColor} onChange={(e) => setHairColor(e.target.value)} placeholder="Hair color" /></div>
             <div><Label>Eye Color</Label><Input value={eyeColor} onChange={(e) => setEyeColor(e.target.value)} placeholder="Eye color" /></div>
           </div>
@@ -930,7 +946,28 @@ export default function InstructorForm({ initialData, onSubmit, onCancel, loadin
           {languages.map((lang, index) => (
             <div key={index} className="mb-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
               <div className="flex items-center justify-between mb-3"><h3 className="font-semibold text-gray-900">Language #{index + 1}</h3><div className="flex gap-2 items-center"><button type="button" onClick={addLanguage} className="px-3 py-1 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 flex items-center gap-2"><Icon icon="hugeicons:add-circle" className="w-4 h-4" />Add Language</button>{index !== 0 && <button type="button" onClick={() => removeLanguage(index)} className="px-3 py-1 bg-red-600 text-white text-sm rounded-lg hover:bg-red-700 flex items-center gap-1"><Icon icon="hugeicons:delete-02" className="w-4 h-4" />Remove</button>}</div></div>
-              <div className="grid grid-cols-2 gap-4"><div><Label>Language Name</Label><select value={lang.language} onChange={(e) => updateLanguage(index, "language", e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"><option value="">Select language</option><option value="bengali">Bengali</option><option value="english">English</option><option value="arabic">Arabic</option><option value="hindi">Hindi</option><option value="urdu">Urdu</option><option value="french">French</option><option value="german">German</option><option value="spanish">Spanish</option><option value="chinese">Chinese</option></select></div><div><Label>Language Skill</Label><div className="flex items-center gap-6 mt-2"><label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={lang.write} onChange={(e) => updateLanguage(index, "write", e.target.checked)} className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-2 focus:ring-blue-500" /><span className="text-gray-700">Write</span></label><label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={lang.read} onChange={(e) => updateLanguage(index, "read", e.target.checked)} className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-2 focus:ring-blue-500" /><span className="text-gray-700">Read</span></label><label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={lang.speak} onChange={(e) => updateLanguage(index, "speak", e.target.checked)} className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-2 focus:ring-blue-500" /><span className="text-gray-700">Speak</span></label></div></div></div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label>Language Name</Label>
+                  <SearchableSelect
+                    options={[
+                      { value: "bengali", label: "Bengali" },
+                      { value: "english", label: "English" },
+                      { value: "arabic", label: "Arabic" },
+                      { value: "hindi", label: "Hindi" },
+                      { value: "urdu", label: "Urdu" },
+                      { value: "french", label: "French" },
+                      { value: "german", label: "German" },
+                      { value: "spanish", label: "Spanish" },
+                      { value: "chinese", label: "Chinese" }
+                    ]}
+                    value={lang.language}
+                    onChange={(val) => updateLanguage(index, "language", val)}
+                    placeholder="Select language"
+                  />
+                </div>
+                <div><Label>Language Skill</Label><div className="flex items-center gap-6 mt-2"><label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={lang.write} onChange={(e) => updateLanguage(index, "write", e.target.checked)} className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-2 focus:ring-blue-500" /><span className="text-gray-700">Write</span></label><label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={lang.read} onChange={(e) => updateLanguage(index, "read", e.target.checked)} className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-2 focus:ring-blue-500" /><span className="text-gray-700">Read</span></label><label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={lang.speak} onChange={(e) => updateLanguage(index, "speak", e.target.checked)} className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-2 focus:ring-blue-500" /><span className="text-gray-700">Speak</span></label></div></div>
+              </div>
             </div>
           ))}
         </div>
@@ -944,7 +981,19 @@ export default function InstructorForm({ initialData, onSubmit, onCancel, loadin
             <div><Label>Joining Date</Label><DatePicker value={joiningDate} onChange={(e) => setJoiningDate(e.target.value)} placeholder="dd/mm/yyyy" /></div>
           </div>
           <div className="grid grid-cols-3 gap-4 mt-4">
-            <div><Label>Employee Type</Label><select value={employeeType} onChange={(e) => setEmployeeType(e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"><option value="">Select Type</option><option value="permanent">Permanent</option><option value="temporary">Temporary</option><option value="contract">Contract</option></select></div>
+            <div>
+              <Label>Employee Type</Label>
+              <SearchableSelect
+                options={[
+                  { value: "permanent", label: "Permanent" },
+                  { value: "temporary", label: "Temporary" },
+                  { value: "contract", label: "Contract" }
+                ]}
+                value={employeeType}
+                onChange={(val) => setEmployeeType(val)}
+                placeholder="Select Type"
+              />
+            </div>
             <div><Label>Legend</Label><Input value={legend} onChange={(e) => setLegend(e.target.value)} placeholder="Legend" /></div>
             <div><Label>Posting Date</Label><DatePicker value={postingDate} onChange={(e) => setPostingDate(e.target.value)} placeholder="dd/mm/yyyy" /></div>
           </div>
@@ -953,9 +1002,38 @@ export default function InstructorForm({ initialData, onSubmit, onCancel, loadin
         <div className="mb-8">
           <h2 className="text-lg font-bold text-gray-900 mb-4 pb-2 border-b border-dashed border-gray-300">6. Present Address <span className="text-red-500">*</span></h2>
           <div className="grid grid-cols-3 gap-4">
-            <div><Label>Division <span className="text-red-500">*</span></Label><select value={presentDivision} onChange={(e) => setPresentDivision(e.target.value)} required className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"><option value="">Select division</option>{divisions.map((division) => (<option key={division.id} value={division.id}>{division.name}</option>))}</select></div>
-            <div><Label>District <span className="text-red-500">*</span></Label><select value={presentDistrict} onChange={(e) => setPresentDistrict(e.target.value)} required className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" disabled={!presentDivision}><option value="">Select district</option>{presentDistricts.map((district) => (<option key={district.id} value={district.id}>{district.name}</option>))}</select></div>
-            <div><Label>Post Office/Thana <span className="text-red-500">*</span></Label><select value={presentPostOffice} onChange={(e) => setPresentPostOffice(e.target.value)} required className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" disabled={!presentDistrict}><option value="">Select post office</option>{presentPostOffices.map((postOffice) => (<option key={postOffice.id} value={postOffice.id}>{postOffice.name}</option>))}</select></div>
+            <div>
+              <Label>Division <span className="text-red-500">*</span></Label>
+              <SearchableSelect
+                options={divisions.map(d => ({ value: String(d.id), label: d.name }))}
+                value={presentDivision}
+                onChange={(val) => setPresentDivision(val)}
+                placeholder="Select division"
+                required
+              />
+            </div>
+            <div>
+              <Label>District <span className="text-red-500">*</span></Label>
+              <SearchableSelect
+                options={presentDistricts.map(d => ({ value: String(d.id), label: d.name }))}
+                value={presentDistrict}
+                onChange={(val) => setPresentDistrict(val)}
+                placeholder="Select district"
+                disabled={!presentDivision}
+                required
+              />
+            </div>
+            <div>
+              <Label>Post Office/Thana <span className="text-red-500">*</span></Label>
+              <SearchableSelect
+                options={presentPostOffices.map(p => ({ value: String(p.id), label: p.name }))}
+                value={presentPostOffice}
+                onChange={(val) => handlePostOfficeChange('present', val)}
+                placeholder="Select post office"
+                disabled={!presentDistrict}
+                required
+              />
+            </div>
           </div>
           <div className="grid grid-cols-2 gap-4 mt-4">
             <div><Label>Post Code <span className="text-red-500">*</span></Label><Input value={presentPostCode} onChange={(e) => setPresentPostCode(e.target.value)} placeholder="Enter post code" required /></div>
@@ -966,9 +1044,35 @@ export default function InstructorForm({ initialData, onSubmit, onCancel, loadin
         <div className="mb-8">
           <h2 className="text-lg font-bold text-gray-900 mb-4 pb-2 border-b border-dashed border-gray-300">7. Permanent Address</h2>
           <div className="grid grid-cols-3 gap-4">
-            <div><Label>Division</Label><select value={permanentDivision} onChange={(e) => setPermanentDivision(e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"><option value="">Select division</option>{divisions.map((division) => (<option key={division.id} value={division.id}>{division.name}</option>))}</select></div>
-            <div><Label>District</Label><select value={permanentDistrict} onChange={(e) => setPermanentDistrict(e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" disabled={!permanentDivision}><option value="">Select district</option>{permanentDistricts.map((district) => (<option key={district.id} value={district.id}>{district.name}</option>))}</select></div>
-            <div><Label>Post Office</Label><select value={permanentPostOffice} onChange={(e) => setPermanentPostOffice(e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" disabled={!permanentDistrict}><option value="">Select post office</option>{permanentPostOffices.map((postOffice) => (<option key={postOffice.id} value={postOffice.id}>{postOffice.name}</option>))}</select></div>
+            <div>
+              <Label>Division</Label>
+              <SearchableSelect
+                options={divisions.map(d => ({ value: String(d.id), label: d.name }))}
+                value={permanentDivision}
+                onChange={(val) => setPermanentDivision(val)}
+                placeholder="Select division"
+              />
+            </div>
+            <div>
+              <Label>District</Label>
+              <SearchableSelect
+                options={permanentDistricts.map(d => ({ value: String(d.id), label: d.name }))}
+                value={permanentDistrict}
+                onChange={(val) => setPermanentDistrict(val)}
+                placeholder="Select district"
+                disabled={!permanentDivision}
+              />
+            </div>
+            <div>
+              <Label>Post Office</Label>
+              <SearchableSelect
+                options={permanentPostOffices.map(p => ({ value: String(p.id), label: p.name }))}
+                value={permanentPostOffice}
+                onChange={(val) => handlePostOfficeChange('permanent', val)}
+                placeholder="Select post office"
+                disabled={!permanentDistrict}
+              />
+            </div>
           </div>
           <div className="grid grid-cols-2 gap-4 mt-4">
             <div><Label>Post Code</Label><Input value={permanentPostCode} onChange={(e) => setPermanentPostCode(e.target.value)} placeholder="Enter post code" /></div>
@@ -979,9 +1083,35 @@ export default function InstructorForm({ initialData, onSubmit, onCancel, loadin
         <div className="mb-8">
           <h2 className="text-lg font-bold text-gray-900 mb-4 pb-2 border-b border-dashed border-gray-300">8. Guardian Address</h2>
           <div className="grid grid-cols-3 gap-4">
-            <div><Label>Division</Label><select value={guardianDivision} onChange={(e) => setGuardianDivision(e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"><option value="">Select division</option>{divisions.map((division) => (<option key={division.id} value={division.id}>{division.name}</option>))}</select></div>
-            <div><Label>District</Label><select value={guardianDistrict} onChange={(e) => setGuardianDistrict(e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" disabled={!guardianDivision}><option value="">Select district</option>{guardianDistricts.map((district) => (<option key={district.id} value={district.id}>{district.name}</option>))}</select></div>
-            <div><Label>Post Office/Thana</Label><select value={guardianPostOffice} onChange={(e) => setGuardianPostOffice(e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" disabled={!guardianDistrict}><option value="">Select post office</option>{guardianPostOffices.map((postOffice) => (<option key={postOffice.id} value={postOffice.id}>{postOffice.name}</option>))}</select></div>
+            <div>
+              <Label>Division</Label>
+              <SearchableSelect
+                options={divisions.map(d => ({ value: String(d.id), label: d.name }))}
+                value={guardianDivision}
+                onChange={(val) => setGuardianDivision(val)}
+                placeholder="Select division"
+              />
+            </div>
+            <div>
+              <Label>District</Label>
+              <SearchableSelect
+                options={guardianDistricts.map(d => ({ value: String(d.id), label: d.name }))}
+                value={guardianDistrict}
+                onChange={(val) => setGuardianDistrict(val)}
+                placeholder="Select district"
+                disabled={!guardianDivision}
+              />
+            </div>
+            <div>
+              <Label>Post Office/Thana</Label>
+              <SearchableSelect
+                options={guardianPostOffices.map(p => ({ value: String(p.id), label: p.name }))}
+                value={guardianPostOffice}
+                onChange={(val) => handlePostOfficeChange('guardian', val)}
+                placeholder="Select post office"
+                disabled={!guardianDistrict}
+              />
+            </div>
           </div>
           <div className="grid grid-cols-2 gap-4 mt-4">
             <div><Label>Post Code</Label><Input value={guardianPostCode} onChange={(e) => setGuardianPostCode(e.target.value)} placeholder="Enter post code" /></div>

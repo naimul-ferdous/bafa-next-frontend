@@ -12,6 +12,7 @@ import { wingService } from "@/libs/services/wingService";
 import { subWingService } from "@/libs/services/subWingService";
 import { userService } from "@/libs/services/userService";
 import FullLogo from "@/components/ui/fulllogo";
+import SearchableSelect from "@/components/form/SearchableSelect";
 import type { User, Role, Rank, Wing, SubWing } from "@/libs/types/user";
 import { Icon } from "@iconify/react";
 import DatePicker from "@/components/form/input/DatePicker";
@@ -62,12 +63,6 @@ export default function UserForm({ initialData, onSubmit, onCancel, loading: ext
   const [wingsLoading, setWingsLoading] = useState(false);
   const [subWings, setSubWings] = useState<SubWing[]>([]);
   const [subWingsLoading, setSubWingsLoading] = useState(false);
-
-  // Searchable dropdown states
-  const [rankSearch, setRankSearch] = useState("");
-  const [rankDropdownOpen, setRankDropdownOpen] = useState(false);
-  const [bloodGroupSearch, setBloodGroupSearch] = useState("");
-  const [bloodGroupDropdownOpen, setBloodGroupDropdownOpen] = useState(false);
 
   // Real-time search states
   const [searchStatus, setSearchStatus] = useState<{
@@ -490,63 +485,25 @@ export default function UserForm({ initialData, onSubmit, onCancel, loading: ext
                 <Input value={formData.phone} onChange={(e) => handleChange("phone", e.target.value)} placeholder="e.g. +8801712345678" required />
                 {fieldErrors.phone && <p className="text-xs text-red-500 mt-1">{fieldErrors.phone[0]}</p>}
               </div>
-              <div className="relative">
+              <div>
                 <Label>Rank <span className="text-red-500">*</span></Label>
-                <div
-                  onClick={() => !ranksLoading && setRankDropdownOpen(!rankDropdownOpen)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 cursor-pointer flex items-center justify-between"
-                >
-                  <span className={formData.rank_id ? "text-gray-900" : "text-gray-400"}>
-                    {formData.rank_id ? ranks.find(r => r.id === Number(formData.rank_id))?.name || "Select Rank" : "Select Rank"}
-                  </span>
-                  <Icon icon={rankDropdownOpen ? "hugeicons:arrow-up-01" : "hugeicons:arrow-down-01"} className="w-4 h-4 text-gray-400" />
-                </div>
-                {rankDropdownOpen && (
-                  <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-hidden">
-                    <div className="p-2 border-b border-gray-100">
-                      <input type="text" value={rankSearch} onChange={(e) => setRankSearch(e.target.value)} placeholder="Search ranks..." className="w-full px-3 py-1.5 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" autoFocus />
-                    </div>
-                    <div className="overflow-y-auto max-h-48">
-                      {ranks.filter(r => `${r.name} ${r.short_name}`.toLowerCase().includes(rankSearch.toLowerCase())).map((rank) => (
-                        <div key={rank.id} onClick={() => { handleChange("rank_id", rank.id.toString()); setRankDropdownOpen(false); setRankSearch(""); }} className={`px-3 py-2 text-sm cursor-pointer ${formData.rank_id == rank.id ? "bg-blue-50 text-blue-700" : "hover:bg-gray-50 text-gray-900"}`}>
-                          {rank.name} ({rank.short_name})
-                        </div>
-                      ))}
-                      {ranks.filter(r => `${r.name} ${r.short_name}`.toLowerCase().includes(rankSearch.toLowerCase())).length === 0 && (
-                        <div className="px-3 py-2 text-sm text-gray-400 text-center">No ranks found</div>
-                      )}
-                    </div>
-                  </div>
-                )}
+                <SearchableSelect
+                  options={ranks.map(r => ({ value: r.id.toString(), label: `${r.name} (${r.short_name})` }))}
+                  value={formData.rank_id.toString()}
+                  onChange={(val) => handleChange("rank_id", val)}
+                  placeholder="Select Rank"
+                  required
+                />
               </div>
-              <div className="relative">
+              <div>
                 <Label>Blood Group <span className="text-red-500">*</span></Label>
-                <div
-                  onClick={() => setBloodGroupDropdownOpen(!bloodGroupDropdownOpen)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 cursor-pointer flex items-center justify-between"
-                >
-                  <span className={formData.blood_group ? "text-gray-900" : "text-gray-400"}>
-                    {formData.blood_group || "Select Blood Group"}
-                  </span>
-                  <Icon icon={bloodGroupDropdownOpen ? "hugeicons:arrow-up-01" : "hugeicons:arrow-down-01"} className="w-4 h-4 text-gray-400" />
-                </div>
-                {bloodGroupDropdownOpen && (
-                  <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-hidden">
-                    <div className="p-2 border-b border-gray-100">
-                      <input type="text" value={bloodGroupSearch} onChange={(e) => setBloodGroupSearch(e.target.value)} placeholder="Search blood group..." className="w-full px-3 py-1.5 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" autoFocus />
-                    </div>
-                    <div className="overflow-y-auto max-h-48">
-                      {["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"].filter(bg => bg.toLowerCase().includes(bloodGroupSearch.toLowerCase())).map((bg) => (
-                        <div key={bg} onClick={() => { handleChange("blood_group", bg); setBloodGroupDropdownOpen(false); setBloodGroupSearch(""); }} className={`px-3 py-2 text-sm cursor-pointer ${formData.blood_group === bg ? "bg-blue-50 text-blue-700" : "hover:bg-gray-50 text-gray-900"}`}>
-                          {bg}
-                        </div>
-                      ))}
-                      {["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"].filter(bg => bg.toLowerCase().includes(bloodGroupSearch.toLowerCase())).length === 0 && (
-                        <div className="px-3 py-2 text-sm text-gray-400 text-center">No match found</div>
-                      )}
-                    </div>
-                  </div>
-                )}
+                <SearchableSelect
+                  options={["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"].map(bg => ({ value: bg, label: bg }))}
+                  value={formData.blood_group}
+                  onChange={(val) => handleChange("blood_group", val)}
+                  placeholder="Select Blood Group"
+                  required
+                />
               </div>
               <div>
                 <Label>Date of Birth <span className="text-red-500">*</span></Label>
@@ -586,39 +543,25 @@ export default function UserForm({ initialData, onSubmit, onCancel, loading: ext
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
               <div>
                 <Label> Wing <span className="text-red-500">*</span></Label>
-                <select 
-                  value={formData.wing_id} 
-                  onChange={(e) => handleChange("wing_id", e.target.value)} 
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  disabled={wingsLoading}
+                <SearchableSelect
+                  options={wings.map(w => ({ value: w.id.toString(), label: `${w.name} (${w.code})` }))}
+                  value={formData.wing_id.toString()}
+                  onChange={(val) => handleChange("wing_id", val)}
+                  placeholder="No Wing Assignment"
                   required
-                >
-                  <option value="">No Wing Assignment</option>
-                  {wings.map((wing) => (
-                    <option key={wing.id} value={wing.id}>
-                      {wing.name} ({wing.code})
-                    </option>
-                  ))}
-                </select>
+                />
                 {wingsLoading && <p className="text-xs text-gray-500 mt-1 italic">Loading wings...</p>}
               </div>
 
               {formData.wing_id && subWings.length > 0 && (
                 <div>
                   <Label> Sub-Wing</Label>
-                  <select
-                    value={formData.sub_wing_id}
-                    onChange={(e) => handleChange("sub_wing_id", e.target.value)}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    disabled={subWingsLoading}
-                  >
-                    <option value="">No Sub-Wing Assignment</option>
-                    {subWings.map((sw) => (
-                      <option key={sw.id} value={sw.id}>
-                        {sw.name} ({sw.code})
-                      </option>
-                    ))}
-                  </select>
+                  <SearchableSelect
+                    options={subWings.map(sw => ({ value: sw.id.toString(), label: `${sw.name} (${sw.code})` }))}
+                    value={formData.sub_wing_id.toString()}
+                    onChange={(val) => handleChange("sub_wing_id", val)}
+                    placeholder="No Sub-Wing Assignment"
+                  />
                   {subWingsLoading && <p className="text-xs text-gray-500 mt-1 italic">Loading sub-wings...</p>}
                 </div>
               )}
