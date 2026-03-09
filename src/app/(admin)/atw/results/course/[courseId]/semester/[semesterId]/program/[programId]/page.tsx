@@ -10,8 +10,11 @@ import type { FilePrintType } from "@/libs/types/filePrintType";
 import PrintTypeModal from "@/components/ui/modal/PrintTypeModal";
 import { Modal } from "@/components/ui/modal";
 import { useCan } from "@/context/PagePermissionsContext";
+import { useAuth } from "@/context/AuthContext";
 
 interface SubjectComponent {
+// ... (rest remains unchanged here, just adding useAuth context inside component) ...
+
     id: number;
     name: string;
     estimate_mark: number;
@@ -65,12 +68,19 @@ interface ProgramApproval {
     branch_id: number;
     status: 'pending' | 'approved' | 'rejected';
     rejected_reason?: string | null;
-    approved_by: number;
-    approved_at: string;
+    approved_by?: number | null;
+    forwarded_by?: number | null;
+    approved_at?: string | null;
     approver?: {
         id: number;
         name: string;
         rank?: { id: number; name: string; short_name: string } | null;
+    } | null;
+    forwarder?: {
+        id: number;
+        name: string;
+        rank?: { id: number; name: string; short_name: string } | null;
+        roles?: { id: number; name: string; pivot?: { is_primary: boolean } }[];
     } | null;
 }
 
@@ -118,6 +128,8 @@ export default function AtwCourseSemesterProgramResultsPage() {
     const semesterId = params.semesterId as string;
     const programId = params.programId as string;
 
+    const { user } = useAuth();
+
     const [data, setData] = useState<ApiResponseData | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
@@ -159,6 +171,26 @@ export default function AtwCourseSemesterProgramResultsPage() {
         loadResults();
     }, [loadResults]);
 
+    const myAuthority = useMemo(() => {
+        const authorities = data?.atw_result_approval_authorities ?? [];
+        const userRoleIds = (user as any)?.roles?.filter((r: any) => r.pivot?.is_primary).map((r: any) => r.id) ?? [];
+        const userId = user?.id;
+        return authorities.find((a: any) =>
+            (a.user_id && a.user_id === userId) || (a.role_id && userRoleIds.includes(a.role_id))
+        ) ?? null;
+    }, [data?.atw_result_approval_authorities, user]);
+
+    const getNextAuthority = useCallback(() => {
+        const authorities = [...(data?.atw_result_approval_authorities ?? [])]
+            .filter(a => !a.is_initial_cadet_approve)
+            .sort((a, b) => (a.sort ?? 0) - (b.sort ?? 0));
+        
+        if (!myAuthority) return authorities[0] || null;
+        
+        return authorities.find(a => (a.sort ?? 0) > (myAuthority.sort ?? 0)) || null;
+    }, [data?.atw_result_approval_authorities, myAuthority]);
+
+
     const handleBack = () => history.back();
     const handleViewResultDetails = (resultId: number) => router.push(`/atw/results/${resultId}`);
     const handlePrintClick = () => setIsPrintModalOpen(true);
@@ -167,12 +199,13 @@ export default function AtwCourseSemesterProgramResultsPage() {
         if (!data) return;
         setProgramForwardModal(prev => ({ ...prev, loading: true, error: '' }));
         try {
-            // Updated to not use branch_id as it is dropped from schema
+            const nextAuthority = getNextAuthority();
             await atwApprovalService.approveProgram({
                 course_id: parseInt(courseId),
                 semester_id: parseInt(semesterId),
                 program_id: parseInt(programId),
                 status: 'approved',
+                authority_ids: nextAuthority ? [nextAuthority.id] : [],
             });
             setProgramForwardModal({ open: false, loading: false, error: '' });
             await loadResults();
@@ -292,6 +325,10 @@ export default function AtwCourseSemesterProgramResultsPage() {
     const programAlreadyApproved = (data?.atw_result_program_approvals ?? []).some(
         pa => pa.status === 'approved'
     );
+    
+    const programAlreadyForwardedByMe = (data?.atw_result_program_approvals ?? []).some(
+        pa => pa.status === 'pending' && pa.forwarded_by === user?.id
+    );
 
     if (loading) {
         return (
@@ -342,6 +379,11 @@ export default function AtwCourseSemesterProgramResultsPage() {
                         <span className="px-4 py-2 rounded-lg flex items-center gap-2 text-sm font-medium bg-green-50 text-green-700 border border-green-200">
                             <Icon icon="hugeicons:checkmark-circle-02" className="w-4 h-4" />
                             Program Approved
+                        </span>
+                    ) : programAlreadyForwardedByMe ? (
+                        <span className="px-4 py-2 rounded-lg flex items-center gap-2 text-sm font-medium bg-indigo-50 text-indigo-700 border border-indigo-200">
+                            <Icon icon="hugeicons:share-04" className="w-4 h-4" />
+                            Already Forwarded
                         </span>
                     ) : (
                         <button
@@ -546,36 +588,43 @@ export default function AtwCourseSemesterProgramResultsPage() {
                                 </table>
                             </div>
 
-                            <div className="mt-12 mb-6 break-inside-avoid grid grid-cols-1 md:grid-cols-3 gap-6">
+                            <div className="mt-12 mb-6 break-inside-avoid">
                                 {(() => {
-                                    const authorities = [...(data.atw_result_approval_authorities || [])].sort((a, b) => a.sort - b.sort);
+                                    const authorities = [...(data.atw_result_approval_authorities || [])].sort((a, b) => (a.sort ?? 0) - (b.sort ?? 0));
                                     const formalAuthorities = authorities.filter(a => !a.is_initial_cadet_approve);
 
-                                    // Check Program Approval (for Prepared/Checked)
-                                    const programApproval = data.atw_result_program_approvals?.find(pa => pa.status === 'approved');
-                                    const isProgramApproved = !!programApproval;
-
-                                    // Check Semester Approval (for Final CI/OC signature)
-                                    const semesterApproval = data.atw_result_semester_approvals?.find(sa => sa.status === 'approved');
-                                    const isSemesterApproved = !!semesterApproval;
-
-                                    const preparedBy = formalAuthorities[0];
-                                    const checkedBy = formalAuthorities[1];
+                                    const preparedByAuth = formalAuthorities[0];
+                                    const checkedByAuth = formalAuthorities[1];
                                     const finalAuth = formalAuthorities.find(a => a.is_final) || formalAuthorities[formalAuthorities.length - 1];
 
-                                    const renderSignature = (title: string, auth: ApprovalAuthority | undefined, approved: boolean, actualApprover: any = null) => {
-                                        // Use the person who actually signed if the authority is role-based
-                                        const displayName = actualApprover?.approver?.name || auth?.user?.name || "—";
-                                        const displayRank = actualApprover?.approver?.rank?.short_name || auth?.user?.rank?.short_name || "—";
-                                        const displayRole = auth?.role?.name || "—";
+                                    const programApprovals = data.atw_result_program_approvals || [];
+                                    // The very first action on a program is forwarding it to the next authority.
+                                    const preparationRecord = programApprovals.length > 0 ? programApprovals[0] : null;
+
+                                    // The person who actually prepared it is the forwarder of the first record
+                                    const preparedByActualUser = preparationRecord?.forwarder;
+
+                                    // The person who checked it is the approver of the first record
+                                    const checkedByActualUser = preparationRecord?.approver;
+
+                                    // The final approver is the one in semester approval
+                                    const semesterApproval = data.atw_result_semester_approvals?.find(sa => sa.status === 'approved');
+                                    const approvedByActualUser = semesterApproval?.approver;
+
+                                    const renderSig = (title: string, expectedAuth: ApprovalAuthority | undefined, actualUser: any) => {
+                                        const displayName = actualUser?.name || expectedAuth?.user?.name || "—";
+                                        const displayRank = actualUser?.rank?.short_name || expectedAuth?.user?.rank?.short_name || "—";
+                                        const displayRole = actualUser?.roles?.find((r:any) => r.pivot?.is_primary)?.name || expectedAuth?.role?.name || "—";
+
+                                        const isSigned = !!actualUser;
 
                                         return (
                                             <div className="flex flex-col items-start min-w-[200px]">
                                                 <div className="mt-16 text-left w-full">
                                                     <p className="font-bold uppercase text-[11px] text-gray-900 mb-3">{title}</p>
-                                                    {auth ? (
+                                                    {expectedAuth || actualUser ? (
                                                         <div className="text-[11px] space-y-1 transition-all">
-                                                            {approved ? (
+                                                            {isSigned ? (
                                                                 <div className="flex flex-col gap-0.5">
                                                                     <div className="italic text-green-600 font-bold mb-1">Digitally Signed</div>
                                                                     <p className="font-bold text-gray-900">{displayName}</p>
@@ -595,11 +644,10 @@ export default function AtwCourseSemesterProgramResultsPage() {
                                     };
 
                                     return (
-                                        <>
-                                            {renderSignature("Prepared By", preparedBy, isProgramApproved, programApproval)}
-                                            {renderSignature("Checked By", checkedBy, isProgramApproved, programApproval)}
-                                            {renderSignature("Approved By", finalAuth, isSemesterApproved, semesterApproval)}
-                                        </>
+                                        <div className="flex justify-between items-start w-full">
+                                            {renderSig("Prepared & Checked By", preparedByAuth, preparedByActualUser)}
+                                            {renderSig("Approved By", checkedByAuth, checkedByActualUser)}
+                                        </div>
                                     );
                                 })()}
                             </div>

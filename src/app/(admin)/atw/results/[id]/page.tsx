@@ -78,7 +78,7 @@ export default function ResultDetailsPage() {
   // --- Approval permission check ---
   const canApprove = (() => {
     const authorities = result?.approval_authorities ?? [];
-    const userRoleIds = (user as any)?.roles?.map((r: any) => r.id) ?? [];
+    const userRoleIds = (user as any)?.roles?.filter((r: any) => r.pivot?.is_primary).map((r: any) => r.id) ?? [];
     const userId = user?.id;
     return authorities.some((a) => {
       const hasPermission = a.is_initial_cadet_approve || a.is_cadet_approve;
@@ -91,7 +91,7 @@ export default function ResultDetailsPage() {
 
   const canInitialForward = (() => {
     const authorities = result?.approval_authorities ?? [];
-    const userRoleIds = (user as any)?.roles?.map((r: any) => r.id) ?? [];
+    const userRoleIds = (user as any)?.roles?.filter((r: any) => r.pivot?.is_primary).map((r: any) => r.id) ?? [];
     const userId = user?.id;
     return authorities.some((a) => {
       if (!a.is_initial_cadet_approve || !a.is_active) return false;
@@ -104,7 +104,7 @@ export default function ResultDetailsPage() {
   // Find the current user's matching authority entry (must be declared before allCadetsApproved)
   const myAuthority = (() => {
     const authorities = result?.approval_authorities ?? [];
-    const userRoleIds = (user as any)?.roles?.map((r: any) => r.id) ?? [];
+    const userRoleIds = (user as any)?.roles?.filter((r: any) => r.pivot?.is_primary).map((r: any) => r.id) ?? [];
     const userId = user?.id;
     return authorities.find((a: any) =>
       (a.user_id && a.user_id === userId) || (a.role_id && userRoleIds.includes(a.role_id))
@@ -152,13 +152,20 @@ export default function ResultDetailsPage() {
     );
   })();
 
+  // Find the subject approval record for the current user's authority
+  const mySubjectApproval = myAuthority
+    ? result?.subject_approvals?.find((sa) => sa.authority_id === (myAuthority as any).id)
+    : null;
+
   // For UI: isForwarded means "has the process moved past the initial step"
   const isForwarded = (() => {
-    if (!canInitialForward) return !!(result?.subject_approval?.forwarded_by);
+    const hasAnyForward = (result?.subject_approvals?.length ?? 0) > 0;
+    if (!canInitialForward) return hasAnyForward;
+    
     const nonInitialAuthorityIds = new Set(
       (result?.approval_authorities ?? []).filter((a: any) => !a.is_initial_cadet_approve).map((a: any) => a.id)
     );
-    if (nonInitialAuthorityIds.size === 0) return !!(result?.subject_approval?.forwarded_by);
+    if (nonInitialAuthorityIds.size === 0) return hasAnyForward;
     const cadets = result?.result_getting_cadets ?? [];
     return cadets.some((c) =>
       (result?.cadet_approvals ?? []).some(
@@ -180,9 +187,8 @@ export default function ResultDetailsPage() {
     });
   })();
 
-  // For non-initial approvers (e.g. ATW Admin): subject is only "approved" when
-  // approved_by is set AND they have personally approved all their cadets.
-  const isSubjectApproved = !!((result as any)?.subject_approval?.approved_by);
+  // For non-initial approvers: subject is approved BY THEM if their specific step is approved.
+  const isSubjectApproved = mySubjectApproval?.status === 'approved';
 
   // Initial approver (is_initial_cadet_approve) can act BEFORE forwarding.
   // Non-initial cadet approver (is_cadet_approve only) can act ONLY AFTER being forwarded to.
@@ -202,12 +208,8 @@ export default function ResultDetailsPage() {
     : [];
 
   // --- Approval helpers ---
-
-  // Authority-aware: initial approver looks at null-authority records,
-  // other approvers look at their own authority_id records
   const pendingCadetIds = result?.result_getting_cadets
     ?.filter((c) => {
-      // ONLY show pending/approve buttons if this authority is ALLOWED to approve cadets
       if (!myAuthority?.is_initial_cadet_approve && !myAuthority?.is_cadet_approve) return false;
 
       const authorityId = (myAuthority as any)?.id;
@@ -275,16 +277,20 @@ export default function ResultDetailsPage() {
     }
     setSubjectApprovalModal((prev) => ({ ...prev, loading: true, error: "" }));
     try {
+      const nextAuthority = getNextAuthority();
+
       await atwApprovalService.approveSubject({
         course_id: result.course_id,
         semester_id: result.semester_id,
         program_id: result.program_id,
-
         subject_id: result.atw_subject_id,
         instructor_id: result.instructor_id,
         status: subjectApprovalModal.status,
         rejected_reason: subjectApprovalModal.status === "rejected" ? subjectApprovalModal.rejectedReason : undefined,
+        cadet_ids: result.result_getting_cadets?.map((c) => c.cadet_id) ?? [],
+        authority_ids: nextAuthority ? [nextAuthority.id] : [],
       });
+
       setSubjectApprovalModal((prev) => ({ ...prev, open: false, loading: false }));
       await loadData();
     } catch (err: any) {
@@ -740,15 +746,17 @@ export default function ResultDetailsPage() {
                                   const perCadet = result.cadet_approvals?.find(
                                     (a) => a.cadet_id === cadet.cadet_id && a.authority_id === authority.id
                                   );
-                                  st = perCadet?.status ?? result.subject_approval?.status;
+                                  const authSubjectApproval = result.subject_approvals?.find(sa => sa.authority_id === authority.id);
+                                  st = perCadet?.status ?? authSubjectApproval?.status;
                                 }
 
                                 // Label variant: "Subject" for non-initial steps where only subject-level data exists
+                                const authSubjectApproval = result.subject_approvals?.find(sa => sa.authority_id === authority.id);
                                 const isSubjectLevel = !authority.is_initial_cadet_approve
                                   && !result.cadet_approvals?.find(
                                     (a) => a.cadet_id === cadet.cadet_id && a.authority_id === authority.id
                                   )
-                                  && !!result.subject_approval?.status;
+                                  && !!authSubjectApproval?.status;
 
                                 return (
                                   <div key={authority.id} className="flex items-center gap-1 whitespace-nowrap">
@@ -841,13 +849,16 @@ export default function ResultDetailsPage() {
                         const approvedCount = result.cadet_approvals?.filter(
                           (a: any) => a.status === 'approved' && a.authority_id === authority.id
                         ).length ?? 0;
+                        
+                        const authSubjectApproval = result.subject_approvals?.find(sa => sa.authority_id === authority.id);
+
                         if (approvedCount >= total && total > 0) {
                           status = 'completed';
                           statusLabel = `All ${total} Approved`;
-                        } else if (approvedCount > 0 || result.subject_approval?.forwarded_by) {
+                        } else if (approvedCount > 0 || authSubjectApproval?.forwarded_by) {
                           status = 'active';
                           statusLabel = approvedCount > 0 ? `${approvedCount} / ${total} Approved` : 'Under Review';
-                        } else if (result.subject_approval?.approved_by) {
+                        } else if (authSubjectApproval?.approved_by) {
                           status = 'completed';
                           statusLabel = 'Approved';
                         }

@@ -57,7 +57,7 @@ export default function AtwViewResultsPage() {
 
   // Check if current user can do initial forward (has is_initial_cadet_approve authority)
   const canInitialForward = useMemo(() => {
-    const userRoleIds = (user as any)?.roles?.map((r: any) => r.id) ?? [];
+    const userRoleIds = (user as any)?.roles?.filter((r: any) => r.pivot?.is_primary).map((r: any) => r.id) ?? [];
     const userId = user?.id;
     return approvalAuthorities.some((a) => {
       if (!a.is_initial_cadet_approve || !a.is_active) return false;

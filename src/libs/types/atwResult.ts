@@ -127,6 +127,13 @@ export interface AtwResult {
     forwarded_by: number | null;
     approved_by: number | null;
   } | null;
+  subject_approvals?: {
+    id: number;
+    authority_id: number | null;
+    status: 'pending' | 'approved' | 'rejected';
+    forwarded_by: number | null;
+    approved_by: number | null;
+  }[];
 }
 
 // Create/Update Data Types

@@ -165,7 +165,7 @@ export default function UserAssignRoleModal({
       // 4. Form-Based Refinement Filter
       if (selectedWingId) {
         const targetWingId = Number(selectedWingId);
-        if (roleWingId !== null && roleWingId !== targetWingId) return false;
+        if (roleWingId !== targetWingId) return false;
 
         if (selectedSubWingId) {
           const targetSubWingId = Number(selectedSubWingId);
@@ -662,9 +662,21 @@ export default function UserAssignRoleModal({
             {/* Existing Assignments */}
             <div className="mb-8">
               <h4 className="text-sm font-semibold text-gray-700 mb-3">Current Role</h4>
-              {user?.role_assignments && user.role_assignments.length > 0 ? (
+              {user?.role_assignments && user.role_assignments.filter((a) => {
+                const slug = a.role?.slug?.toLowerCase() || "";
+                const name = a.role?.name || "";
+                const instructorSlugs = ['instructor', 'atw-cic', 'atw-course-tutor'];
+                const instructorNames = ['ATW CIC', 'ATW Course Tutor', 'Instructor'];
+                return !instructorSlugs.includes(slug) && !instructorNames.includes(name);
+              }).length > 0 ? (
                 <div className="space-y-3 max-h-80 overflow-y-auto pr-2 custom-scrollbar">
-                  {user.role_assignments.map((assignment) => {
+                  {user.role_assignments.filter((a) => {
+                    const slug = a.role?.slug?.toLowerCase() || "";
+                    const name = a.role?.name || "";
+                    const instructorSlugs = ['instructor', 'atw-cic', 'atw-course-tutor'];
+                    const instructorNames = ['ATW CIC', 'ATW Course Tutor', 'Instructor'];
+                    return !instructorSlugs.includes(slug) && !instructorNames.includes(name);
+                  }).map((assignment) => {
                     const roleName = assignment.role?.name?.toLowerCase() || "";
                     const roleSlug = assignment.role?.slug?.toLowerCase() || "";
                     const isMargeableRole = roleName === "instructor" || roleSlug === "instructor" || !!assignment.role?.is_marge_role;
