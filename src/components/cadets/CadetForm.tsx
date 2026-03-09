@@ -8,6 +8,7 @@ import Input from "@/components/form/input/InputField";
 import Label from "@/components/form/Label";
 import FullLogo from "@/components/ui/fulllogo";
 import DatePicker from "@/components/form/input/DatePicker";
+import SearchableSelect from "@/components/form/SearchableSelect";
 import { geoLocationService, type Division, type District, type PostOffice } from "@/libs/services/geoLocationService";
 import { commonService } from "@/libs/services/commonService";
 import { rankService } from "@/libs/services/rankService";
@@ -476,7 +477,14 @@ export default function CadetForm({ initialData, onSubmit, onCancel, loading: ex
       if (initialData.politics_relations && initialData.politics_relations.length > 0) setPoliticsRelations(initialData.politics_relations);
       if (initialData.political_relations && initialData.political_relations.length > 0 && (!initialData.politics_relations || initialData.politics_relations.length === 0)) setPoliticsRelations(initialData.political_relations);
       
-      if (initialData.languages && initialData.languages.length > 0) setLanguages(initialData.languages);
+      if (initialData.languages && initialData.languages.length > 0) {
+        setLanguages(initialData.languages.map((lang: any) => ({
+          language: lang.language || "",
+          write: lang.write ?? lang.can_write ?? false,
+          read: lang.read ?? lang.can_read ?? false,
+          speak: lang.speak ?? lang.can_speak ?? false,
+        })));
+      }
       
       if (initialData.visitAbord && initialData.visitAbord.length > 0) setVisitAbord(initialData.visitAbord);
       if (initialData.visits_abroad && initialData.visits_abroad.length > 0 && (!initialData.visitAbord || initialData.visitAbord.length === 0)) setVisitAbord(initialData.visits_abroad);
@@ -711,7 +719,12 @@ export default function CadetForm({ initialData, onSubmit, onCancel, loading: ex
         politics_relations: politicsRelations,
 
         // Languages
-        languages,
+        languages: languages.map((lang) => ({
+          language: lang.language,
+          can_write: lang.write,
+          can_read: lang.read,
+          can_speak: lang.speak,
+        })),
 
         // Visit Abroad
         visitAbord,
@@ -833,36 +846,48 @@ export default function CadetForm({ initialData, onSubmit, onCancel, loading: ex
                 <Input value={shortName} onChange={(e) => setShortName(e.target.value)} placeholder="Enter Short Name." />
               </div>
               <div>
-                <Label>Email</Label>
-                <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Enter email" />
+                <Label>Email <span className="text-red-500">*</span></Label>
+                <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Enter email" required />
               </div>
               <div>
-                <Label>Contact No</Label>
-                <Input value={contactNo} onChange={(e) => setContactNo(e.target.value)} placeholder="Enter contact no" />
+                <Label>Contact No <span className="text-red-500">*</span></Label>
+                <Input value={contactNo} onChange={(e) => setContactNo(e.target.value)} placeholder="Enter contact no" required />
               </div>
 
               <div>
                 <Label>Gender <span className="text-red-500">*</span></Label>
-                <select value={gender} onChange={(e) => setGender(e.target.value as "male" | "female" | "other" | "")} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
-                  <option value="">Select gender</option>
-                  <option value="male">Male</option>
-                  <option value="female">Female</option>
-                  <option value="other">Other</option>
-                </select>
+                <SearchableSelect
+                  value={gender}
+                  onChange={(val) => setGender(val as "male" | "female" | "other" | "")}
+                  options={[
+                    { value: "male", label: "Male" },
+                    { value: "female", label: "Female" },
+                    { value: "other", label: "Other" },
+                  ]}
+                  placeholder="Select gender"
+                  searchPlaceholder="Search gender..."
+                  required
+                />
               </div>
               <div>
                 <Label>Blood Group <span className="text-red-500">*</span></Label>
-                <select value={bloodGroup} onChange={(e) => setBloodGroup(e.target.value)} required className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                  <option value="">Select your blood group</option>
-                  <option value="A+">A+</option>
-                  <option value="A-">A-</option>
-                  <option value="B+">B+</option>
-                  <option value="B-">B-</option>
-                  <option value="O+">O+</option>
-                  <option value="O-">O-</option>
-                  <option value="AB+">AB+</option>
-                  <option value="AB-">AB-</option>
-                </select>
+                <SearchableSelect
+                  value={bloodGroup}
+                  onChange={(val) => setBloodGroup(val)}
+                  options={[
+                    { value: "A+", label: "A+" },
+                    { value: "A-", label: "A-" },
+                    { value: "B+", label: "B+" },
+                    { value: "B-", label: "B-" },
+                    { value: "O+", label: "O+" },
+                    { value: "O-", label: "O-" },
+                    { value: "AB+", label: "AB+" },
+                    { value: "AB-", label: "AB-" },
+                  ]}
+                  placeholder="Select your blood group"
+                  searchPlaceholder="Search blood group..."
+                  required
+                />
               </div>
             </div>
           </div>
@@ -875,15 +900,21 @@ export default function CadetForm({ initialData, onSubmit, onCancel, loading: ex
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <div>
-              <Label>Religion</Label>
-              <select value={religion} onChange={(e) => setReligion(e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                <option value="">Select your religion</option>
-                <option value="islam">Islam</option>
-                <option value="hinduism">Hinduism</option>
-                <option value="buddhism">Buddhism</option>
-                <option value="christianity">Christianity</option>
-                <option value="other">Other</option>
-              </select>
+              <Label>Religion <span className="text-red-500">*</span></Label>
+              <SearchableSelect
+                value={religion}
+                onChange={(val) => setReligion(val)}
+                options={[
+                  { value: "islam", label: "Islam" },
+                  { value: "hinduism", label: "Hinduism" },
+                  { value: "buddhism", label: "Buddhism" },
+                  { value: "christianity", label: "Christianity" },
+                  { value: "other", label: "Other" },
+                ]}
+                placeholder="Select your religion"
+                searchPlaceholder="Search religion..."
+                required
+              />
             </div>
             <div>
               <Label>Caste</Label>
@@ -927,8 +958,8 @@ export default function CadetForm({ initialData, onSubmit, onCancel, loading: ex
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             <div>
-              <Label>NID No.</Label>
-              <Input value={nidNo} onChange={(e) => setNidNo(e.target.value)} placeholder="Enter your NID number" />
+              <Label>NID No. <span className="text-red-500">*</span></Label>
+              <Input value={nidNo} onChange={(e) => setNidNo(e.target.value)} placeholder="Enter your NID number" required />
             </div>
             <div>
               <Label>Passport No.</Label>
@@ -962,39 +993,51 @@ export default function CadetForm({ initialData, onSubmit, onCancel, loading: ex
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <div>
               <Label>Division <span className="text-red-500">*</span></Label>
-              <select value={permanentDivision} onChange={(e) => setPermanentDivision(e.target.value)} required className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                <option value="">Select division</option>
-                {divisions.map((division) => (
-                  <option key={division.id} value={division.id}>{division.name}</option>
-                ))}
-              </select>
+              <SearchableSelect
+                value={permanentDivision}
+                onChange={(val) => setPermanentDivision(val)}
+                options={divisions.map((d) => ({ value: d.id.toString(), label: d.name }))}
+                placeholder="Select division"
+                searchPlaceholder="Search division..."
+                required
+              />
             </div>
             <div>
               <Label>District <span className="text-red-500">*</span></Label>
-              <select value={permanentDistrict} onChange={(e) => setPermanentDistrict(e.target.value)} required className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" disabled={!permanentDivision}>
-                <option value="">Select district</option>
-                {permanentDistricts.map((district) => (
-                  <option key={district.id} value={district.id}>{district.name}</option>
-                ))}
-              </select>
+              <SearchableSelect
+                value={permanentDistrict}
+                onChange={(val) => setPermanentDistrict(val)}
+                options={permanentDistricts.map((d) => ({ value: d.id.toString(), label: d.name }))}
+                placeholder="Select district"
+                searchPlaceholder="Search district..."
+                disabled={!permanentDivision}
+                required
+              />
             </div>
             <div>
               <Label>Post Office/Thana <span className="text-red-500">*</span></Label>
-              <select value={permanentPostOffice} onChange={(e) => setPermanentPostOffice(e.target.value)} required className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" disabled={!permanentDistrict}>
-                <option value="">Select post office</option>
-                {permanentPostOffices.map((postOffice) => (
-                  <option key={postOffice.id} value={postOffice.id}>{postOffice.name}</option>
-                ))}
-              </select>
+              <SearchableSelect
+                value={permanentPostOffice}
+                onChange={(val) => {
+                  setPermanentPostOffice(val);
+                  const selectedPO = permanentPostOffices.find(po => po.id.toString() === val);
+                  if (selectedPO?.post_code) setPermanentPostCode(selectedPO.post_code);
+                }}
+                options={permanentPostOffices.map((po) => ({ value: po.id.toString(), label: po.name }))}
+                placeholder="Select post office"
+                searchPlaceholder="Search post office..."
+                disabled={!permanentDistrict}
+                required
+              />
             </div>
             <div>
-              <Label>Post Code</Label>
-              <Input value={permanentPostCode} onChange={(e) => setPermanentPostCode(e.target.value)} placeholder="Enter post code" />
+              <Label>Post Code <span className="text-red-500">*</span></Label>
+              <Input value={permanentPostCode} onChange={(e) => setPermanentPostCode(e.target.value)} placeholder="Enter post code" required />
             </div>
           </div>
           <div className="mt-4">
-            <Label>Enter your permanent address</Label>
-            <textarea value={permanentAddress} onChange={(e) => setPermanentAddress(e.target.value)} placeholder="Enter your permanent address" rows={2} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            <Label>Enter your permanent address <span className="text-red-500">*</span></Label>
+            <textarea value={permanentAddress} onChange={(e) => setPermanentAddress(e.target.value)} placeholder="Enter your permanent address" rows={2} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required />
           </div>
         </div>
 
@@ -1006,39 +1049,51 @@ export default function CadetForm({ initialData, onSubmit, onCancel, loading: ex
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <div>
               <Label>Division <span className="text-red-500">*</span></Label>
-              <select value={presentDivision} onChange={(e) => setPresentDivision(e.target.value)} required className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                <option value="">Select division</option>
-                {divisions.map((division) => (
-                  <option key={division.id} value={division.id}>{division.name}</option>
-                ))}
-              </select>
+              <SearchableSelect
+                value={presentDivision}
+                onChange={(val) => setPresentDivision(val)}
+                options={divisions.map((d) => ({ value: d.id.toString(), label: d.name }))}
+                placeholder="Select division"
+                searchPlaceholder="Search division..."
+                required
+              />
             </div>
             <div>
               <Label>District <span className="text-red-500">*</span></Label>
-              <select value={presentDistrict} onChange={(e) => setPresentDistrict(e.target.value)} required className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" disabled={!presentDivision}>
-                <option value="">Select district</option>
-                {presentDistricts.map((district) => (
-                  <option key={district.id} value={district.id}>{district.name}</option>
-                ))}
-              </select>
+              <SearchableSelect
+                value={presentDistrict}
+                onChange={(val) => setPresentDistrict(val)}
+                options={presentDistricts.map((d) => ({ value: d.id.toString(), label: d.name }))}
+                placeholder="Select district"
+                searchPlaceholder="Search district..."
+                disabled={!presentDivision}
+                required
+              />
             </div>
             <div>
               <Label>Post Office/Thana <span className="text-red-500">*</span></Label>
-              <select value={presentPostOffice} onChange={(e) => setPresentPostOffice(e.target.value)} required className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" disabled={!presentDistrict}>
-                <option value="">Select post office</option>
-                {presentPostOffices.map((postOffice) => (
-                  <option key={postOffice.id} value={postOffice.id}>{postOffice.name}</option>
-                ))}
-              </select>
+              <SearchableSelect
+                value={presentPostOffice}
+                onChange={(val) => {
+                  setPresentPostOffice(val);
+                  const selectedPO = presentPostOffices.find(po => po.id.toString() === val);
+                  if (selectedPO?.post_code) setPresentPostCode(selectedPO.post_code);
+                }}
+                options={presentPostOffices.map((po) => ({ value: po.id.toString(), label: po.name }))}
+                placeholder="Select post office"
+                searchPlaceholder="Search post office..."
+                disabled={!presentDistrict}
+                required
+              />
             </div>
             <div>
-              <Label>Post Code</Label>
-              <Input value={presentPostCode} onChange={(e) => setPresentPostCode(e.target.value)} placeholder="Enter post code" />
+              <Label>Post Code <span className="text-red-500">*</span></Label>
+              <Input value={presentPostCode} onChange={(e) => setPresentPostCode(e.target.value)} placeholder="Enter post code" required />
             </div>
           </div>
           <div className="mt-4">
-            <Label>Enter your present address</Label>
-            <textarea value={presentAddress} onChange={(e) => setPresentAddress(e.target.value)} placeholder="Enter your present address" rows={2} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            <Label>Enter your present address <span className="text-red-500">*</span></Label>
+            <textarea value={presentAddress} onChange={(e) => setPresentAddress(e.target.value)} placeholder="Enter your present address" rows={2} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required />
           </div>
         </div>
 
@@ -1049,40 +1104,52 @@ export default function CadetForm({ initialData, onSubmit, onCancel, loading: ex
           </h2>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <div>
-              <Label>Division</Label>
-              <select value={guardianDivision} onChange={(e) => setGuardianDivision(e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                <option value="">Select division</option>
-                {divisions.map((division) => (
-                  <option key={division.id} value={division.id}>{division.name}</option>
-                ))}
-              </select>
+              <Label>Division <span className="text-red-500">*</span></Label>
+              <SearchableSelect
+                value={guardianDivision}
+                onChange={(val) => setGuardianDivision(val)}
+                options={divisions.map((d) => ({ value: d.id.toString(), label: d.name }))}
+                placeholder="Select division"
+                searchPlaceholder="Search division..."
+                required
+              />
             </div>
             <div>
-              <Label>District</Label>
-              <select value={guardianDistrict} onChange={(e) => setGuardianDistrict(e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" disabled={!guardianDivision}>
-                <option value="">Select district</option>
-                {guardianDistricts.map((district) => (
-                  <option key={district.id} value={district.id}>{district.name}</option>
-                ))}
-              </select>
+              <Label>District <span className="text-red-500">*</span></Label>
+              <SearchableSelect
+                value={guardianDistrict}
+                onChange={(val) => setGuardianDistrict(val)}
+                options={guardianDistricts.map((d) => ({ value: d.id.toString(), label: d.name }))}
+                placeholder="Select district"
+                searchPlaceholder="Search district..."
+                disabled={!guardianDivision}
+                required
+              />
             </div>
             <div>
-              <Label>Post Office/Thana</Label>
-              <select value={guardianPostOffice} onChange={(e) => setGuardianPostOffice(e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" disabled={!guardianDistrict}>
-                <option value="">Select post office</option>
-                {guardianPostOffices.map((postOffice) => (
-                  <option key={postOffice.id} value={postOffice.id}>{postOffice.name}</option>
-                ))}
-              </select>
+              <Label>Post Office/Thana <span className="text-red-500">*</span></Label>
+              <SearchableSelect
+                value={guardianPostOffice}
+                onChange={(val) => {
+                  setGuardianPostOffice(val);
+                  const selectedPO = guardianPostOffices.find(po => po.id.toString() === val);
+                  if (selectedPO?.post_code) setGuardianPostCode(selectedPO.post_code);
+                }}
+                options={guardianPostOffices.map((po) => ({ value: po.id.toString(), label: po.name }))}
+                placeholder="Select post office"
+                searchPlaceholder="Search post office..."
+                disabled={!guardianDistrict}
+                required
+              />
             </div>
             <div>
-              <Label>Post Code</Label>
-              <Input value={guardianPostCode} onChange={(e) => setGuardianPostCode(e.target.value)} placeholder="Enter post code" />
+              <Label>Post Code <span className="text-red-500">*</span></Label>
+              <Input value={guardianPostCode} onChange={(e) => setGuardianPostCode(e.target.value)} placeholder="Enter post code" required />
             </div>
           </div>
           <div className="mt-4">
-            <Label>Enter guardian&apos;s address</Label>
-            <textarea value={guardianAddress} onChange={(e) => setGuardianAddress(e.target.value)} placeholder="Enter guardian's address" rows={2} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            <Label>Enter guardian&apos;s address <span className="text-red-500">*</span></Label>
+            <textarea value={guardianAddress} onChange={(e) => setGuardianAddress(e.target.value)} placeholder="Enter guardian's address" rows={2} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required />
           </div>
         </div>
 
@@ -1093,14 +1160,20 @@ export default function CadetForm({ initialData, onSubmit, onCancel, loading: ex
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             <div>
-              <Label>Select marital status</Label>
-              <select value={maritalStatus} onChange={(e) => setMaritalStatus(e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                <option value="">Select marital status</option>
-                <option value="single">Single</option>
-                <option value="married">Married</option>
-                <option value="divorced">Divorced</option>
-                <option value="widowed">Widowed</option>
-              </select>
+              <Label>Marital Status <span className="text-red-500">*</span></Label>
+              <SearchableSelect
+                value={maritalStatus}
+                onChange={(val) => setMaritalStatus(val)}
+                options={[
+                  { value: "single", label: "Single" },
+                  { value: "married", label: "Married" },
+                  { value: "divorced", label: "Divorced" },
+                  { value: "widowed", label: "Widowed" },
+                ]}
+                placeholder="Select marital status"
+                searchPlaceholder="Search..."
+                required
+              />
             </div>
           </div>
         </div>
@@ -1131,27 +1204,38 @@ export default function CadetForm({ initialData, onSubmit, onCancel, loading: ex
               <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
                 <div>
                   <Label>Relationship</Label>
-                  <select value={member.relationship || ""} onChange={(e) => updateFamilyMember(index, "relationship", e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                    <option value="">Select relationship</option>
-                    <option value="father">Father</option>
-                    <option value="mother">Mother</option>
-                    <option value="brother">Brother</option>
-                    <option value="sister">Sister</option>
-                    <option value="spouse">Spouse</option>
-                    <option value="son">Son</option>
-                    <option value="daughter">Daughter</option>
-                    <option value="uncle">Uncle</option>
-                    <option value="aunt">Aunt</option>
-                    <option value="grandfather">Grandfather</option>
-                    <option value="grandmother">Grandmother</option>
-                  </select>
+                  <SearchableSelect
+                    value={member.relationship || ""}
+                    onChange={(val) => updateFamilyMember(index, "relationship", val)}
+                    options={[
+                      { value: "father", label: "Father" },
+                      { value: "mother", label: "Mother" },
+                      { value: "brother", label: "Brother" },
+                      { value: "sister", label: "Sister" },
+                      { value: "spouse", label: "Spouse" },
+                      { value: "son", label: "Son" },
+                      { value: "daughter", label: "Daughter" },
+                      { value: "uncle", label: "Uncle" },
+                      { value: "aunt", label: "Aunt" },
+                      { value: "grandfather", label: "Grandfather" },
+                      { value: "grandmother", label: "Grandmother" },
+                    ]}
+                    placeholder="Select relationship"
+                    searchPlaceholder="Search..."
+                  />
                 </div>
                 <div>
                   <Label>Status</Label>
-                  <select value={member.status || ""} onChange={(e) => updateFamilyMember(index, "status", e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                    <option value="alive">Alive</option>
-                    <option value="dead">Dead</option>
-                  </select>
+                  <SearchableSelect
+                    value={member.status || ""}
+                    onChange={(val) => updateFamilyMember(index, "status", val)}
+                    options={[
+                      { value: "alive", label: "Alive" },
+                      { value: "dead", label: "Dead" },
+                    ]}
+                    placeholder="Select status"
+                    searchPlaceholder="Search..."
+                  />
                 </div>
                 <div>
                   <Label>Name</Label>
@@ -1175,11 +1259,16 @@ export default function CadetForm({ initialData, onSubmit, onCancel, loading: ex
                 </div>
                 <div>
                   <Label>Political Involvement</Label>
-                  <select value={member.politicalInvolvement || ""} onChange={(e) => updateFamilyMember(index, "politicalInvolvement", e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                    <option value="">Select</option>
-                    <option value="yes">Yes</option>
-                    <option value="no">No</option>
-                  </select>
+                  <SearchableSelect
+                    value={member.politicalInvolvement || ""}
+                    onChange={(val) => updateFamilyMember(index, "politicalInvolvement", val)}
+                    options={[
+                      { value: "yes", label: "Yes" },
+                      { value: "no", label: "No" },
+                    ]}
+                    placeholder="Select"
+                    searchPlaceholder="Search..."
+                  />
                 </div>
                 <div>
                   <Label>Political Party Name</Label>
@@ -1237,15 +1326,21 @@ export default function CadetForm({ initialData, onSubmit, onCancel, loading: ex
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                 <div>
                   <Label>Exam <span className="text-red-500">*</span></Label>
-                  <select value={record.exam || ""} onChange={(e) => updateEducationalRecord(index, "exam", e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                    <option value="">Select Exam</option>
-                    <option value="ssc">SSC</option>
-                    <option value="hsc">HSC</option>
-                    <option value="bachelor">Bachelor</option>
-                    <option value="master">Master</option>
-                    <option value="phd">PhD</option>
-                    <option value="other">Other</option>
-                  </select>
+                  <SearchableSelect
+                    value={record.exam || ""}
+                    onChange={(val) => updateEducationalRecord(index, "exam", val)}
+                    options={[
+                      { value: "ssc", label: "SSC" },
+                      { value: "hsc", label: "HSC" },
+                      { value: "bachelor", label: "Bachelor" },
+                      { value: "master", label: "Master" },
+                      { value: "phd", label: "PhD" },
+                      { value: "other", label: "Other" },
+                    ]}
+                    placeholder="Select Exam"
+                    searchPlaceholder="Search exam..."
+                    required
+                  />
                 </div>
                 <div>
                   <Label>Institution <span className="text-red-500">*</span></Label>
@@ -1308,12 +1403,13 @@ export default function CadetForm({ initialData, onSubmit, onCancel, loading: ex
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                 <div>
                   <Label>Rank</Label>
-                  <select value={relation.rank || ""} onChange={(e) => updateArmyRelation(index, "rank", e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                    <option value="">Select rank</option>
-                    {ranks.map((r) => (
-                      <option key={r.id} value={r.name}>{r.name}</option>
-                    ))}
-                  </select>
+                  <SearchableSelect
+                    value={relation.rank || ""}
+                    onChange={(val) => updateArmyRelation(index, "rank", val)}
+                    options={ranks.map((r) => ({ value: r.name, label: r.name }))}
+                    placeholder="Select rank"
+                    searchPlaceholder="Search rank..."
+                  />
                 </div>
                 <div>
                   <Label>Name</Label>
@@ -1325,17 +1421,22 @@ export default function CadetForm({ initialData, onSubmit, onCancel, loading: ex
                 </div>
                 <div>
                   <Label>Relationship</Label>
-                  <select value={relation.relationship || ""} onChange={(e) => updateArmyRelation(index, "relationship", e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                    <option value="">Select your relationship</option>
-                    <option value="father">Father</option>
-                    <option value="mother">Mother</option>
-                    <option value="brother">Brother</option>
-                    <option value="sister">Sister</option>
-                    <option value="uncle">Uncle</option>
-                    <option value="aunt">Aunt</option>
-                    <option value="cousin">Cousin</option>
-                    <option value="other">Other</option>
-                  </select>
+                  <SearchableSelect
+                    value={relation.relationship || ""}
+                    onChange={(val) => updateArmyRelation(index, "relationship", val)}
+                    options={[
+                      { value: "father", label: "Father" },
+                      { value: "mother", label: "Mother" },
+                      { value: "brother", label: "Brother" },
+                      { value: "sister", label: "Sister" },
+                      { value: "uncle", label: "Uncle" },
+                      { value: "aunt", label: "Aunt" },
+                      { value: "cousin", label: "Cousin" },
+                      { value: "other", label: "Other" },
+                    ]}
+                    placeholder="Select your relationship"
+                    searchPlaceholder="Search..."
+                  />
                 </div>
               </div>
               <div className="mt-3">
@@ -1412,19 +1513,25 @@ export default function CadetForm({ initialData, onSubmit, onCancel, loading: ex
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <Label>Language Name</Label>
-                  <select value={lang.language || ""} onChange={(e) => updateLanguage(index, "language", e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                    <option value="">Select language</option>
-                    <option value="bengali">Bengali</option>
-                    <option value="english">English</option>
-                    <option value="arabic">Arabic</option>
-                    <option value="hindi">Hindi</option>
-                    <option value="urdu">Urdu</option>
-                    <option value="french">French</option>
-                    <option value="german">German</option>
-                    <option value="spanish">Spanish</option>
-                    <option value="chinese">Chinese</option>
-                  </select>
+                  <Label>Language Name <span className="text-red-500">*</span></Label>
+                  <SearchableSelect
+                    value={lang.language || ""}
+                    onChange={(val) => updateLanguage(index, "language", val)}
+                    options={[
+                      { value: "bengali", label: "Bengali" },
+                      { value: "english", label: "English" },
+                      { value: "arabic", label: "Arabic" },
+                      { value: "hindi", label: "Hindi" },
+                      { value: "urdu", label: "Urdu" },
+                      { value: "french", label: "French" },
+                      { value: "german", label: "German" },
+                      { value: "spanish", label: "Spanish" },
+                      { value: "chinese", label: "Chinese" },
+                    ]}
+                    placeholder="Select language"
+                    searchPlaceholder="Search language..."
+                    required
+                  />
                 </div>
                 <div>
                   <Label>Language Skill</Label>
@@ -1481,11 +1588,11 @@ export default function CadetForm({ initialData, onSubmit, onCancel, loading: ex
                   <Input value={visit.purpose || ""} onChange={(e) => updateVisitAbord(index, "purpose", e.target.value)} placeholder="Enter purpose of visit" />
                 </div>
                 <div>
-                  <Label>From Date <span className="text-red-500">*</span></Label>
+                  <Label>From Date</Label>
                   <DatePicker value={visit.fromdate || ""} onChange={(e) => updateVisitAbord(index, "fromdate", e.target.value)} placeholder="dd/mm/yyyy" />
                 </div>
                 <div>
-                  <Label>To Date <span className="text-red-500">*</span></Label>
+                  <Label>To Date</Label>
                   <DatePicker value={visit.todate || ""} onChange={(e) => updateVisitAbord(index, "todate", e.target.value)} placeholder="dd/mm/yyyy" />
                 </div>
               </div>
@@ -1535,12 +1642,17 @@ export default function CadetForm({ initialData, onSubmit, onCancel, loading: ex
                 </div>
                 <div>
                   <Label>Present State</Label>
-                  <select value={emp.presentState || ""} onChange={(e) => updateEmployment(index, "presentState", e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                    <option value="">Select Present state</option>
-                    <option value="active">Active</option>
-                    <option value="resigned">Resigned</option>
-                    <option value="terminated">Terminated</option>
-                  </select>
+                  <SearchableSelect
+                    value={emp.presentState || ""}
+                    onChange={(val) => updateEmployment(index, "presentState", val)}
+                    options={[
+                      { value: "active", label: "Active" },
+                      { value: "resigned", label: "Resigned" },
+                      { value: "terminated", label: "Terminated" },
+                    ]}
+                    placeholder="Select Present state"
+                    searchPlaceholder="Search..."
+                  />
                 </div>
               </div>
             </div>
@@ -1610,12 +1722,12 @@ export default function CadetForm({ initialData, onSubmit, onCancel, loading: ex
           </h2>
           <div className="grid grid1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <div>
-              <Label>Date of Arrival at BMA</Label>
-              <DatePicker value={arrivalDateBma} onChange={(e) => setArrivalDateBma(e.target.value)} placeholder="dd/mm/yyyy" />
+              <Label>Date of Arrival at BMA <span className="text-red-500">*</span></Label>
+              <DatePicker value={arrivalDateBma} onChange={(e) => setArrivalDateBma(e.target.value)} placeholder="dd/mm/yyyy" required />
             </div>
             <div>
-              <Label>Date of Arrival at BAFA</Label>
-              <DatePicker value={arrivalDateBafa} onChange={(e) => setArrivalDateBafa(e.target.value)} placeholder="dd/mm/yyyy" />
+              <Label>Date of Arrival at BAFA <span className="text-red-500">*</span></Label>
+              <DatePicker value={arrivalDateBafa} onChange={(e) => setArrivalDateBafa(e.target.value)} placeholder="dd/mm/yyyy" required />
             </div>
             <div>
               <Label>2nd Sem. Date</Label>
@@ -1715,15 +1827,20 @@ export default function CadetForm({ initialData, onSubmit, onCancel, loading: ex
                 </div>
                 <div>
                   <Label>Relationship</Label>
-                  <select value={kin.relationship || ""} onChange={(e) => updateNextOfKin(index, "relationship", e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                    <option value="">Select your relationship</option>
-                    <option value="father">Father</option>
-                    <option value="mother">Mother</option>
-                    <option value="brother">Brother</option>
-                    <option value="sister">Sister</option>
-                    <option value="spouse">Spouse</option>
-                    <option value="other">Other</option>
-                  </select>
+                  <SearchableSelect
+                    value={kin.relationship || ""}
+                    onChange={(val) => updateNextOfKin(index, "relationship", val)}
+                    options={[
+                      { value: "father", label: "Father" },
+                      { value: "mother", label: "Mother" },
+                      { value: "brother", label: "Brother" },
+                      { value: "sister", label: "Sister" },
+                      { value: "spouse", label: "Spouse" },
+                      { value: "other", label: "Other" },
+                    ]}
+                    placeholder="Select your relationship"
+                    searchPlaceholder="Search..."
+                  />
                 </div>
                 <div>
                   <Label>Address</Label>
@@ -1821,11 +1938,16 @@ export default function CadetForm({ initialData, onSubmit, onCancel, loading: ex
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div>
                   <Label>Select Nominee Type</Label>
-                  <select value={nom.nomineeType || ""} onChange={(e) => updateNomineeInfo(index, "nomineeType", e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                    <option value="">Select Nominee Type</option>
-                    <option value="primary">Primary</option>
-                    <option value="secondary">Secondary</option>
-                  </select>
+                  <SearchableSelect
+                    value={nom.nomineeType || ""}
+                    onChange={(val) => updateNomineeInfo(index, "nomineeType", val)}
+                    options={[
+                      { value: "primary", label: "Primary" },
+                      { value: "secondary", label: "Secondary" },
+                    ]}
+                    placeholder="Select Nominee Type"
+                    searchPlaceholder="Search..."
+                  />
                 </div>
                 <div>
                   <Label>Nominee Name</Label>
@@ -1855,59 +1977,71 @@ export default function CadetForm({ initialData, onSubmit, onCancel, loading: ex
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <div>
-              <Label>Select Course</Label>
-              <select value={course} onChange={(e) => setCourse(e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                <option value="">Select Course</option>
-                {courses.map((c) => (
-                  <option key={c.id} value={c.id.toString()}>{c.name}</option>
-                ))}
-              </select>
+              <Label>Select Course <span className="text-red-500">*</span></Label>
+              <SearchableSelect
+                value={course}
+                onChange={(val) => setCourse(val)}
+                options={courses.map((c) => ({ value: c.id.toString(), label: c.name }))}
+                placeholder="Select Course"
+                searchPlaceholder="Search course..."
+                required
+              />
             </div>
             <div>
-              <Label>Select Semester</Label>
-              <select value={semester} onChange={(e) => setSemester(e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                <option value="">Select Semester</option>
-                {semesters.map((s) => (
-                  <option key={s.id} value={s.id.toString()}>{s.name}</option>
-                ))}
-              </select>
+              <Label>Select Semester <span className="text-red-500">*</span></Label>
+              <SearchableSelect
+                value={semester}
+                onChange={(val) => setSemester(val)}
+                options={semesters.map((s) => ({ value: s.id.toString(), label: s.name }))}
+                placeholder="Select Semester"
+                searchPlaceholder="Search semester..."
+                required
+              />
             </div>
             <div>
-              <Label>Choose Program</Label>
-              <select value={program} onChange={(e) => setProgram(e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                <option value="">Choose Program</option>
-                {programs.map((p) => (
-                  <option key={p.id} value={p.id.toString()}>{p.name}</option>
-                ))}
-              </select>
+              <Label>Choose Program <span className="text-red-500">*</span></Label>
+              <SearchableSelect
+                value={program}
+                onChange={(val) => setProgram(val)}
+                options={programs.map((p) => ({ value: p.id.toString(), label: p.name }))}
+                placeholder="Choose Program"
+                searchPlaceholder="Search program..."
+                required
+              />
             </div>
 
             <div>
-              <Label>Select Branch</Label>
-              <select value={branch} onChange={(e) => setBranch(e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                <option value="">Select Branch</option>
-                {branches.map((b) => (
-                  <option key={b.id} value={b.id.toString()}>{b.name}</option>
-                ))}
-              </select>
+              <Label>Select Branch <span className="text-red-500">*</span></Label>
+              <SearchableSelect
+                value={branch}
+                onChange={(val) => setBranch(val)}
+                options={branches.map((b) => ({ value: b.id.toString(), label: b.name }))}
+                placeholder="Select Branch"
+                searchPlaceholder="Search branch..."
+                required
+              />
             </div>
             <div>
-              <Label>Choose Year Group</Label>
-              <select value={yearGroup} onChange={(e) => setYearGroup(e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                <option value="">Choose Year Group</option>
-                {groups.map((g) => (
-                  <option key={g.id} value={g.id.toString()}>{g.name}</option>
-                ))}
-              </select>
+              <Label>Choose Year Group <span className="text-red-500">*</span></Label>
+              <SearchableSelect
+                value={yearGroup}
+                onChange={(val) => setYearGroup(val)}
+                options={groups.map((g) => ({ value: g.id.toString(), label: g.name }))}
+                placeholder="Choose Year Group"
+                searchPlaceholder="Search group..."
+                required
+              />
             </div>
             <div>
-              <Label>Select Rank</Label>
-              <select value={rank} onChange={(e) => setRank(e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                <option value="">Select Rank</option>
-                {ranks.map((r) => (
-                  <option key={r.id} value={r.id.toString()}>{r.name}</option>
-                ))}
-              </select>
+              <Label>Select Rank <span className="text-red-500">*</span></Label>
+              <SearchableSelect
+                value={rank}
+                onChange={(val) => setRank(val)}
+                options={ranks.map((r) => ({ value: r.id.toString(), label: r.name }))}
+                placeholder="Select Rank"
+                searchPlaceholder="Search rank..."
+                required
+              />
             </div>
           </div>
         </div>
@@ -1923,8 +2057,8 @@ export default function CadetForm({ initialData, onSubmit, onCancel, loading: ex
               <Input value={emergencyPhone} onChange={(e) => setEmergencyPhone(e.target.value)} placeholder="Enter your phone number" required />
             </div>
             <div>
-              <Label>Email</Label>
-              <Input type="email" value={emergencyContactEmail} onChange={(e) => setEmergencyContactEmail(e.target.value)} placeholder="Enter your email address" />
+              <Label>Email <span className="text-red-500">*</span></Label>
+              <Input type="email" value={emergencyContactEmail} onChange={(e) => setEmergencyContactEmail(e.target.value)} placeholder="Enter your email address" required />
             </div>
           </div>
         </div>
