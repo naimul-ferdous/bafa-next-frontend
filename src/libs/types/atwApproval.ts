@@ -33,3 +33,24 @@ export interface AtwApprovalActionData {
   status: 'approved' | 'rejected' | 'pending';
   rejected_reason?: string;
 }
+
+export interface RejectedCadetPanelItem {
+  cadet_id: number;
+  cadet_name: string;
+  cadet_bd_no: string;
+  subject_id: number;
+  subject_name: string;
+  subject_code: string;
+  course_id: number;
+  semester_id: number;
+  program_id: number;
+  result_id: number | null;
+  course: { id: number; name: string } | null;
+  semester: { id: number; name: string } | null;
+  program: { id: number; name: string } | null;
+  rejected_by: string;
+  rejected_reason: string | null;
+  state: 'authority_rejected' | 'oic_rejected' | 'instructor_updated' | 'updated_pending_review';
+  message: string;
+  can_resubmit: boolean;
+}

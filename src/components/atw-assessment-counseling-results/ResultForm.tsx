@@ -2,6 +2,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { Icon } from "@iconify/react";
 import type {
   AtwAssessmentCounselingResult,
@@ -16,6 +17,7 @@ import { cadetService } from "@/libs/services/cadetService";
 import { atwAssessmentCounselingResultService } from "@/libs/services/atwAssessmentCounselingResultService";
 import { useAuth } from "@/libs/hooks/useAuth";
 import DatePicker from "@/components/form/input/DatePicker";
+import SearchableSelect from "@/components/form/SearchableSelect";
 
 interface ResultFormProps {
   initialData?: AtwAssessmentCounselingResult | null;
@@ -26,6 +28,7 @@ interface ResultFormProps {
 }
 
 export default function ResultForm({ initialData, onSubmit, onCancel, loading, isEdit = false }: ResultFormProps) {
+  const router = useRouter();
   const { user, userIsInstructor } = useAuth();
   const isInstructor = userIsInstructor;
   const [formData, setFormData] = useState({
@@ -54,7 +57,8 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
   const [groups, setGroups] = useState<SystemGroup[]>([]);
   const [exams, setExams] = useState<SystemExam[]>([]);
   const [cadets, setCadets] = useState<any[]>([]);
-  const [existingCadetIds, setExistingCadetIds] = useState<number[]>([]);
+  const [cadetToResultMap, setCadetToResultMap] = useState<{ [cadetId: number]: number }>({});
+  const [duplicateWarning, setDuplicateWarning] = useState<{ name: string; resultId: number } | null>(null);
   
   const [loadingDropdowns, setLoadingDropdowns] = useState(true);
   const [loadingSemesters, setLoadingSemesters] = useState(false);
@@ -93,25 +97,35 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
   useEffect(() => {
     if (!formData.course_id) {
       setSemesters([]);
-      setExistingCadetIds([]);
+      setCadetToResultMap({});
       return;
     }
     const fetchSemesters = async () => {
       setLoadingSemesters(true);
-      const data = await commonService.getSemestersByCourse(formData.course_id);
-      setSemesters(data);
-      if (data.length > 0) {
-        setFormData(prev => ({ ...prev, semester_id: data[0].id }));
+      try {
+        const data = await commonService.getSemestersByCourse(formData.course_id);
+        setSemesters(data);
+        // Only auto-select the first semester if none is currently selected 
+        // or if the current one doesn't belong to the new course
+        if (data.length > 0) {
+          const currentValid = data.some(s => s.id === formData.semester_id);
+          if (!currentValid) {
+            setFormData(prev => ({ ...prev, semester_id: data[0].id }));
+          }
+        }
+      } catch (err) {
+        console.error("Failed to fetch semesters:", err);
+      } finally {
+        setLoadingSemesters(false);
       }
-      setLoadingSemesters(false);
     };
     fetchSemesters();
   }, [formData.course_id]);
 
-  // Fetch existing results to filter out cadets (only in create mode)
+  // Fetch existing results to label cadets (only in create mode)
   useEffect(() => {
     if (isEdit || !formData.course_id || !formData.semester_id) {
-      setExistingCadetIds([]);
+      setCadetToResultMap({});
       return;
     }
 
@@ -123,8 +137,13 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
           per_page: 1000,
         });
         
-        const ids = res.data.flatMap(r => (r.result_cadets || []).map(c => c.cadet_id));
-        setExistingCadetIds(ids);
+        const map: { [key: number]: number } = {};
+        res.data.forEach(r => {
+          (r.result_cadets || []).forEach(c => {
+            map[c.cadet_id] = r.id;
+          });
+        });
+        setCadetToResultMap(map);
       } catch (err) {
         console.error("Failed to fetch existing results:", err);
       }
@@ -308,6 +327,17 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
     }
     if (field === "cadet_id") {
       const selectedCadet = cadets.find(c => c.id === value);
+      
+      // Check for duplicate counseling
+      if (!isEdit && value && cadetToResultMap[value]) {
+        setDuplicateWarning({
+          name: selectedCadet?.name || "this cadet",
+          resultId: cadetToResultMap[value]
+        });
+      } else {
+        setDuplicateWarning(null);
+      }
+
       if (selectedCadet) {
         setFormData(prev => ({
           ...prev,
@@ -338,8 +368,10 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
 
     if (!formData.course_id) { setError("Please select a course"); return; }
     if (!formData.semester_id) { setError("Please select a semester"); return; }
+    if (!formData.exam_type_id) { setError("Please select an exam type"); return; }
     if (!formData.instructor_id) { setError("Instructor information not found. Please log in again."); return; }
     if (!formData.cadet_id) { setError("Please select a cadet"); return; }
+    if (duplicateWarning) { setError(`Counseling is already done for ${duplicateWarning.name}. Please edit existing result instead.`); return; }
     if (!formData.atw_assessment_counseling_type_id) { setError("No Counseling Type found for selected Course and Semester"); return; }
 
     try {
@@ -385,11 +417,9 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
 
   const filtersSelected = formData.course_id && formData.semester_id;
   
-  const filteredCadets = isEdit 
-    ? cadets 
-    : cadets.filter(c => !existingCadetIds.includes(c.id));
+  const filteredCadets = cadets;
 
-  const showEvents = filtersSelected && detectedType && availableEvents.length > 0 && formData.cadet_id > 0;
+  const showEvents = filtersSelected && detectedType && availableEvents.length > 0 && formData.cadet_id > 0 && !duplicateWarning;
 
   if (loadingDropdowns) {
     return (
@@ -408,102 +438,74 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
         </div>
       )}
 
-      {/* Top Dropdowns - Horizontal Layout matching the 'before' format */}
-      <div className="grid grid-cols-4 gap-4">
+      {/* Top Dropdowns - Redesigned Layout */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Select Course<span className="text-red-500">*</span></label>
-          <select value={formData.course_id} onChange={(e) => handleChange("course_id", parseInt(e.target.value))} className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 focus:outline-none" required>
-            <option value={0}>Select Course</option>
-            {courses.map(course => (<option key={course.id} value={course.id}>{course.name}</option>))}
-          </select>
+          <label className="block text-sm font-bold text-gray-700 mb-2 uppercase tracking-wide">Select Course<span className="text-red-500">*</span></label>
+          <SearchableSelect
+            options={courses.map(c => ({ value: c.id.toString(), label: c.name }))}
+            value={formData.course_id.toString()}
+            onChange={(val) => handleChange("course_id", parseInt(val))}
+            placeholder="Select Course"
+            required
+          />
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Select Semester<span className="text-red-500">*</span></label>
-          <div className="relative">
-            <select
-              value={formData.semester_id}
-              onChange={(e) => handleChange("semester_id", parseInt(e.target.value))}
-              className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 focus:outline-none disabled:bg-gray-50 disabled:text-gray-400"
-              required
-              disabled={true}
-            >
-              <option value={0}>
-                {loadingSemesters
-                  ? "Loading..."
-                  : !formData.course_id
-                    ? "Select course first"
-                    : semesters.length === 0
-                      ? "No semester on this course"
-                      : "Select Semester"}
-              </option>
-              {semesters.map(semester => (<option key={semester.id} value={semester.id}>{semester.name}</option>))}
-            </select>
-            {loadingSemesters && (
-              <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
-                <Icon icon="hugeicons:fan-01" className="w-4 h-4 animate-spin" />
-              </div>
-            )}
-          </div>
+          <label className="block text-sm font-bold text-gray-700 mb-2 uppercase tracking-wide">Select Semester<span className="text-red-500">*</span></label>
+          <SearchableSelect
+            options={semesters.map(s => ({ value: s.id.toString(), label: s.name }))}
+            value={formData.semester_id.toString()}
+            onChange={(val) => handleChange("semester_id", parseInt(val))}
+            placeholder={
+              loadingSemesters 
+                ? "Loading semesters..." 
+                : !formData.course_id 
+                  ? "Select course first" 
+                  : semesters.length === 0 
+                    ? "No semesters found" 
+                    : "Select Semester"
+            }
+            disabled={true} // Set to true as per request (auto-selected and not selectable)
+            required
+          />
         </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Select Program</label>
-          <select value={formData.program_id} onChange={(e) => handleChange("program_id", parseInt(e.target.value))} className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 focus:outline-none">
-            <option value={0}>Select Program</option>
-            {programs.map(program => (<option key={program.id} value={program.id}>{program.name}</option>))}
-          </select>
-        </div>
-
-        {/* <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Select Branch</label>
-          <select value={formData.branch_id} onChange={(e) => handleChange("branch_id", parseInt(e.target.value))} className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 focus:outline-none">
-            <option value={0}>Select Branch</option>
-            {branches.map(branch => (<option key={branch.id} value={branch.id}>{branch.name}</option>))}
-          </select>
-        </div> */}
-
       </div>
 
-      {/* Second Row */}
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Select Exam Type</label>
-          <select value={formData.exam_type_id} onChange={(e) => handleChange("exam_type_id", parseInt(e.target.value))} className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 focus:outline-none">
-            <option value={0}>Select Exam Type</option>
-            {exams.map(exam => (<option key={exam.id} value={exam.id}>{exam.name}</option>))}
-          </select>
+          <label className="block text-sm font-bold text-gray-700 mb-2 uppercase tracking-wide">Select Exam Type<span className="text-red-500">*</span></label>
+          <SearchableSelect
+            options={exams.map(e => ({ value: e.id.toString(), label: e.name }))}
+            value={formData.exam_type_id.toString()}
+            onChange={(val) => handleChange("exam_type_id", parseInt(val))}
+            placeholder="Select Exam Type"
+            required
+          />
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Select Cadet<span className="text-red-500">*</span></label>
-          <div className="relative">
-            <select
-              value={formData.cadet_id}
-              onChange={(e) => handleChange("cadet_id", parseInt(e.target.value))}
-              className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 focus:outline-none disabled:bg-gray-50 disabled:text-gray-400"
-              required
-              disabled={!formData.course_id || !formData.semester_id || loadingCadets}
-            >
-              <option value={0}>
-                {!formData.course_id
-                  ? "Select course first"
-                  : !formData.semester_id
-                    ? "Select semester first"
-                    : loadingCadets
-                      ? "Loading cadets..."
-                      : filteredCadets.length === 0
-                        ? "No assigned cadets found"
-                        : "Select Cadet"}
-              </option>
-              {filteredCadets.map(cadet => (<option key={cadet.id} value={cadet.id}>{cadet.name} ({cadet.bd_no || cadet.cadet_number})</option>))}
-            </select>
-            {loadingCadets && (
-              <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
-                <Icon icon="hugeicons:fan-01" className="w-4 h-4 animate-spin" />
-              </div>
-            )}
-          </div>
+          <label className="block text-sm font-bold text-gray-700 mb-2 uppercase tracking-wide">Select Cadet <span className="text-gray-500 font-normal italic">(Search by Name or BD No)</span><span className="text-red-500">*</span></label>
+          
+          <SearchableSelect
+            options={filteredCadets.map(c => ({ 
+              value: c.id.toString(), 
+              label: `${c.name} (${c.bd_no || c.cadet_number})${cadetToResultMap[c.id] ? " — [ALREADY COUNSELED]" : ""}` 
+            }))}
+            value={formData.cadet_id.toString()}
+            onChange={(val) => handleChange("cadet_id", parseInt(val))}
+            placeholder={
+              !formData.course_id
+                ? "Select course/semester first"
+                : loadingCadets
+                  ? "Loading cadets..."
+                  : filteredCadets.length === 0
+                    ? "No assigned cadets found"
+                    : "Search for a cadet..."
+            }
+            disabled={isEdit || !formData.course_id || !formData.semester_id || loadingCadets}
+            required
+          />
         </div>
       </div>
 
@@ -511,7 +513,22 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
       {!showEvents ? (
         <div className="text-center py-12 text-gray-500 border border-dashed border-black rounded-xl">
           <Icon icon="hugeicons:user-edit" className="w-12 h-12 mx-auto mb-3 text-black" />
-          {!filtersSelected ? (
+          {duplicateWarning ? (
+            <div className="space-y-4">
+                <p className="text-amber-700 font-bold text-lg">Counseling Session Already Recorded</p>
+                <p className="text-gray-600">A counseling record already exists for <b>{duplicateWarning.name}</b> in this semester.</p>
+                <div className="flex justify-center">
+                  <button
+                    type="button"
+                    onClick={() => router.push(`/atw/assessments/counselings/results/${duplicateWarning.resultId}/edit`)}
+                    className="px-6 py-2 bg-amber-600 text-white font-bold rounded-lg hover:bg-amber-700 flex items-center gap-2 shadow-md transition-all active:scale-95"
+                  >
+                    <Icon icon="hugeicons:pencil-edit-01" className="w-5 h-5" />
+                    EDIT EXISTING RESULT
+                  </button>
+                </div>
+            </div>
+          ) : !filtersSelected ? (
             <p>Please select Course and Semester first</p>
           ) : !formData.cadet_id ? (
             <p>Please select a Cadet to start inputting remarks</p>
@@ -528,10 +545,10 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
               <tr className="border-b border-black">
                 <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 border-r border-black uppercase">EVENTS</th>
                 <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 border-r border-black uppercase">REMARKS<span className="text-red-500">*</span></th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 border-r border-black uppercase whitespace-nowrap">{`Cadet's Initial & Date`}</th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 border-r border-black uppercase whitespace-nowrap">Instructor (Rank & Name)</th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 border-r border-black uppercase">OC WGS</th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 uppercase">CI BAFA</th>
+                <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700 border-r border-black uppercase whitespace-nowrap">{`Cadet's Initial & Date`}</th>
+                <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700 border-r border-black uppercase whitespace-nowrap">Instructor (Rank & Name)</th>
+                <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700 border-r border-black uppercase">OC WGS</th>
+                <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700 uppercase">CI BAFA</th>
               </tr>
             </thead>
             <tbody>
@@ -556,6 +573,7 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
                           value={formData.counseling_date}
                           onChange={(e) => handleChange("counseling_date", e.target.value)}
                           placeholder="Select Date"
+                          className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none text-center"
                         />
                       </td>
                       <td rowSpan={availableEvents.length} className="px-4 py-3 text-sm text-gray-900 border-r border-black align-middle text-center bg-white">
@@ -571,17 +589,6 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
           </table>
         </div>
       )}
-
-      {/* Global Batch Remarks */}
-      <div className="border border-gray-200 rounded-lg p-6">
-        <label className="block text-sm font-medium text-gray-700 mb-2 font-bold uppercase">Overall Summary / Additional Observations</label>
-        <textarea
-          value={formData.remarks}
-          onChange={(e) => handleChange("remarks", e.target.value)}
-          className="w-full px-4 py-2 border border-gray-200 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 focus:outline-none min-h-[100px]"
-          placeholder="Add any general summary..."
-        />
-      </div>
 
       <div className="flex items-center justify-end gap-3 mt-8 pt-6 border-t border-gray-200">
         <button type="button" onClick={onCancel} className="px-6 py-2 border border-black text-black rounded-xl hover:bg-gray-50" disabled={loading}>

@@ -52,6 +52,14 @@ export default function AtwViewResultsPage() {
   }>({ open: false, result: null, loading: false, error: "" });
   const [showRoleModal, setShowRoleModal] = useState(false);
 
+  const [rejectedPanelItems, setRejectedPanelItems] = useState<any[]>([]);
+  const [rejectedPanelLoading, setRejectedPanelLoading] = useState(false);
+  const [rejectedPanelExpanded, setRejectedPanelExpanded] = useState(true);
+  const [resubmitLoading, setResubmitLoading] = useState<number | null>(null);
+  const [rejectDownModal, setRejectDownModal] = useState<{
+    open: boolean; item: any | null; reason: string; loading: boolean; error: string;
+  }>({ open: false, item: null, reason: '', loading: false, error: '' });
+
   const isInstructor = userIsInstructor;
   const instructorId = isInstructor ? user?.id : undefined;
 
@@ -240,6 +248,22 @@ export default function AtwViewResultsPage() {
     loadResults();
   }, [loadResults]);
 
+  const loadRejectedPanel = useCallback(async () => {
+    try {
+      setRejectedPanelLoading(true);
+      const items = await atwApprovalService.getRejectedCadetPanel();
+      setRejectedPanelItems(items);
+    } catch {
+      setRejectedPanelItems([]);
+    } finally {
+      setRejectedPanelLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadRejectedPanel();
+  }, [loadRejectedPanel]);
+
   // Fetch authorities once on mount (global config, not per-result)
   useEffect(() => {
     atwApprovalService.getAuthorities({ allData: true, is_active: true })
@@ -320,6 +344,50 @@ export default function AtwViewResultsPage() {
         ? Object.values(err.errors).flat().join(" ")
         : err?.message || "Failed to forward result.";
       setForwardModal((prev) => ({ ...prev, loading: false, error: msg }));
+    }
+  };
+
+  const handleResubmit = async (item: any) => {
+    try {
+      setResubmitLoading(item.cadet_id);
+      await atwApprovalService.resubmitRejectedCadet({
+        course_id:   item.course_id,
+        semester_id: item.semester_id,
+        program_id:  item.program_id,
+        cadet_id:    item.cadet_id,
+        subject_id:  item.subject_id,
+      });
+      await loadRejectedPanel();
+    } catch {
+      alert('Failed to resubmit cadet.');
+    } finally {
+      setResubmitLoading(null);
+    }
+  };
+
+  const handleRejectDown = async () => {
+    if (!rejectDownModal.item) return;
+    if (!rejectDownModal.reason.trim()) {
+      setRejectDownModal(prev => ({ ...prev, error: 'Rejection reason is required.' }));
+      return;
+    }
+    const item = rejectDownModal.item;
+    setRejectDownModal(prev => ({ ...prev, loading: true, error: '' }));
+    try {
+      await atwApprovalService.approveCadets({
+        course_id:   item.course_id,
+        semester_id: item.semester_id,
+        program_id:  item.program_id,
+        subject_id:  item.subject_id,
+        cadet_ids:   [item.cadet_id],
+        authority_id: item.my_authority_id,
+        status:      'rejected',
+        rejected_reason: rejectDownModal.reason,
+      });
+      setRejectDownModal({ open: false, item: null, reason: '', loading: false, error: '' });
+      await loadRejectedPanel();
+    } catch (err: any) {
+      setRejectDownModal(prev => ({ ...prev, loading: false, error: err?.message || 'Failed to reject.' }));
     }
   };
 
@@ -486,6 +554,109 @@ export default function AtwViewResultsPage() {
           </div>
         </div>
       </div>
+
+      {/* Rejected Cadet Panel */}
+      {(rejectedPanelLoading || rejectedPanelItems.length > 0) && (
+        <div className="mb-6 border border-orange-200 rounded-lg overflow-hidden">
+          <button
+            className="w-full flex items-center justify-between px-4 py-3 bg-orange-50 text-orange-800 font-semibold text-sm hover:bg-orange-100 transition-colors"
+            onClick={() => setRejectedPanelExpanded(v => !v)}
+          >
+            <div className="flex items-center gap-2">
+              <Icon icon="hugeicons:alert-02" className="w-5 h-5 text-orange-500" />
+              Rejected Cadets
+              {rejectedPanelItems.length > 0 && (
+                <span className="ml-1 px-2 py-0.5 bg-orange-500 text-white text-xs font-bold rounded-full">
+                  {rejectedPanelItems.length}
+                </span>
+              )}
+            </div>
+            <Icon icon={rejectedPanelExpanded ? 'hugeicons:arrow-up-01' : 'hugeicons:arrow-down-01'} className="w-4 h-4" />
+          </button>
+          {rejectedPanelExpanded && (
+            <div className="overflow-x-auto">
+              {rejectedPanelLoading ? (
+                <div className="flex justify-center py-4">
+                  <Icon icon="hugeicons:fan-01" className="w-6 h-6 animate-spin text-orange-400" />
+                </div>
+              ) : (
+                <table className="w-full text-sm border-collapse">
+                  <thead>
+                    <tr className="bg-orange-50 text-orange-900">
+                      <th className="px-3 py-2 border border-orange-200 text-left">Cadet</th>
+                      <th className="px-3 py-2 border border-orange-200 text-left">BD No</th>
+                      <th className="px-3 py-2 border border-orange-200 text-left">Subject</th>
+                      <th className="px-3 py-2 border border-orange-200 text-left">Program</th>
+                      <th className="px-3 py-2 border border-orange-200 text-left">Rejected By</th>
+                      <th className="px-3 py-2 border border-orange-200 text-left">Reason</th>
+                      <th className="px-3 py-2 border border-orange-200 text-left">Status</th>
+                      <th className="px-3 py-2 border border-orange-200 text-center no-print">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rejectedPanelItems.map((item, idx) => (
+                      <tr key={idx} className="hover:bg-orange-50/40">
+                        <td className="px-3 py-2 border border-orange-100 font-medium">{item.cadet_name}</td>
+                        <td className="px-3 py-2 border border-orange-100 font-mono text-xs">{item.cadet_bd_no}</td>
+                        <td className="px-3 py-2 border border-orange-100">
+                          <span className="font-medium">{item.subject_name}</span>
+                          {item.subject_code && <span className="text-xs text-gray-400 ml-1">({item.subject_code})</span>}
+                        </td>
+                        <td className="px-3 py-2 border border-orange-100 text-gray-600">{item.program?.name || '—'}</td>
+                        <td className="px-3 py-2 border border-orange-100 text-red-700 font-medium">{item.rejected_by}</td>
+                        <td className="px-3 py-2 border border-orange-100 text-gray-600 max-w-[200px] truncate" title={item.rejected_reason || ''}>{item.rejected_reason || '—'}</td>
+                        <td className="px-3 py-2 border border-orange-100">
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                            item.state === 'updated_pending_review' || item.state === 'instructor_updated'
+                              ? 'bg-blue-100 text-blue-800'
+                              : 'bg-red-100 text-red-800'
+                          }`}>
+                            {item.message}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2 border border-orange-100 text-center no-print">
+                          <div className="flex items-center justify-center gap-1">
+                            {item.result_id && (
+                              <button
+                                onClick={() => router.push(`/atw/results/${item.result_id}`)}
+                                className="p-1 text-blue-600 hover:bg-blue-50 rounded"
+                                title="View Result"
+                              >
+                                <Icon icon="hugeicons:view" className="w-4 h-4" />
+                              </button>
+                            )}
+                            {item.can_resubmit && (
+                              <button
+                                onClick={() => handleResubmit(item)}
+                                disabled={resubmitLoading === item.cadet_id}
+                                className="px-2 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 flex items-center gap-1"
+                                title="Re-submit after correction"
+                              >
+                                {resubmitLoading === item.cadet_id && <Icon icon="hugeicons:fan-01" className="w-3 h-3 animate-spin" />}
+                                Re-submit
+                              </button>
+                            )}
+                            {item.can_reject_down && (
+                              <button
+                                onClick={() => setRejectDownModal({ open: true, item, reason: '', loading: false, error: '' })}
+                                className="px-2 py-1 text-xs bg-orange-600 text-white rounded hover:bg-orange-700 flex items-center gap-1"
+                                title="Reject to lower authority"
+                              >
+                                <Icon icon="hugeicons:arrow-down-01" className="w-3 h-3" />
+                                Reject ↓
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {loading ? (
         <TableLoading />
@@ -1060,6 +1231,64 @@ export default function AtwViewResultsPage() {
               className="px-6 py-2 text-sm font-medium text-white bg-blue-600 rounded-xl hover:bg-blue-700 transition-colors"
             >
               Understood
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Reject Down Modal */}
+      <Modal
+        isOpen={rejectDownModal.open}
+        onClose={() => setRejectDownModal(prev => ({ ...prev, open: false }))}
+        showCloseButton
+        className="max-w-md"
+      >
+        <div className="p-6">
+          <h2 className="text-lg font-bold text-gray-900 mb-1 flex items-center gap-2">
+            <Icon icon="hugeicons:alert-02" className="w-5 h-5 text-orange-500" />
+            Reject to Lower Authority
+          </h2>
+          {rejectDownModal.item && (
+            <p className="text-sm text-gray-600 mb-4">
+              Cadet: <span className="font-medium text-gray-900">{rejectDownModal.item.cadet_name}</span>
+              {rejectDownModal.item.cadet_bd_no && rejectDownModal.item.cadet_bd_no !== '—' && (
+                <span className="ml-1 text-gray-400">({rejectDownModal.item.cadet_bd_no})</span>
+              )}
+            </p>
+          )}
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Rejection Reason <span className="text-red-500">*</span>
+            </label>
+            <textarea
+              value={rejectDownModal.reason}
+              onChange={e => setRejectDownModal(prev => ({ ...prev, reason: e.target.value }))}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-orange-400 resize-none"
+              rows={3}
+              placeholder="Enter reason for rejection..."
+            />
+          </div>
+          {rejectDownModal.error && (
+            <div className="mb-3 p-2 bg-red-50 border border-red-200 rounded text-red-700 text-sm flex items-center gap-2">
+              <Icon icon="hugeicons:alert-circle" className="w-4 h-4 flex-shrink-0" />
+              {rejectDownModal.error}
+            </div>
+          )}
+          <div className="flex gap-3 justify-end">
+            <button
+              onClick={() => setRejectDownModal(prev => ({ ...prev, open: false }))}
+              disabled={rejectDownModal.loading}
+              className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 text-sm hover:bg-gray-50 disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleRejectDown}
+              disabled={rejectDownModal.loading}
+              className="px-4 py-2 bg-orange-600 text-white rounded-lg text-sm font-semibold hover:bg-orange-700 disabled:opacity-50 flex items-center gap-2"
+            >
+              {rejectDownModal.loading && <Icon icon="hugeicons:fan-01" className="w-4 h-4 animate-spin" />}
+              Confirm Reject
             </button>
           </div>
         </div>

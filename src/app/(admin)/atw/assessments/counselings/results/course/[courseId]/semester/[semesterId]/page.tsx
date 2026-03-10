@@ -414,33 +414,6 @@ export default function CounselingCourseSemesterResultPage({ params }: { params:
       render: (_, index) => index + 1
     },
     {
-      key: "counseling_type",
-      header: "Counseling",
-      className: "font-bold text-gray-900",
-      render: (res) => (
-        <div className="flex flex-col">
-          <span>{res.counseling_type?.type_name || "—"}</span>
-          <span className="text-[10px] text-gray-400 font-mono uppercase">{res.counseling_type?.type_code}</span>
-        </div>
-      )
-    },
-    {
-      key: "date",
-      header: "Counseling Date",
-      render: (res) => res.counseling_date ? new Date(res.counseling_date).toLocaleDateString("en-GB") : "—"
-    },
-    {
-      key: "instructor",
-      header: "Counselor",
-      className: "font-medium text-blue-600",
-      render: (res) => (
-        <div>
-          <div>{res.instructor?.name || "—"}</div>
-          <div className="text-xs text-gray-500 font-mono uppercase">{res.instructor?.service_number}</div>
-        </div>
-      )
-    },
-    {
       key: "course",
       header: "Course",
       render: (res) => res.course?.name || "—"
@@ -451,15 +424,16 @@ export default function CounselingCourseSemesterResultPage({ params }: { params:
       render: (res) => res.semester?.name || "—"
     },
     {
-      key: "program",
-      header: "Program",
-      render: (res) => res.program?.name || "—"
+      key: "instructor",
+      header: "Counselor",
+      className: "font-medium text-blue-600",
+      render: (res) => res.instructor?.name || "—"
     },
-    // {
-    //   key: "branch",
-    //   header: "Branch",
-    //   render: (res) => res.branch?.name || "—"
-    // },
+    {
+      key: "date",
+      header: "Counseling Date",
+      render: (res) => res.counseling_date ? new Date(res.counseling_date).toLocaleDateString("en-GB") : "—"
+    },
     {
       key: "approval_status",
       header: "Status",
@@ -638,6 +612,11 @@ export default function CounselingCourseSemesterResultPage({ params }: { params:
           <p className="text-center font-medium text-gray-900 uppercase tracking-wider pb-2">
             ATW Counseling Assessment Summary Sheet
           </p>
+          {results.length > 0 && (
+            <p className="text-center text-lg font-bold text-blue-600 uppercase tracking-wide mt-1">
+              {results[0].counseling_type?.type_name}
+            </p>
+          )}
         </div>
 
         {/* Counseling Matrix Section */}

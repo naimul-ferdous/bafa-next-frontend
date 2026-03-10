@@ -177,6 +177,33 @@ export const atwApprovalService = {
       throw error;
     }
   },
+
+  getRejectedCadetPanel: async (params?: { course_id?: number; semester_id?: number; program_id?: number; subject_id?: number }): Promise<any[]> => {
+    try {
+      const query = new URLSearchParams();
+      if (params?.course_id)   query.append('course_id',   String(params.course_id));
+      if (params?.semester_id) query.append('semester_id', String(params.semester_id));
+      if (params?.program_id)  query.append('program_id',  String(params.program_id));
+      if (params?.subject_id)  query.append('subject_id',  String(params.subject_id));
+      const endpoint = `/atw-approvals/rejected-cadet-panel${query.toString() ? `?${query}` : ''}`;
+      const token = getToken();
+      const result = await apiClient.get<{ success: boolean; data: any[] }>(endpoint, token);
+      return result?.data || [];
+    } catch (error) {
+      console.error('Failed to fetch rejected cadet panel:', error);
+      return [];
+    }
+  },
+
+  resubmitRejectedCadet: async (data: { course_id: number; semester_id: number; program_id: number; cadet_id: number; subject_id: number }) => {
+    try {
+      const token = getToken();
+      return await apiClient.post('/atw-approvals/resubmit-rejected-cadet', data, token);
+    } catch (error) {
+      console.error('Failed to resubmit rejected cadet:', error);
+      throw error;
+    }
+  },
 };
 
 export default atwApprovalService;

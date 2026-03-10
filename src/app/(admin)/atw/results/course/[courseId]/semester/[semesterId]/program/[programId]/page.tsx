@@ -145,6 +145,14 @@ export default function AtwCourseSemesterProgramResultsPage() {
         error: string;
     }>({ open: false, loading: false, error: '' });
 
+    const [rejectedPanelItems, setRejectedPanelItems] = useState<any[]>([]);
+    const [rejectedPanelLoading, setRejectedPanelLoading] = useState(false);
+    const [rejectedPanelExpanded, setRejectedPanelExpanded] = useState(true);
+    const [resubmitLoading, setResubmitLoading] = useState<number | null>(null);
+    const [rejectDownModal, setRejectDownModal] = useState<{
+        open: boolean; item: any | null; reason: string; loading: boolean; error: string;
+    }>({ open: false, item: null, reason: '', loading: false, error: '' });
+
     const loadResults = useCallback(async () => {
         if (!courseId || !semesterId || !programId) return;
         try {
@@ -171,6 +179,70 @@ export default function AtwCourseSemesterProgramResultsPage() {
         loadResults();
     }, [loadResults]);
 
+    const loadRejectedPanel = useCallback(async () => {
+        try {
+            setRejectedPanelLoading(true);
+            const items = await atwApprovalService.getRejectedCadetPanel({
+                course_id:   Number(courseId),
+                semester_id: Number(semesterId),
+                program_id:  Number(programId),
+            });
+            setRejectedPanelItems(items);
+        } catch {
+            setRejectedPanelItems([]);
+        } finally {
+            setRejectedPanelLoading(false);
+        }
+    }, [courseId, semesterId, programId]);
+
+    useEffect(() => {
+        if (courseId && semesterId && programId) loadRejectedPanel();
+    }, [loadRejectedPanel, courseId, semesterId, programId]);
+
+    const handleResubmit = async (item: any) => {
+        try {
+            setResubmitLoading(item.cadet_id);
+            await atwApprovalService.resubmitRejectedCadet({
+                course_id:   item.course_id,
+                semester_id: item.semester_id,
+                program_id:  item.program_id,
+                cadet_id:    item.cadet_id,
+                subject_id:  item.subject_id,
+            });
+            await loadRejectedPanel();
+        } catch {
+            alert('Failed to resubmit cadet.');
+        } finally {
+            setResubmitLoading(null);
+        }
+    };
+
+    const handleRejectDown = async () => {
+        if (!rejectDownModal.item) return;
+        if (!rejectDownModal.reason.trim()) {
+            setRejectDownModal(prev => ({ ...prev, error: 'Rejection reason is required.' }));
+            return;
+        }
+        const item = rejectDownModal.item;
+        setRejectDownModal(prev => ({ ...prev, loading: true, error: '' }));
+        try {
+            await atwApprovalService.approveCadets({
+                course_id:   item.course_id,
+                semester_id: item.semester_id,
+                program_id:  item.program_id,
+                subject_id:  item.subject_id,
+                cadet_ids:   [item.cadet_id],
+                authority_id: item.my_authority_id,
+                status:      'rejected',
+                rejected_reason: rejectDownModal.reason,
+            });
+            setRejectDownModal({ open: false, item: null, reason: '', loading: false, error: '' });
+            await loadRejectedPanel();
+        } catch (err: any) {
+            setRejectDownModal(prev => ({ ...prev, loading: false, error: err?.message || 'Failed to reject.' }));
+        }
+    };
+
     const myAuthority = useMemo(() => {
         const authorities = data?.atw_result_approval_authorities ?? [];
         const userRoleIds = (user as any)?.roles?.filter((r: any) => r.pivot?.is_primary).map((r: any) => r.id) ?? [];
@@ -179,6 +251,88 @@ export default function AtwCourseSemesterProgramResultsPage() {
             (a.user_id && a.user_id === userId) || (a.role_id && userRoleIds.includes(a.role_id))
         ) ?? null;
     }, [data?.atw_result_approval_authorities, user]);
+
+    // Active rejections alert logic based on specific architecture
+    const activeRejections = useMemo(() => {
+        if (!myAuthority || !data?.atw_result_mark_cadet_approvals || !data?.atw_result_approval_authorities) return [];
+        
+        // CPTC exclusion: "cptc not show cause their dont have now programm, forwarded"
+        const userRoles = (user as any)?.roles || [];
+        if (userRoles.some((r: any) => r.slug === 'cptc')) return [];
+
+        const sortedAuths = [...data.atw_result_approval_authorities].sort((a, b) => (a.sort ?? 0) - (b.sort ?? 0));
+        const rejections: any[] = [];
+        
+        const grouped = data.atw_result_mark_cadet_approvals.reduce((acc: any, curr: any) => {
+            const key = `${curr.cadet_id}-${curr.subject_id}`;
+            if (!acc[key]) acc[key] = [];
+            acc[key].push(curr);
+            return acc;
+        }, {});
+
+        Object.entries(grouped).forEach(([key, approvals]: [string, any]) => {
+            const [cadetId, subjectId] = key.split('-').map(Number);
+            const myRecord = approvals.find((a: any) => a.authority_id === myAuthority.id);
+            
+            // Rejection flow logic:
+            // 1. Higher authority rejected down to me (sets my record to 'pending' with a reason)
+            const isRejectedToMe = myRecord?.status === 'pending' && myRecord?.rejected_reason?.toLowerCase().includes('rejected by');
+            
+            // 2. I rejected it (status is 'rejected') and I'm waiting for the person below
+            const iRejectedIt = myRecord?.status === 'rejected';
+
+            // Find authority immediately below me
+            const authBelow = sortedAuths.filter(a => (a.sort ?? 0) < (myAuthority.sort ?? 0)).pop();
+            const recordBelow = authBelow ? approvals.find((a: any) => 
+                (a.authority_id === authBelow.id || (authBelow.is_initial_cadet_approve && !a.authority_id))
+            ) : null;
+
+            // Has the person below approved a fix since the last action?
+            const isFixedByBelow = recordBelow?.status === 'approved' && 
+                                   (!myRecord?.approved_date || new Date(recordBelow.approved_date) > new Date(myRecord.approved_date));
+
+            let showInPanel = false;
+            let statusLabel = "";
+            let displayReason = myRecord?.rejected_reason || "";
+
+            if (isRejectedToMe) {
+                showInPanel = true;
+                statusLabel = "Waiting for Fix";
+            } else if (iRejectedIt) {
+                showInPanel = true;
+                if (isFixedByBelow) {
+                    statusLabel = "Rejected cadet updated. please check";
+                } else {
+                    statusLabel = "Waiting for Instructor fix";
+                }
+            } else if (isFixedByBelow && (myRecord?.status === 'pending' || !myRecord)) {
+                // Check if there's a history of rejection in this chain
+                const hasRejectionHistory = approvals.some((a: any) => a.status === 'rejected');
+                if (hasRejectionHistory) {
+                    showInPanel = true;
+                    statusLabel = "Rejected cadet updated. please check";
+                    displayReason = approvals.find((a: any) => a.status === 'rejected')?.rejected_reason || "";
+                }
+            }
+
+            if (showInPanel) {
+                const cadet = data.cadets?.find((c: any) => c.id === cadetId);
+                const subject = data.subjects?.find((s: any) => s.id === subjectId);
+                
+                rejections.push({
+                    cadet,
+                    subjectName: subject?.name || 'Subject',
+                    subjectId,
+                    reason: displayReason,
+                    statusLabel,
+                    isUpdated: statusLabel.includes("updated"),
+                    resultId: cadet?.result_ids?.[subjectId]
+                });
+            }
+        });
+
+        return rejections;
+    }, [myAuthority, data, user]);
 
     const getNextAuthority = useCallback(() => {
         const authorities = [...(data?.atw_result_approval_authorities ?? [])]
@@ -415,6 +569,106 @@ export default function AtwCourseSemesterProgramResultsPage() {
                     </button>
                 </div>
             </div>
+
+            {/* Rejected Cadet Panel */}
+            {(rejectedPanelLoading || rejectedPanelItems.length > 0) && (
+                <div className="mb-6 border border-orange-200 rounded-lg overflow-hidden no-print mx-4 mt-4">
+                    <button
+                        className="w-full flex items-center justify-between px-4 py-3 bg-orange-50 text-orange-800 font-semibold text-sm hover:bg-orange-100 transition-colors"
+                        onClick={() => setRejectedPanelExpanded(v => !v)}
+                    >
+                        <div className="flex items-center gap-2">
+                            <Icon icon="hugeicons:alert-02" className="w-5 h-5 text-orange-500" />
+                            Rejected Cadets
+                            {rejectedPanelItems.length > 0 && (
+                                <span className="ml-1 px-2 py-0.5 bg-orange-500 text-white text-xs font-bold rounded-full">
+                                    {rejectedPanelItems.length}
+                                </span>
+                            )}
+                        </div>
+                        <Icon icon={rejectedPanelExpanded ? 'hugeicons:arrow-up-01' : 'hugeicons:arrow-down-01'} className="w-4 h-4" />
+                    </button>
+                    {rejectedPanelExpanded && (
+                        <div className="overflow-x-auto">
+                            {rejectedPanelLoading ? (
+                                <div className="flex justify-center py-4">
+                                    <Icon icon="hugeicons:fan-01" className="w-6 h-6 animate-spin text-orange-400" />
+                                </div>
+                            ) : (
+                                <table className="w-full text-sm border-collapse">
+                                    <thead>
+                                        <tr className="bg-orange-50 text-orange-900">
+                                            <th className="px-3 py-2 border border-orange-200 text-left">Cadet</th>
+                                            <th className="px-3 py-2 border border-orange-200 text-left">BD No</th>
+                                            <th className="px-3 py-2 border border-orange-200 text-left">Subject</th>
+                                            <th className="px-3 py-2 border border-orange-200 text-left">Rejected By</th>
+                                            <th className="px-3 py-2 border border-orange-200 text-left">Reason</th>
+                                            <th className="px-3 py-2 border border-orange-200 text-left">Status</th>
+                                            <th className="px-3 py-2 border border-orange-200 text-center">Action</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {rejectedPanelItems.map((item, idx) => (
+                                            <tr key={idx} className="hover:bg-orange-50/40">
+                                                <td className="px-3 py-2 border border-orange-100 font-medium">{item.cadet_name}</td>
+                                                <td className="px-3 py-2 border border-orange-100 font-mono text-xs">{item.cadet_bd_no}</td>
+                                                <td className="px-3 py-2 border border-orange-100">
+                                                    <span className="font-medium">{item.subject_name}</span>
+                                                    {item.subject_code && <span className="text-xs text-gray-400 ml-1">({item.subject_code})</span>}
+                                                </td>
+                                                <td className="px-3 py-2 border border-orange-100 text-red-700 font-medium">{item.rejected_by}</td>
+                                                <td className="px-3 py-2 border border-orange-100 text-gray-600 max-w-[200px] truncate" title={item.rejected_reason || ''}>{item.rejected_reason || '—'}</td>
+                                                <td className="px-3 py-2 border border-orange-100">
+                                                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                                        item.state === 'updated_pending_review' || item.state === 'instructor_updated'
+                                                            ? 'bg-blue-100 text-blue-800'
+                                                            : 'bg-red-100 text-red-800'
+                                                    }`}>
+                                                        {item.message}
+                                                    </span>
+                                                </td>
+                                                <td className="px-3 py-2 border border-orange-100 text-center">
+                                                    <div className="flex items-center justify-center gap-1">
+                                                        {item.result_id && (
+                                                            <button
+                                                                onClick={() => router.push(`/atw/results/${item.result_id}`)}
+                                                                className="p-1 text-blue-600 hover:bg-blue-50 rounded"
+                                                                title="View Result"
+                                                            >
+                                                                <Icon icon="hugeicons:view" className="w-4 h-4" />
+                                                            </button>
+                                                        )}
+                                                        {item.can_resubmit && (
+                                                            <button
+                                                                onClick={() => handleResubmit(item)}
+                                                                disabled={resubmitLoading === item.cadet_id}
+                                                                className="px-2 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 flex items-center gap-1"
+                                                            >
+                                                                {resubmitLoading === item.cadet_id && <Icon icon="hugeicons:fan-01" className="w-3 h-3 animate-spin" />}
+                                                                Re-submit
+                                                            </button>
+                                                        )}
+                                                        {item.can_reject_down && (
+                                                            <button
+                                                                onClick={() => setRejectDownModal({ open: true, item, reason: '', loading: false, error: '' })}
+                                                                className="px-2 py-1 text-xs bg-orange-600 text-white rounded hover:bg-orange-700 flex items-center gap-1"
+                                                                title="Reject to lower authority"
+                                                            >
+                                                                <Icon icon="hugeicons:arrow-down-01" className="w-3 h-3" />
+                                                                Reject ↓
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            )}
+                        </div>
+                    )}
+                </div>
+            )}
 
             <div className="p-4 cv-content">
                 {selectedPrintType && (
