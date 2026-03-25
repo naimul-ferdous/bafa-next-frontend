@@ -114,7 +114,7 @@ function GroupsPageContent() {
   );
 
   const columns: Column<SystemGroup>[] = [
-    { key: "id", header: "SL.", className: "text-center text-gray-900", render: (group, index) => (pagination.from || 0) + (index + 1) },
+    { key: "id", header: "SL.", className: "text-center text-gray-900", render: (group, index) => (pagination.from || 0) + (index) },
     { key: "name", header: "Group Name", className: "font-medium text-gray-900" },
     { key: "code", header: "Code", className: "text-gray-700 font-mono text-sm" },
     { key: "capacity", header: "Capacity", className: "text-gray-700 text-center", render: (group) => group.capacity || "—" },

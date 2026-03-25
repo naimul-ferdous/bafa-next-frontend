@@ -244,9 +244,10 @@ export default function Ftw12sqnOlqResultForm({ initialData, onSubmit, onCancel,
       total += estimatedMark * inputedMark;
     });
 
-    // If type_code is "for_116b", multiply by 1.5
-    if (selectedOlqType?.type_code?.toLowerCase() === "for_116b") {
-      total = total * 1.5;
+    // Use multiplier if enabled
+    if (selectedOlqType?.is_multiplier) {
+      const mult = parseFloat(selectedOlqType.multiplier || "1");
+      total = total * mult;
     }
 
     return total;
@@ -256,9 +257,10 @@ export default function Ftw12sqnOlqResultForm({ initialData, onSubmit, onCancel,
     // Max total = sum of all (estimated_marks * 10) when input is 10 for each
     let total = estimatedMarks.reduce((sum, em) => sum + (parseFloat(String(em.estimated_mark || 0)) * 10), 0);
 
-    // If type_code is "for_116b", multiply by 1.5
-    if (selectedOlqType?.type_code?.toLowerCase() === "for_116b") {
-      total = total * 1.5;
+    // Use multiplier if enabled
+    if (selectedOlqType?.is_multiplier) {
+      const mult = parseFloat(selectedOlqType.multiplier || "1");
+      total = total * mult;
     }
 
     return total;
@@ -502,8 +504,8 @@ export default function Ftw12sqnOlqResultForm({ initialData, onSubmit, onCancel,
                       ))}
                       <td className="border border-black px-3 py-2 text-center font-bold">
                         {cadet.is_present ? calculateTotal(cadet.marks).toFixed(2) : "0.00"}
-                        {cadet.is_present && selectedOlqType?.type_code?.toLowerCase() === "for_116b" && (
-                          <span className="block text-xs text-green-600">(x1.5)</span>
+                        {cadet.is_present && selectedOlqType?.is_multiplier && (
+                          <span className="block text-xs text-green-600">(x{selectedOlqType.multiplier})</span>
                         )}
                       </td>
                     </tr>
@@ -519,8 +521,8 @@ export default function Ftw12sqnOlqResultForm({ initialData, onSubmit, onCancel,
                     ))}
                     <td className="border border-black px-3 py-2 text-center">
                       {calculateMaxTotal().toFixed(2)}
-                      {selectedOlqType?.type_code?.toLowerCase() === "for_116b" && (
-                        <span className="block text-xs text-green-600">(x1.5)</span>
+                      {selectedOlqType?.is_multiplier && (
+                        <span className="block text-xs text-green-600">(x{selectedOlqType.multiplier})</span>
                       )}
                     </td>
                   </tr>

@@ -51,9 +51,7 @@ interface SemesterActionApiResponse {
 
 interface SemesterCreateData {
   name: string;
-  code: string;
-  year: number;
-  session?: string;
+  short_name?: string;
   start_date: string;
   end_date: string;
   is_current?: boolean;

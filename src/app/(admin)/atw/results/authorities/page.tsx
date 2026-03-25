@@ -148,7 +148,10 @@ export default function AtwApprovalAuthoritiesPage() {
           {auth.is_final && <span className="px-1.5 py-0.5 text-[10px] bg-red-50 text-red-700 border border-red-200 rounded">Final</span>}
           {auth.is_initial_cadet_approve && <span className="px-1.5 py-0.5 text-[10px] bg-teal-50 text-teal-700 border border-teal-200 rounded">Initial Cadet Approve</span>}
           {auth.is_initial_forward && <span className="px-1.5 py-0.5 text-[10px] bg-indigo-50 text-indigo-700 border border-indigo-200 rounded">Initial Forward</span>}
-          {!auth.is_cadet_approve && !auth.is_forward && !auth.is_final && !auth.is_initial_cadet_approve && !auth.is_initial_forward && (
+          {auth.is_program_forward && <span className="px-1.5 py-0.5 text-[10px] bg-purple-50 text-purple-700 border border-purple-200 rounded">Program Forward</span>}
+          {auth.is_signature && <span className="px-1.5 py-0.5 text-[10px] bg-yellow-50 text-yellow-700 border border-yellow-200 rounded">Signature</span>}
+          {auth.is_only_engg && <span className="px-1.5 py-0.5 text-[10px] bg-cyan-50 text-cyan-700 border border-cyan-200 rounded">Only Engineering</span>}
+          {!auth.is_cadet_approve && !auth.is_forward && !auth.is_final && !auth.is_initial_cadet_approve && !auth.is_initial_forward && !auth.is_program_forward && !auth.is_signature && !auth.is_only_engg && (
             <span className="text-gray-400 text-xs">—</span>
           )}
         </div>

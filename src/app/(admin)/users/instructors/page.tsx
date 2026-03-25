@@ -18,7 +18,6 @@ import ConfirmationModal from "@/components/ui/modal/ConfirmationModal";
 import InstructorAssignWingModal from "@/components/instructors/InstructorAssignWingModal";
 import InstructorAssignSubjectModal from "@/components/instructors/InstructorAssignSubjectModal";
 import InstructorAssignModuleModal from "@/components/instructors/InstructorAssignModuleModal";
-import CtwInstructorAssignCadetModal from "@/components/instructors/CtwInstructorAssignCadetModal";
 import InstructorViewAssignedModulesModal from "@/components/instructors/InstructorViewAssignedModulesModal";
 import InstructorAssignRoleModal from "@/components/instructors/InstructorAssignRoleModal";
 import InstructorAssignAssessmentModal from "@/components/instructors/InstructorAssignAssessmentModal";
@@ -64,8 +63,6 @@ function InstructorsPageContent() {
   const [assigningSubjectInstructor, setAssigningSubjectInstructor] = useState<InstructorBiodata | null>(null);
   const [assignModuleModalOpen, setAssignModuleModalOpen] = useState(false);
   const [assigningModuleInstructor, setAssigningModuleInstructor] = useState<InstructorBiodata | null>(null);
-  const [assignCtwCadetModalOpen, setAssignCtwCadetModalOpen] = useState(false);
-  const [assigningCtwCadetInstructor, setAssigningCtwCadetInstructor] = useState<InstructorBiodata | null>(null);
   const [viewModulesModalOpen, setViewModulesModalOpen] = useState(false);
   const [viewingModulesInstructor, setViewingModulesInstructor] = useState<InstructorBiodata | null>(null);
 
@@ -85,9 +82,6 @@ function InstructorsPageContent() {
   const [showFilters, setShowFilters] = useState(false);
   const [filterCourseId, setFilterCourseId] = useState<number>(0);
   const [filterSemesterId, setFilterSemesterId] = useState<number>(0);
-  const [filterProgramId, setFilterProgramId] = useState<number>(0);
-  const [filterBranchId, setFilterBranchId] = useState<number>(0);
-  const [filterGroupId, setFilterGroupId] = useState<number>(0);
   const [courses, setCourses] = useState<SystemCourse[]>([]);
   const [semesters, setSemesters] = useState<SystemSemester[]>([]);
   const [programs, setPrograms] = useState<SystemProgram[]>([]);
@@ -131,12 +125,9 @@ function InstructorsPageContent() {
   const loadInstructors = useCallback(async () => {
     try {
       setLoading(true);
-      const params: { page: number; per_page: number; search?: string; course_id?: number; semester_id?: number; program_id?: number; branch_id?: number; group_id?: number } = { page: currentPage, per_page: perPage, search: searchTerm || undefined };
+      const params: { page: number; per_page: number; search?: string; course_id?: number; semester_id?: number } = { page: currentPage, per_page: perPage, search: searchTerm || undefined };
       if (filterCourseId) params.course_id = filterCourseId;
       if (filterSemesterId) params.semester_id = filterSemesterId;
-      if (filterProgramId) params.program_id = filterProgramId;
-      if (filterBranchId) params.branch_id = filterBranchId;
-      if (filterGroupId) params.group_id = filterGroupId;
       const response = await instructorService.getAllInstructors(params);
       setInstructors(response.data);
       setPagination({ current_page: response.current_page, last_page: response.last_page, per_page: response.per_page, total: response.total, from: response.from, to: response.to });
@@ -145,7 +136,7 @@ function InstructorsPageContent() {
     } finally {
       setLoading(false);
     }
-  }, [currentPage, perPage, searchTerm, filterCourseId, filterSemesterId, filterProgramId, filterBranchId, filterGroupId]);
+  }, [currentPage, perPage, searchTerm, filterCourseId, filterSemesterId]);
 
   const loadAssignMap = useCallback(async () => {
     try {
@@ -266,12 +257,6 @@ function InstructorsPageContent() {
     setAssignModuleModalOpen(true);
   };
 
-  // Handle assign CTW cadets
-  const handleAssignCtwCadets = (instructor: InstructorBiodata) => {
-    setAssigningCtwCadetInstructor(instructor);
-    setAssignCtwCadetModalOpen(true);
-  };
-
   // Handle assign assessments
   const handleAssignAssessments = (instructor: InstructorBiodata) => {
     setAssignAssessmentInstructor(instructor);
@@ -303,8 +288,8 @@ function InstructorsPageContent() {
   const handleExport = () => console.log("Export instructors");
   const handleSearchChange = (value: string) => { setSearchTerm(value); setCurrentPage(1); };
   const handlePerPageChange = (value: number) => { setPerPage(value); setCurrentPage(1); };
-  const handleClearFilters = () => { setFilterCourseId(0); setFilterSemesterId(0); setFilterProgramId(0); setFilterBranchId(0); setFilterGroupId(0); setCurrentPage(1); };
-  const hasActiveFilters = filterCourseId || filterSemesterId || filterProgramId || filterBranchId || filterGroupId;
+  const handleClearFilters = () => { setFilterCourseId(0); setFilterSemesterId(0); setCurrentPage(1); };
+  const hasActiveFilters = filterCourseId || filterSemesterId;
 
   const TableLoading = () => (
     <div className="w-full min-h-[20vh] flex items-center justify-center">
@@ -543,20 +528,16 @@ function InstructorsPageContent() {
           );
         } else if (isItCTWingUser) {
           const assignedModules = instructor.user?.ctw_assigned_modules?.filter(m => m.is_active) || [];
-          const assignedCadets = instructor.user?.ctw_assigned_cadets?.filter(c => c.is_active) || [];
 
           if (assignedModules.length === 0) return <span className="text-gray-400">No modules</span>;
 
           return (
             <div className="flex flex-wrap gap-1 cursor-pointer" onClick={(e) => { e.stopPropagation(); handleViewAssignedModules(instructor); }}>
-              {assignedModules.slice(0, 3).map((am) => {
-                const cadetCount = assignedCadets.filter(c => c.ctw_results_module_id === am.ctw_results_module_id).length;
-                return (
+              {assignedModules.slice(0, 3).map((am) => (
                   <span key={am.id} className="px-2 py-0.5 text-xs rounded-full bg-indigo-100 text-indigo-700 font-medium" title={`${am.module?.full_name || 'Module'} (${am.course?.code || ''} - ${am.semester?.name || ''})`}>
-                    {am.semester?.code}: {am.module?.full_name || am.module?.code || 'Module'}: {cadetCount} Cadets
+                    {am.semester?.code}: {am.module?.full_name || am.module?.code || 'Module'}
                   </span>
-                );
-              })}
+              ))}
               {assignedModules.length > 3 && (
                 <span className="px-2 py-0.5 text-xs rounded-full bg-gray-100 text-gray-600">
                   +{assignedModules.length - 3} more
@@ -625,7 +606,6 @@ function InstructorsPageContent() {
                 {isItCTWingUser && (
                   <>
                     <button onClick={() => handleAssignModules(instructor)} className="p-1 text-indigo-600 hover:bg-indigo-50 rounded" title="Assign Modules"><Icon icon="hugeicons:package" className="w-4 h-4" /></button>
-                    <button onClick={() => handleAssignCtwCadets(instructor)} className="p-1 text-blue-600 hover:bg-blue-50 rounded" title="Assign Cadets"><Icon icon="hugeicons:user-group" className="w-4 h-4" /></button>
                   </>
                 )}
               </div>
@@ -725,27 +705,6 @@ function InstructorsPageContent() {
                 {semesters.map(s => <option key={s.id} value={s.id}>{s.name} ({s.code})</option>)}
               </select>
             </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Program</label>
-              <select value={filterProgramId} onChange={(e) => { setFilterProgramId(Number(e.target.value)); setCurrentPage(1); }} className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-white text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-                <option value={0}>All Programs</option>
-                {programs.map(p => <option key={p.id} value={p.id}>{p.name} ({p.code})</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Branch</label>
-              <select value={filterBranchId} onChange={(e) => { setFilterBranchId(Number(e.target.value)); setCurrentPage(1); }} className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-white text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-                <option value={0}>All Branches</option>
-                {branches.map(b => <option key={b.id} value={b.id}>{b.name} ({b.code})</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Group</label>
-              <select value={filterGroupId} onChange={(e) => { setFilterGroupId(Number(e.target.value)); setCurrentPage(1); }} className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-white text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-                <option value={0}>All Groups</option>
-                {groups.map(g => <option key={g.id} value={g.id}>{g.name} ({g.code})</option>)}
-              </select>
-            </div>
           </div>
         </div>
       )}
@@ -802,7 +761,6 @@ function InstructorsPageContent() {
       <InstructorAssignWingModal isOpen={assignWingModalOpen} onClose={() => { setAssignWingModalOpen(false); setAssigningInstructor(null); }} instructor={assigningInstructor} onSuccess={() => loadInstructors()} />
       <InstructorAssignSubjectModal isOpen={assignSubjectModalOpen} onClose={() => { setAssignSubjectModalOpen(false); setAssigningSubjectInstructor(null); }} instructor={assigningSubjectInstructor} onSuccess={() => loadInstructors()} />
       <InstructorAssignModuleModal isOpen={assignModuleModalOpen} onClose={() => { setAssignModuleModalOpen(false); setAssigningModuleInstructor(null); }} instructor={assigningModuleInstructor} onSuccess={() => loadInstructors()} />
-      <CtwInstructorAssignCadetModal isOpen={assignCtwCadetModalOpen} onClose={() => { setAssignCtwCadetModalOpen(false); setAssigningCtwCadetInstructor(null); }} instructor={assigningCtwCadetInstructor} onSuccess={() => loadInstructors()} />
       <InstructorViewAssignedModulesModal isOpen={viewModulesModalOpen} onClose={() => { setViewModulesModalOpen(false); setViewingModulesInstructor(null); }} instructor={viewingModulesInstructor} />
 
       <UserAssignRankModal

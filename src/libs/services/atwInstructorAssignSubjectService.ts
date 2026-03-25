@@ -15,6 +15,8 @@ interface AssignSubjectQueryParams {
   course_id?: number;
   semester_id?: number;
   program_id?: number;
+  system_programs_changeable_semester_id?: number | null;
+  changeable_semester_null?: boolean;
   subject_id?: number;
   is_active?: boolean | number;
 }
@@ -120,6 +122,7 @@ export const atwInstructorAssignSubjectService = {
     course_id: number;
     semester_id: number;
     program_id: number;
+    system_programs_changeable_semester_id?: number | null;
     subject_ids: number[];
   }): Promise<BulkAssignResponse['data'] | null> {
     try {
@@ -142,7 +145,7 @@ export const atwInstructorAssignSubjectService = {
       return result?.success || false;
     } catch (error) {
       console.error(`Failed to delete assignment ${id}:`, error);
-      return false;
+      throw error;
     }
   },
 

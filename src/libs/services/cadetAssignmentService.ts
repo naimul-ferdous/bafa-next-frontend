@@ -36,6 +36,15 @@ export interface GroupAssignmentData extends AssignmentData {
   group_id: number;
 }
 
+export interface UniversityAssignmentData extends AssignmentData {
+  university_id: number;
+  university_semester_id?: number | null;
+  semester_id: number;
+  atw_university_department_id?: number | null;
+  changeable_program_id?: number | null;
+  is_current?: boolean;
+}
+
 export const cadetAssignmentService = {
   // Rank Assignments
   assignRank: async (data: RankAssignmentData) => {
@@ -209,6 +218,31 @@ export const cadetAssignmentService = {
   removeGroupAssignment: async (id: number) => {
     const token = getToken();
     const response = await apiClient.delete(`/cadet-assignments/groups/${id}`, token);
+    return response;
+  },
+
+  // University Assignments
+  assignUniversity: async (data: UniversityAssignmentData) => {
+    const token = getToken();
+    const response = await apiClient.post('/cadet-assignments/universities', data, token);
+    return response.data;
+  },
+
+  getCadetUniversities: async (cadetId: number) => {
+    const token = getToken();
+    const response = await apiClient.get(`/cadet-assignments/universities/${cadetId}`, token);
+    return response.data;
+  },
+
+  updateUniversityAssignment: async (id: number, data: Partial<UniversityAssignmentData>) => {
+    const token = getToken();
+    const response = await apiClient.put(`/cadet-assignments/universities/${id}`, data, token);
+    return response.data;
+  },
+
+  removeUniversityAssignment: async (id: number) => {
+    const token = getToken();
+    const response = await apiClient.delete(`/cadet-assignments/universities/${id}`, token);
     return response;
   },
 };

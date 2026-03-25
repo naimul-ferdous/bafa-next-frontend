@@ -141,10 +141,7 @@ export interface CtwResultsModule {
 export interface CtwResultsModuleEstimatedMark {
   id: number;
   ctw_results_module_id: number;
-  course_id: number;
   semester_id: number;
-  program_id?: number;
-  branch_id?: number;
   exam_type_id: number;
   practice_count?: number;
   convert_of_practice?: number;
@@ -155,10 +152,7 @@ export interface CtwResultsModuleEstimatedMark {
   created_at?: string;
   updated_at?: string;
   module?: CtwResultsModule;
-  course?: SystemCourse;
   semester?: SystemSemester;
-  program?: SystemProgram;
-  branch?: SystemBranch;
   exam_type?: SystemExam;
   details?: CtwResultsModuleEstimatedMarkDetail[];
 }
@@ -204,10 +198,7 @@ export interface CtwResultsModuleCreateData {
 
 export interface CtwResultsModuleEstimatedMarkCreateData {
   ctw_results_module_id: number;
-  course_id: number;
   semester_id: number;
-  program_id?: number;
-  branch_id?: number;
   exam_type_id: number;
   practice_count?: number;
   convert_of_practice?: number;

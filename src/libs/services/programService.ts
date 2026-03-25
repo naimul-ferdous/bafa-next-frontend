@@ -5,7 +5,7 @@
 
 import apiClient from '@/libs/auth/api-client';
 import { getToken } from '@/libs/auth/auth-token';
-import type { SystemProgram } from '@/libs/types/system';
+import type { SystemProgram, SystemProgramChangeableSemester } from '@/libs/types/system';
 
 interface ProgramQueryParams {
   page?: number;
@@ -49,13 +49,41 @@ interface ProgramActionApiResponse {
   data?: SystemProgram;
 }
 
+interface ChangeableSemesterInput {
+  name: string;
+  short_name?: string;
+  semester_id: number;
+}
+
 interface ProgramCreateData {
   name: string;
-  code: string;
+  short_name?: string;
   description?: string;
   duration_months?: number;
   qualification_level?: string;
+  is_changeable?: boolean;
   is_active?: boolean;
+  changeable_semesters?: ChangeableSemesterInput[];
+}
+
+interface ChangeableSemesterApiResponse {
+  success: boolean;
+  message: string;
+  data: SystemProgramChangeableSemester[];
+  pagination?: {
+    current_page: number;
+    per_page: number;
+    total: number;
+    last_page: number;
+    from: number;
+    to: number;
+  };
+}
+
+interface ChangeableSemesterActionApiResponse {
+  success: boolean;
+  message: string;
+  data?: SystemProgramChangeableSemester;
 }
 
 export const programService = {
@@ -201,6 +229,77 @@ export const programService = {
       return result?.success || false;
     } catch (error) {
       console.error(`Failed to delete program ${id}:`, error);
+      return false;
+    }
+  },
+
+  // --- Changeable Semesters ---
+
+  async getChangeableSemesters(programId: number): Promise<SystemProgramChangeableSemester[]> {
+    try {
+      const token = getToken();
+      const result = await apiClient.get<ChangeableSemesterApiResponse>(
+        `/system-programs/${programId}/changeable-semesters?per_page=100`,
+        token
+      );
+      return result?.data || [];
+    } catch (error) {
+      console.error(`Failed to fetch changeable semesters for program ${programId}:`, error);
+      return [];
+    }
+  },
+
+  async createChangeableSemester(
+    programId: number,
+    data: { name: string; code: string; semester_id: number; is_active?: boolean }
+  ): Promise<SystemProgramChangeableSemester | null> {
+    try {
+      const token = getToken();
+      if (!token) throw new Error('Authentication token not found. Please login again.');
+      const result = await apiClient.post<ChangeableSemesterActionApiResponse>(
+        `/system-programs/${programId}/changeable-semesters`,
+        data,
+        token
+      );
+      if (!result || !result.success) throw new Error(result?.message || 'Failed to create changeable semester');
+      return result.data || null;
+    } catch (error: unknown) {
+      console.error('Failed to create changeable semester:', error);
+      throw error;
+    }
+  },
+
+  async updateChangeableSemester(
+    programId: number,
+    id: number,
+    data: { name: string; code: string; semester_id: number; is_active?: boolean }
+  ): Promise<SystemProgramChangeableSemester | null> {
+    try {
+      const token = getToken();
+      if (!token) throw new Error('Authentication token not found. Please login again.');
+      const result = await apiClient.put<ChangeableSemesterActionApiResponse>(
+        `/system-programs/${programId}/changeable-semesters/${id}`,
+        data,
+        token
+      );
+      if (!result || !result.success) throw new Error(result?.message || 'Failed to update changeable semester');
+      return result.data || null;
+    } catch (error: unknown) {
+      console.error('Failed to update changeable semester:', error);
+      throw error;
+    }
+  },
+
+  async deleteChangeableSemester(programId: number, id: number): Promise<boolean> {
+    try {
+      const token = getToken();
+      const result = await apiClient.delete<ChangeableSemesterActionApiResponse>(
+        `/system-programs/${programId}/changeable-semesters/${id}`,
+        token
+      );
+      return result?.success || false;
+    } catch (error) {
+      console.error('Failed to delete changeable semester:', error);
       return false;
     }
   },

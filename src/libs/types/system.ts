@@ -18,6 +18,7 @@ export interface SystemCourse {
 export interface SystemSemester {
   id: number;
   name: string;
+  short_name?: string;
   code: string;
   start_date: string;
   end_date: string;
@@ -26,17 +27,58 @@ export interface SystemSemester {
   is_academic?: boolean;
   is_gst?: boolean;
   is_active?: boolean;
+  is_changeable?: boolean;
+  changeable_program?: SystemProgramChangeableSemester;
   created_at?: string;
   updated_at?: string;
+}
+
+export interface SystemUniversity {
+  id: number;
+  name: string;
+  short_name?: string;
+  code: string;
+  is_current?: boolean;
+  is_active?: boolean;
+  created_at?: string;
+  updated_at?: string;
+  departments?: AtwUniversityDepartment[];
 }
 
 export interface SystemProgram {
   id: number;
   name: string;
+  short_name?: string;
   code: string;
   is_flying?: boolean;
+  is_changeable?: boolean;
   description?: string;
   duration_months?: number;
+  is_active?: boolean;
+  created_at?: string;
+  updated_at?: string;
+  changeable_semesters?: SystemProgramChangeableSemester[];
+}
+
+export interface SystemProgramChangeableSemester {
+  id: number;
+  name: string;
+  short_name?: string;
+  code: string;
+  semester_id: number;
+  program_id: number;
+  is_active: boolean;
+  created_at?: string;
+  updated_at?: string;
+  semester?: SystemSemester;
+}
+
+export interface AtwUniversityDepartment {
+  id: number;
+  name: string;
+  code: string;
+  university_id: number;
+  is_current?: boolean;
   is_active?: boolean;
   created_at?: string;
   updated_at?: string;
@@ -46,10 +88,12 @@ export interface SystemBranch {
   id: number;
   program_id?: number;
   name: string;
+  short_name?: string;
   code: string;
   description?: string;
   category?: string;
   is_flying?: boolean;
+  is_university?: boolean;
   is_active?: boolean;
   created_at?: string;
   updated_at?: string;
@@ -116,6 +160,13 @@ export interface CadetWarning {
   };
 }
 
+export interface AtwSubjectsModuleMarksheetMarkCombinedCol {
+  id: number;
+  combined_mark_id: number;
+  referenced_mark_id: number;
+  is_active: boolean;
+}
+
 export interface AtwSubjectsModuleMarksheetMark {
   id: number;
   atw_subjects_module_marksheet_id: number;
@@ -124,6 +175,8 @@ export interface AtwSubjectsModuleMarksheetMark {
   percentage: number;
   estimate_mark: number;
   is_active: boolean;
+  is_combined: boolean;
+  combined_cols?: AtwSubjectsModuleMarksheetMarkCombinedCol[];
   created_at?: string;
   updated_at?: string;
 }
@@ -160,6 +213,8 @@ export interface AtwSubjectModuleEditLog {
 export interface AtwSubjectModule {
   id: number;
   atw_subjects_module_marksheet_id?: number;
+  university_id?: number;
+  university?: SystemUniversity;
   subject_name: string;
   subject_code: string;
   subject_legend?: string;
@@ -185,6 +240,7 @@ export interface AtwSubjectGroup {
   atw_subject_id: number;
   semester_id: number;
   program_id: number;
+  system_programs_changeable_semester_id?: number;
   atw_subject_module_id: number;
   is_current: boolean;
   is_active: boolean;

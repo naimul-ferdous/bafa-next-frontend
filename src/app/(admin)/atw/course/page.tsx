@@ -22,14 +22,21 @@ export default function AtwInstructorCoursesPage() {
     const [loadingCadets, setLoadingCadets] = useState(false);
 
     useEffect(() => {
-        if (!user?.id || !isInstructor) {
+        if (!user?.id) {
             setLoading(false);
             return;
         }
         const fetchData = async () => {
             setLoading(true);
             try {
-                const subjectData = await atwInstructorAssignSubjectService.getByInstructor(user.id);
+                let subjectData: AtwInstructorAssignSubject[] = [];
+                if (isInstructor) {
+                    subjectData = await atwInstructorAssignSubjectService.getByInstructor(user.id);
+                } else {
+                    const response = await atwInstructorAssignSubjectService.getAll({ per_page: 1000 });
+                    subjectData = response.data;
+                }
+
                 setAssignments(subjectData.filter(a => a.is_active));
 
                 // Fetch cadet counts
@@ -91,7 +98,11 @@ export default function AtwInstructorCoursesPage() {
             semester_id: a.semester_id,
             subjects: []
         };
-        courseMap[cKey].semMap[sKey].progMap[pKey].subjects.push(a);
+        // Avoid duplicate subjects if multiple instructors are assigned to the same subject in global view
+        const isDuplicate = courseMap[cKey].semMap[sKey].progMap[pKey].subjects.some((sub: any) => sub.subject_id === a.subject_id);
+        if (!isDuplicate) {
+            courseMap[cKey].semMap[sKey].progMap[pKey].subjects.push(a);
+        }
     });
 
     const tree: CourseNode[] = Object.values(courseMap).map((c: any) => {
@@ -115,16 +126,6 @@ export default function AtwInstructorCoursesPage() {
         const rowSpan = semesters.reduce((sum, s) => sum + s.rowSpan, 0);
         return { course_name: c.course_name, semesters, rowSpan };
     });
-
-    if (!isInstructor) {
-        return (
-            <div className="bg-white p-6 rounded-lg border border-gray-200 flex flex-col items-center justify-center min-h-[40vh] gap-3 text-gray-500">
-                <Icon icon="hugeicons:alert-circle" className="w-12 h-12 text-orange-400" />
-                <p className="text-lg font-semibold">Access Restricted</p>
-                <p className="text-sm">This page is only accessible to instructors.</p>
-            </div>
-        );
-    }
 
     let globalIdx = 0;
 
@@ -153,9 +154,10 @@ export default function AtwInstructorCoursesPage() {
                     <div className="flex justify-center mb-4"><FullLogo /></div>
                     <h1 className="text-xl font-bold text-gray-900 uppercase tracking-wider">Bangladesh Air Force Academy</h1>
                     <p className="font-medium text-gray-900 uppercase tracking-wider pb-2">
-                        Course Detailment - {user?.name || "Instructor"}
+                        Course Detailment - {isInstructor ? (user?.name || "Instructor") : "All Assignments"}
                     </p>
                 </div>
+
 
                 {loading ? (
                     <div className="flex justify-center py-20">

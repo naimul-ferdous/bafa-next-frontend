@@ -18,7 +18,6 @@ export default function InstructorViewAssignedModulesModal({
   instructor,
 }: InstructorViewAssignedModulesModalProps) {
   const assignedModules = instructor?.user?.ctw_assigned_modules?.filter(m => m.is_active) || [];
-  const assignedCadets = instructor?.user?.ctw_assigned_cadets?.filter(c => c.is_active) || [];
 
   // Group modules by course + semester
   const groupedBySemester = assignedModules.reduce<Record<string, { courseName: string; semesterName: string; modules: CtwInstructorAssignModule[] }>>((acc, am) => {
@@ -60,46 +59,29 @@ export default function InstructorViewAssignedModulesModal({
                   {group.courseName} - {group.semesterName}
                 </h4>
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
-                  {group.modules.map((am) => {
-                    const cadetCount = assignedCadets.filter(
-                      c => c.ctw_results_module_id === am.ctw_results_module_id && c.semester_id === am.semester_id
-                    ).length;
-
-                    return (
+                  {group.modules.map((am) => (
                       <div
                         key={am.id}
-                        className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200"
+                        className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg border border-gray-200"
                       >
-                        <div className="flex items-center gap-3">
-                          <Icon icon="hugeicons:package" className="w-5 h-5 text-indigo-500" />
-                          <div>
-                            <p className="text-sm font-medium text-gray-900">
-                              {am.module?.full_name || am.module?.code || "Unknown Module"}
-                            </p>
-                            <p className="text-xs text-gray-500">
-                              {am.course?.code || am.course?.name || ""}
-                              {am.program?.code ? ` | ${am.program.code}` : ""}
-                              {am.branch?.code ? ` | ${am.branch.code}` : ""}
-                              {am.group?.name ? ` | ${am.group.name}` : ""}
-                            </p>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className="px-2 py-0.5 text-xs rounded-full bg-blue-100 text-blue-700 font-medium">
-                            {cadetCount} Cadets
-                          </span>
+                        <Icon icon="hugeicons:package" className="w-5 h-5 text-indigo-500" />
+                        <div>
+                          <p className="text-sm font-medium text-gray-900">
+                            {am.module?.full_name || am.module?.code || "Unknown Module"}
+                          </p>
+                          <p className="text-xs text-gray-500">
+                            {am.course?.code || am.course?.name || ""}
+                          </p>
                         </div>
                       </div>
-                    );
-                  })}
+                  ))}
                 </div>
               </div>
             ))}
 
             {/* Summary */}
-            <div className="pt-3 border-t border-gray-200 flex items-center justify-between text-sm text-gray-600">
+            <div className="pt-3 border-t border-gray-200 text-sm text-gray-600">
               <span>Total Modules: <strong>{assignedModules.length}</strong></span>
-              <span>Total Cadets: <strong>{assignedCadets.length}</strong></span>
             </div>
           </div>
         )}

@@ -16,10 +16,15 @@ import { useAuth } from "@/libs/hooks/useAuth";
 import { atwInstructorAssignSubjectService } from "@/libs/services/atwInstructorAssignSubjectService";
 import type { AtwInstructorAssignSubject } from "@/libs/types/user";
 import { cadetService } from "@/libs/services/cadetService";
+import SubjectForm from "@/components/atw-subjects/SubjectForm";
 
 export default function AtwSubjectsPage() {
     const router = useRouter();
     const { user, userIsInstructor } = useAuth();
+
+    // Form view state
+    const [formView, setFormView] = useState<'list' | 'add' | 'edit'>('list');
+    const [editingSubjectId, setEditingSubjectId] = useState<number | undefined>(undefined);
     const isInstructor = userIsInstructor;
     const [subjects, setSubjects] = useState<AtwSubject[]>([]);
     const [loading, setLoading] = useState(true);

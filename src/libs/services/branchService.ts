@@ -51,7 +51,8 @@ interface BranchActionApiResponse {
 
 interface BranchCreateData {
   name: string;
-  code: string;
+  short_name?: string;
+  code?: string;
   description?: string;
   category?: string;
   is_active?: boolean;

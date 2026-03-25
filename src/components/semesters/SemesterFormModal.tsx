@@ -4,6 +4,7 @@
 import React, { useState, useEffect } from "react";
 import Input from "@/components/form/input/InputField";
 import Label from "@/components/form/Label";
+import DatePicker from "@/components/form/input/DatePicker";
 import { Modal } from "@/components/ui/modal";
 import { semesterService } from "@/libs/services/semesterService";
 import { useSemesterModal } from "@/context/SemesterModalContext";
@@ -13,7 +14,7 @@ export default function SemesterFormModal() {
   const { isOpen, editingSemester, closeModal } = useSemesterModal();
   const [formData, setFormData] = useState({
     name: "",
-    code: "",
+    short_name: "",
     start_date: "",
     end_date: "",
     is_current: false,
@@ -26,7 +27,7 @@ export default function SemesterFormModal() {
     if (editingSemester) {
       setFormData({
         name: editingSemester.name,
-        code: editingSemester.code,
+        short_name: editingSemester.short_name || "",
         start_date: editingSemester.start_date,
         end_date: editingSemester.end_date,
         is_current: editingSemester.is_current || false,
@@ -35,7 +36,7 @@ export default function SemesterFormModal() {
     } else {
       setFormData({
         name: "",
-        code: "",
+        short_name: "",
         start_date: "",
         end_date: "",
         is_current: false,
@@ -47,6 +48,13 @@ export default function SemesterFormModal() {
 
   const handleChange = (field: string, value: any) => {
     setFormData(prev => ({ ...prev, [field]: value }));
+  };
+
+  // Convert "dd/mm/yyyy" (flatpickr output) → "yyyy-mm-dd" (API format)
+  const toApiDate = (display: string): string => {
+    const parts = display.split("/");
+    if (parts.length === 3) return `${parts[2]}-${parts[1]}-${parts[0]}`;
+    return display;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -95,25 +103,29 @@ export default function SemesterFormModal() {
               <Input value={formData.name} onChange={(e) => handleChange("name", e.target.value)} placeholder="e.g. Spring 2024" required />
             </div>
             <div>
-              <Label>Code <span className="text-red-500">*</span></Label>
-              <Input 
-                value={formData.code} 
-                onChange={(e) => handleChange("code", e.target.value)} 
-                placeholder="e.g. S24" 
-                required 
-                disabled={!!editingSemester}
-              />
+              <Label>Short Name</Label>
+              <Input value={formData.short_name} onChange={(e) => handleChange("short_name", e.target.value)} placeholder="e.g. S24" />
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div>
               <Label>Start Date <span className="text-red-500">*</span></Label>
-              <Input type="date" value={formData.start_date} onChange={(e) => handleChange("start_date", e.target.value)} required />
+              <DatePicker
+                value={formData.start_date}
+                onChange={(e) => handleChange("start_date", toApiDate(e.target.value))}
+                placeholder="dd/mm/yyyy"
+                required
+              />
             </div>
             <div>
               <Label>End Date <span className="text-red-500">*</span></Label>
-              <Input type="date" value={formData.end_date} onChange={(e) => handleChange("end_date", e.target.value)} required />
+              <DatePicker
+                value={formData.end_date}
+                onChange={(e) => handleChange("end_date", toApiDate(e.target.value))}
+                placeholder="dd/mm/yyyy"
+                required
+              />
             </div>
           </div>
 

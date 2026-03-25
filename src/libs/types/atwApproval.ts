@@ -8,6 +8,9 @@ export interface AtwResultApprovalAuthority {
   is_final: boolean;
   is_initial_cadet_approve: boolean;
   is_initial_forward: boolean;
+  is_program_forward: boolean;
+  is_signature: boolean;
+  is_only_engg: boolean;
   is_active: boolean;
   role?: {
     id: number;

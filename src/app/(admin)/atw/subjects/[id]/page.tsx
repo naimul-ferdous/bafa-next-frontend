@@ -6,7 +6,6 @@ import { useRouter, useParams } from "next/navigation";
 import { Icon } from "@iconify/react";
 import { atwSubjectService } from "@/libs/services/atwSubjectService";
 import { atwSubjectModuleService } from "@/libs/services/atwSubjectModuleService";
-import { cadetService } from "@/libs/services/cadetService";
 import FullLogo from "@/components/ui/fulllogo";
 import { useCan } from "@/context/PagePermissionsContext";
 import { useAuth } from "@/libs/hooks/useAuth";
@@ -39,22 +38,20 @@ export default function AtwSubjectDetailsPage() {
   const params = useParams();
   const subjectId = params?.id as string;
   const can = useCan();
-  const { userIsInstructor, userIsAdmin, user } = useAuth();
+  const { userIsInstructor, userIsSystemAdmin, userIsSuperAdmin, user } = useAuth();
   
   // ATW Admin sees only mapping (Subject Group Details)
   // Instructor sees everything (Full Details)
   const isAtwAdmin = !userIsInstructor && (
-    userIsAdmin || 
-    can('edit') || 
+    userIsSystemAdmin || userIsSuperAdmin ||
+    can('edit') ||
     user?.roles?.some(r => r.name.includes("ATW Admin") || r.slug === "atw-admin") ||
     user?.role?.name.includes("ATW Admin") ||
     user?.role?.slug === "atw-admin"
   );
 
   const [subject, setSubject] = useState<any | null>(null);
-  const [cadetCounts, setCadetCounts] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
-  const [loadingCadets, setLoadingCadets] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -88,8 +85,6 @@ export default function AtwSubjectDetailsPage() {
 
         if (data) {
           setSubject(data);
-          // Fetch cadet counts for each group
-          fetchCadetCounts(data);
         } else {
           setError("Subject not found");
         }
@@ -102,41 +97,6 @@ export default function AtwSubjectDetailsPage() {
     };
     load();
   }, [subjectId]);
-
-  const fetchCadetCounts = async (subjectData: any) => {
-    setLoadingCadets(true);
-    const counts: Record<string, number> = {};
-    const groups = subjectData.groups || [];
-
-    // If no groups, but it's a module, we might still have semester/program derived
-    const itemsToFetch = groups.length > 0
-      ? groups
-      : (subjectData.semester_id && subjectData.program_id ? [subjectData] : []);
-
-    const fetchPromises = itemsToFetch.map(async (g: any) => {
-      const semId = g.semester_id;
-      const progId = g.program_id;
-      if (semId && progId) {
-        const key = `${semId}-${progId}`;
-        try {
-          const res = await cadetService.getAllCadets({
-            semester_id: semId,
-            program_id: progId,
-            is_current: 1,
-            per_page: 1
-          });
-          counts[key] = res.total || 0;
-        } catch (err) {
-          console.error(`Failed to fetch cadet count for ${key}:`, err);
-          counts[key] = 0;
-        }
-      }
-    });
-
-    await Promise.all(fetchPromises);
-    setCadetCounts(counts);
-    setLoadingCadets(false);
-  };
 
   if (loading) {
     return (
@@ -166,33 +126,48 @@ export default function AtwSubjectDetailsPage() {
   const marksheet = mod?.marksheet;
   const marks = marksheet?.marks ?? [];
 
-  // Grouping logic for the architecture table
+  // Grouping logic: semester → (program+changeableSemester) → university+department → modules
   const groupsBySemester = subject.groups?.reduce((acc: any, g: any) => {
     const semId = g.semester_id || "unknown";
-    if (!acc[semId]) {
-      acc[semId] = {
-        semester: g.semester,
-        programs: {}
+    if (!acc[semId]) acc[semId] = { semester: g.semester, programs: {} };
+
+    // Groups with different changeable semesters are separate program-level entries
+    const progKey = `${g.program_id ?? "unknown"}-${g.system_programs_changeable_semester_id ?? "none"}`;
+    if (!acc[semId].programs[progKey]) {
+      acc[semId].programs[progKey] = {
+        program: g.program,
+        changeableSemester: g.changeable_semester ?? null,
+        displayName: g.changeable_semester?.name ?? g.program?.name,
+        deptGroups: {}
       };
     }
-    const progId = g.program_id || "unknown";
-    if (!acc[semId].programs[progId]) {
-      acc[semId].programs[progId] = {
-        program: g.program,
+
+    const deptKey = `${g.university_id ?? "none"}-${g.atw_university_department_id ?? "none"}`;
+    if (!acc[semId].programs[progKey].deptGroups[deptKey]) {
+      acc[semId].programs[progKey].deptGroups[deptKey] = {
+        university: g.university,
+        universityDepartment: g.university_department,
         modules: []
       };
     }
-    acc[semId].programs[progId].modules.push(g);
+    acc[semId].programs[progKey].deptGroups[deptKey].modules.push(g);
     return acc;
   }, {}) || {};
 
   const semesterTree = Object.values(groupsBySemester).map((sem: any) => ({
     ...sem,
-    programs: Object.values(sem.programs).map((prog: any) => ({
-      ...prog,
-      grandTotalPds: prog.modules.reduce((sum: number, m: any) => sum + (Number(m.module?.subject_period) || 0), 0),
-      totalCadets: cadetCounts[`${sem.semester?.id}-${prog.program?.id}`] ?? 0
-    }))
+    programs: Object.values(sem.programs).map((prog: any) => {
+      const deptGroups = Object.values(prog.deptGroups) as any[];
+      const totalModules = deptGroups.reduce((s: number, dg: any) => s + dg.modules.length, 0);
+      return {
+        program: prog.program,
+        changeableSemester: prog.changeableSemester,
+        displayName: prog.displayName,
+        deptGroups,
+        totalModules,
+        totalCadets: (subject.cadet_counts ?? {})[`${sem.semester?.id}-${prog.program?.id}`] ?? 0
+      };
+    })
   }));
 
   return (
@@ -337,11 +312,13 @@ export default function AtwSubjectDetailsPage() {
             </h2>
             <div className="overflow-x-auto">
               <table className="w-full border-collapse border border-black text-sm text-left">
-                <thead className="uppercase font-bold tracking-wider bg-gray-50">
+                <thead className="uppercase font-bold">
                   <tr>
-                    <th className="px-4 py-3 border border-black text-center">SL.</th>
                     <th className="px-4 py-3 border border-black">Semester</th>
                     <th className="px-4 py-3 border border-black">Program</th>
+                    <th className="px-4 py-3 border border-black">University</th>
+                    <th className="px-4 py-3 border border-black">Department</th>
+                    <th className="px-4 py-3 border border-black text-center">SL.</th>
                     <th className="px-4 py-3 border border-black">Subject Module</th>
                     <th className="px-4 py-3 border border-black text-center">Total PDS</th>
                     <th className="px-4 py-3 border border-black text-center">Total Cadets</th>
@@ -352,64 +329,78 @@ export default function AtwSubjectDetailsPage() {
                   {(() => {
                     let globalIdx = 0;
                     return semesterTree.map((sem: any) => {
-                      const semRowSpan = sem.programs.reduce((acc: number, p: any) => acc + p.modules.length, 0);
-                      
+                      const semRowSpan = sem.programs.reduce((acc: number, p: any) => acc + p.totalModules, 0);
+
                       return sem.programs.map((prog: any, pIdx: number) => {
-                        const progRowSpan = prog.modules.length;
-                        
-                        return prog.modules.map((g: any, mIdx: number) => {
-                          globalIdx++;
-                          const isFirstInSem = pIdx === 0 && mIdx === 0;
-                          const isFirstInProg = mIdx === 0;
+                        const progRowSpan = prog.totalModules;
 
-                          return (
-                            <tr key={g.id || globalIdx} className="hover:bg-blue-50/30 transition-colors">
-                              <td className="px-4 py-3 border border-black text-center font-medium text-gray-500">{globalIdx}</td>
-                              
-                              {isFirstInSem && (
-                                <td rowSpan={semRowSpan} className="px-4 py-3 border border-black text-gray-700 font-medium align-middle">
-                                  {sem.semester?.name || "—"}
+                        return prog.deptGroups.map((dg: any, dgIdx: number) => {
+                          const dgRowSpan = dg.modules.length;
+
+                          return dg.modules.map((g: any, mIdx: number) => {
+                            globalIdx++;
+                            const isFirstInSem = pIdx === 0 && dgIdx === 0 && mIdx === 0;
+                            const isFirstInProg = dgIdx === 0 && mIdx === 0;
+                            const isFirstInDg = mIdx === 0;
+
+                            return (
+                              <tr key={g.id || globalIdx} className="transition-colors">
+
+                                {isFirstInSem && (
+                                  <td rowSpan={semRowSpan} className="px-4 py-3 border border-black text-gray-700 font-medium align-middle">
+                                    {sem.semester?.name || "—"}
+                                  </td>
+                                )}
+
+                                {isFirstInProg && (
+                                  <td rowSpan={progRowSpan} className="px-4 py-3 border border-black text-gray-900 font-bold align-middle">
+                                    {prog.displayName || "—"}
+                                  </td>
+                                )}
+
+                                {isFirstInProg && (
+                                  <td rowSpan={progRowSpan} className="px-4 py-3 border border-black text-sm text-gray-700 align-middle">
+                                    {dg.university?.short_name || dg.university?.name || "—"}
+                                  </td>
+                                )}
+
+                                {isFirstInDg && (
+                                  <td rowSpan={dgRowSpan} className="px-4 py-3 border border-black text-sm text-gray-700 align-middle">
+                                    {dg.universityDepartment?.name || "—"}
+                                  </td>
+                                )}
+                                <td className="px-4 py-3 border border-black text-center font-medium text-gray-500">{globalIdx}</td>
+                                <td className="px-4 py-3 border border-black">
+                                  <div className="flex flex-col">
+                                    <span className="font-semibold text-gray-900">{g.module?.subject_name || subject.name}</span>
+                                    <span className="text-xs text-gray-500 font-mono">{g.module?.subject_code || subject.code}</span>
+                                  </div>
                                 </td>
-                              )}
 
-                              {isFirstInProg && (
-                                <td rowSpan={progRowSpan} className="px-4 py-3 border border-black text-gray-900 font-bold align-middle">
-                                  {prog.program?.name || "—"}
+                                <td className="px-4 py-3 border border-black text-center font-medium">
+                                  {g.module?.subject_period || mod?.subject_period || subject.subject_period || "—"}
                                 </td>
-                              )}
 
-                              <td className="px-4 py-3 border border-black">
-                                <div className="flex flex-col">
-                                  <span className="font-semibold text-gray-900">{g.module?.subject_name || subject.name}</span>
-                                  <span className="text-xs text-gray-500 font-mono">{g.module?.subject_code || subject.code}</span>
-                                </div>
-                              </td>
+                                {isFirstInProg && (
+                                  <td rowSpan={progRowSpan} className="px-4 py-3 border border-black text-center font-bold text-blue-700 align-middle">
+                                    {prog.totalCadets}
+                                  </td>
+                                )}
 
-                              <td className="px-4 py-3 border border-black text-center font-medium">
-                                {g.module?.subject_period || mod?.subject_period || subject.subject_period || "—"}
-                              </td>
-
-                              {isFirstInProg && (
-                                <td rowSpan={progRowSpan} className="px-4 py-3 border border-black text-center font-bold text-blue-700 align-middle">
-                                  {loadingCadets ? (
-                                    <Icon icon="hugeicons:fan-01" className="w-5 h-5 animate-spin text-blue-500 mx-auto" />
-                                  ) : prog.totalCadets}
+                                <td className="px-4 py-3 border border-black text-center align-middle no-print">
+                                  {g.atw_subject_module_id ? (
+                                    <button
+                                      onClick={() => router.push(`/atw/subjects/modules/${g.atw_subject_module_id}`)}
+                                      className="px-3 py-1 bg-blue-600 text-white rounded-lg text-xs hover:bg-blue-700 transition-all inline-flex items-center gap-1 shadow-sm font-semibold"
+                                    >
+                                      <Icon icon="hugeicons:book-open-01" className="w-3.5 h-3.5" />
+                                      View Module
+                                    </button>
+                                  ) : "—"}
                                 </td>
-                              )}
-
-                              <td className="px-4 py-3 border border-black text-center align-middle no-print">
-                                {g.atw_subject_module_id ? (
-                                  <button 
-                                    onClick={() => router.push(`/atw/subjects/modules/${g.atw_subject_module_id}`)}
-                                    className="px-3 py-1 bg-blue-600 text-white rounded-lg text-xs hover:bg-blue-700 transition-all inline-flex items-center gap-1 shadow-sm font-semibold"
-                                  >
-                                    <Icon icon="hugeicons:book-open-01" className="w-3.5 h-3.5" />
-                                    View Module
-                                  </button>
-                                ) : "—"}
-                              </td>
-                            </tr>
-                          );
+                              </tr>
+                            );
+                          });
                         });
                       });
                     });

@@ -12,6 +12,11 @@ export interface AtwSubjectGroup {
   atw_subject_id: number;
   semester_id: number;
   program_id: number;
+  system_programs_changeable_semester_id?: number;
+  branch_id?: number | null;
+  university_id?: number | null;
+  university_semester_id?: number | null;
+  atw_university_department_id?: number | null;
   atw_subject_module_id: number;
   is_current: boolean;
   is_active: boolean;
@@ -23,6 +28,8 @@ export interface AtwSubjectGroup {
   semester?: SystemSemester;
   program?: SystemProgram;
   module?: AtwSubjectModule;
+  university?: { id: number; name: string; short_name: string | null } | null;
+  university_semester?: { id: number; name: string; short_name: string | null; code: string | null } | null;
 }
 
 interface SubjectGroupQueryParams {
@@ -31,6 +38,8 @@ interface SubjectGroupQueryParams {
   atw_subject_id?: number;
   semester_id?: number;
   program_id?: number;
+  system_programs_changeable_semester_id?: number | null;
+  changeable_semester_null?: boolean;
 }
 
 interface SubjectGroupPaginatedResponse {
@@ -73,6 +82,11 @@ export interface SubjectGroupCreateData {
   atw_subject_id: number;
   semester_id: number;
   program_id: number;
+  system_programs_changeable_semester_id?: number | null;
+  branch_id?: number | null;
+  university_id?: number | null;
+  university_semester_id?: number | null;
+  atw_university_department_id?: number | null;
   atw_subject_module_id: number;
   is_current?: boolean;
   is_active?: boolean;
@@ -91,6 +105,8 @@ export const atwSubjectGroupService = {
       if (params?.atw_subject_id) query.append('atw_subject_id', params.atw_subject_id.toString());
       if (params?.semester_id) query.append('semester_id', params.semester_id.toString());
       if (params?.program_id) query.append('program_id', params.program_id.toString());
+      if (params?.system_programs_changeable_semester_id) query.append('system_programs_changeable_semester_id', params.system_programs_changeable_semester_id.toString());
+      if (params?.changeable_semester_null) query.append('changeable_semester_null', '1');
 
       const endpoint = `/atw-subject-groups${query.toString() ? `?${query.toString()}` : ''}`;
 

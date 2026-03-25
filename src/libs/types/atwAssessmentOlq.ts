@@ -55,6 +55,8 @@ export interface AtwAssessmentOlqType {
   id: number;
   type_name: string;
   type_code: string;
+  is_multiplier: boolean;
+  multiplier?: string;
   is_active: boolean;
   created_by?: number;
   created_at?: string;
@@ -128,8 +130,6 @@ export interface AtwAssessmentOlqResult {
   course_id: number;
   semester_id: number;
   program_id: number;
-  branch_id: number;
-  group_id?: number;
   exam_type_id?: number;
   atw_assessment_olq_type_id: number;
   remarks?: string;
@@ -140,18 +140,25 @@ export interface AtwAssessmentOlqResult {
   course?: SystemCourse;
   semester?: SystemSemester;
   program?: SystemProgram;
-  branch?: SystemBranch;
-  group?: SystemGroup;
   exam_type?: SystemExam;
   olq_type?: AtwAssessmentOlqType;
   creator?: User;
   result_cadets?: AtwAssessmentOlqResultCadet[];
+  grouped_cadets?: {
+    name: string;
+    is_flying_group?: boolean;
+    cadets: AtwAssessmentOlqResultCadet[];
+  }[];
+  cadet_approvals?: AtwOlqCadetApproval[];
+  semester_approvals?: AtwOlqSemesterApproval[];
 }
 
 // Create/Update Data Types
 export interface AtwAssessmentOlqTypeCreateData {
   type_name: string;
   type_code: string;
+  is_multiplier?: boolean;
+  multiplier?: string;
   is_active?: boolean;
   estimated_marks?: {
     event_name: string;
@@ -167,8 +174,6 @@ export interface AtwAssessmentOlqResultCreateData {
   course_id: number;
   semester_id: number;
   program_id: number;
-  branch_id: number;
-  group_id?: number;
   exam_type_id?: number;
   atw_assessment_olq_type_id: number;
   remarks?: string;

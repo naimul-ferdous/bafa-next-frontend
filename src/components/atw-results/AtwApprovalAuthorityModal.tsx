@@ -39,6 +39,9 @@ export default function AtwApprovalAuthorityModal({
     is_final: false,
     is_initial_cadet_approve: false,
     is_initial_forward: false,
+    is_program_forward: false,
+    is_signature: false,
+    is_only_engg: false,
     is_active: true,
   });
 
@@ -55,6 +58,9 @@ export default function AtwApprovalAuthorityModal({
           is_final: authority.is_final,
           is_initial_cadet_approve: authority.is_initial_cadet_approve,
           is_initial_forward: authority.is_initial_forward,
+          is_program_forward: authority.is_program_forward,
+          is_signature: authority.is_signature,
+          is_only_engg: authority.is_only_engg,
           is_active: authority.is_active,
         });
       } else {
@@ -67,6 +73,9 @@ export default function AtwApprovalAuthorityModal({
           is_final: false,
           is_initial_cadet_approve: false,
           is_initial_forward: false,
+          is_program_forward: false,
+          is_signature: false,
+          is_only_engg: false,
           is_active: true,
         });
       }
@@ -211,6 +220,9 @@ export default function AtwApprovalAuthorityModal({
                     { key: "is_final", label: "Final Authority" },
                     { key: "is_initial_cadet_approve", label: "Initial Cadet Approve" },
                     { key: "is_initial_forward", label: "Initial Forward" },
+                    { key: "is_program_forward", label: "Program Forward" },
+                    { key: "is_signature", label: "Signature" },
+                    { key: "is_only_engg", label: "Only Engineering" },
                     { key: "is_active", label: "Is Active" },
                   ].map(({ key, label }) => (
                     <label key={key} className="flex items-center gap-2 p-3 bg-gray-50 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-100 transition-colors">

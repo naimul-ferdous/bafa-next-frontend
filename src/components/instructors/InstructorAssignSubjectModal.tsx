@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
 import React, { useState, useEffect } from "react";
@@ -9,6 +10,7 @@ import { commonService } from "@/libs/services/commonService";
 import { atwInstructorAssignSubjectService } from "@/libs/services/atwInstructorAssignSubjectService";
 import { atwSubjectGroupService } from "@/libs/services/atwSubjectGroupService";
 import FullLogo from "../ui/fulllogo";
+import ConfirmationModal from "@/components/ui/modal/ConfirmationModal";
 
 interface InstructorAssignSubjectModalProps {
   isOpen: boolean;
@@ -38,9 +40,15 @@ export default function InstructorAssignSubjectModal({
   const [selectedCourseId, setSelectedCourseId] = useState<number | "">("");
   const [selectedSemesterId, setSelectedSemesterId] = useState<number | "">("");
   const [selectedProgramId, setSelectedProgramId] = useState<number | "">("");
+  const [selectedChangeableSemId, setSelectedChangeableSemId] = useState<number | null>(null);
   const [selectedSubjectIds, setSelectedSubjectIds] = useState<number[]>([]);
 
   const [loadingSemesters, setLoadingSemesters] = useState(false);
+
+  // Delete confirmation state
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deletingAssignment, setDeletingAssignment] = useState<AtwInstructorAssignSubject | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Load dropdown data
   useEffect(() => {
@@ -54,6 +62,8 @@ export default function InstructorAssignSubjectModal({
     if (!selectedCourseId) {
       setSemesters([]);
       setSelectedSemesterId("");
+      setSelectedProgramId("");
+      setSelectedChangeableSemId(null);
       return;
     }
     const fetchSemesters = async () => {
@@ -86,7 +96,7 @@ export default function InstructorAssignSubjectModal({
       setAllExistingAssignments([]);
       setSelectedSubjectIds([]);
     }
-  }, [selectedCourseId, selectedSemesterId, selectedProgramId]);
+  }, [selectedCourseId, selectedSemesterId, selectedProgramId, selectedChangeableSemId]);
 
   const loadDropdownData = async () => {
     setLoadingData(true);
@@ -99,11 +109,11 @@ export default function InstructorAssignSubjectModal({
       ]);
 
       if (options) {
-        // Only show active/running courses and programs
         setCourses(options.courses.filter(c => !!c.is_active));
+        // programs now include changeable_semesters from getResultOptions
         setPrograms(options.programs.filter(p => !!p.is_active));
       }
-      
+
       setExistingAssignments(assignments);
     } catch (err) {
       console.error("Failed to load dropdown data:", err);
@@ -122,12 +132,20 @@ export default function InstructorAssignSubjectModal({
         atwSubjectGroupService.getAllSubjectGroups({
           semester_id: Number(selectedSemesterId),
           program_id: Number(selectedProgramId),
+          ...(selectedChangeableSemId
+            ? { system_programs_changeable_semester_id: selectedChangeableSemId }
+            : { changeable_semester_null: true }
+          ),
           per_page: 500,
         }),
         atwInstructorAssignSubjectService.getAll({
           course_id: Number(selectedCourseId),
           semester_id: Number(selectedSemesterId),
           program_id: Number(selectedProgramId),
+          ...(selectedChangeableSemId
+            ? { system_programs_changeable_semester_id: selectedChangeableSemId }
+            : { changeable_semester_null: true }
+          ),
           per_page: 1000
         })
       ]);
@@ -147,6 +165,41 @@ export default function InstructorAssignSubjectModal({
       setAllExistingAssignments([]);
     } finally {
       setLoadingSubjects(false);
+    }
+  };
+
+  // Get changeable program options for the currently selected semester (SubjectForm pattern)
+  const getChangeableOptions = () => {
+    if (!selectedSemesterId) return [];
+    const result: { csId: number; programId: number; label: string }[] = [];
+    programs.forEach(p => {
+      p.changeable_semesters?.forEach(cs => {
+        if (cs.semester_id === Number(selectedSemesterId)) {
+          result.push({ csId: cs.id, programId: p.id, label: `${cs.name} (${cs.code})` });
+        }
+      });
+    });
+    return result;
+  };
+
+  // Computed select value: encodes changeable vs regular (SubjectForm pattern)
+  const progSelectValue = selectedChangeableSemId
+    ? `cs:${selectedChangeableSemId}:${selectedProgramId}`
+    : selectedProgramId === "" ? "" : String(selectedProgramId);
+
+  const handleProgramChange = (val: string) => {
+    if (!val) {
+      setSelectedProgramId("");
+      setSelectedChangeableSemId(null);
+      return;
+    }
+    if (val.startsWith("cs:")) {
+      const parts = val.split(":");
+      setSelectedChangeableSemId(Number(parts[1]));
+      setSelectedProgramId(Number(parts[2]));
+    } else {
+      setSelectedProgramId(Number(val));
+      setSelectedChangeableSemId(null);
     }
   };
 
@@ -194,6 +247,7 @@ export default function InstructorAssignSubjectModal({
         course_id: Number(selectedCourseId),
         semester_id: Number(selectedSemesterId),
         program_id: Number(selectedProgramId),
+        system_programs_changeable_semester_id: selectedChangeableSemId ?? null,
         subject_ids: selectedSubjectIds,
       });
 
@@ -214,16 +268,31 @@ export default function InstructorAssignSubjectModal({
     }
   };
 
-  const handleDeleteAssignment = async (assignmentId: number) => {
-    if (!confirm("Are you sure you want to remove this subject assignment?")) return;
+  const handleDeleteAssignment = (assignment: AtwInstructorAssignSubject) => {
+    setDeletingAssignment(assignment);
+    setDeleteConfirmOpen(true);
+  };
 
+  const handleConfirmDelete = async () => {
+    if (!deletingAssignment) return;
+
+    setIsDeleting(true);
+    setError(null);
     try {
-      await atwInstructorAssignSubjectService.delete(assignmentId);
-      setExistingAssignments((prev) => prev.filter((a) => a.id !== assignmentId));
-      onSuccess?.();
-    } catch (err) {
+      const success = await atwInstructorAssignSubjectService.delete(deletingAssignment.id);
+      if (success) {
+        setExistingAssignments((prev) => prev.filter((a) => a.id !== deletingAssignment.id));
+        onSuccess?.();
+        setDeleteConfirmOpen(false);
+        setDeletingAssignment(null);
+      }
+    } catch (err: any) {
       console.error("Failed to delete assignment:", err);
-      setError("Failed to remove assignment");
+      const errorMessage = err?.message || "Failed to remove assignment";
+      setError(errorMessage);
+      setDeleteConfirmOpen(false); // Close modal to show error in main modal
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -231,6 +300,7 @@ export default function InstructorAssignSubjectModal({
     setSelectedCourseId("");
     setSelectedSemesterId("");
     setSelectedProgramId("");
+    setSelectedChangeableSemId(null);
     setSelectedSubjectIds([]);
     setSubjects([]);
     setError(null);
@@ -280,7 +350,7 @@ export default function InstructorAssignSubjectModal({
                         </div>
                       </div>
                       <button
-                        onClick={() => handleDeleteAssignment(assignment.id)}
+                        onClick={() => handleDeleteAssignment(assignment)}
                         className="p-1 text-red-600 hover:bg-red-100 rounded-full transition-colors"
                         title="Remove"
                       >
@@ -330,9 +400,10 @@ export default function InstructorAssignSubjectModal({
                   </label>
                   <select
                     value={selectedSemesterId}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-gray-100 text-gray-900 text-sm cursor-not-allowed"
+                    onChange={(e) => setSelectedSemesterId(e.target.value ? Number(e.target.value) : "")}
+                    className={`w-full px-3 py-2 border border-gray-200 rounded-lg text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${(semesters.length <= 1 || loadingSemesters) ? "bg-gray-100 cursor-not-allowed" : "bg-white"}`}
                     required
-                    disabled
+                    disabled={semesters.length <= 1 || loadingSemesters || semesters.length === 0}
                   >
                     {loadingSemesters ? (
                       <option value="">Loading...</option>
@@ -354,16 +425,17 @@ export default function InstructorAssignSubjectModal({
                     Program <span className="text-red-500">*</span>
                   </label>
                   <select
-                    value={selectedProgramId}
-                    onChange={(e) => setSelectedProgramId(e.target.value ? Number(e.target.value) : "")}
+                    value={progSelectValue}
+                    onChange={(e) => handleProgramChange(e.target.value)}
                     className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-purple-500 text-sm"
                     required
                   >
                     <option value="">Select</option>
-                    {programs.map((program) => (
-                      <option key={program.id} value={program.id}>
-                        {program.name}
-                      </option>
+                    {programs.map((p) => (
+                      <option key={p.id} value={p.id}>{p.name} ({p.code})</option>
+                    ))}
+                    {getChangeableOptions().map((c) => (
+                      <option key={`cs-${c.csId}`} value={`cs:${c.csId}:${c.programId}`}>{c.label}</option>
                     ))}
                   </select>
                 </div>
@@ -472,6 +544,18 @@ export default function InstructorAssignSubjectModal({
           </>
         )}
       </div>
+
+      <ConfirmationModal
+        isOpen={deleteConfirmOpen}
+        onClose={() => setDeleteConfirmOpen(false)}
+        onConfirm={handleConfirmDelete}
+        title="Remove Assignment"
+        message={`Are you sure you want to remove the assignment for "${deletingAssignment?.subject?.subject_name}"? This action cannot be undone if no marks are recorded.`}
+        confirmText="Remove"
+        cancelText="Cancel"
+        loading={isDeleting}
+        variant="danger"
+      />
     </Modal>
   );
 }

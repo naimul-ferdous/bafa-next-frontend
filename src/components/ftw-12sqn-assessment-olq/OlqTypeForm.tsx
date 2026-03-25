@@ -28,6 +28,8 @@ export interface OlqTypeFormData {
   course_id: number | "";
   type_name: string;
   type_code: string;
+  is_multiplier: boolean;
+  multiplier: string;
   is_active: boolean;
   estimated_marks: EstimatedMarkInput[];
   semesters: number[];
@@ -38,6 +40,8 @@ export default function OlqTypeForm({ initialData, onSubmit, onCancel, loading, 
     course_id: "",
     type_name: "",
     type_code: "",
+    is_multiplier: false,
+    multiplier: "1",
     is_active: true,
     estimated_marks: [],
     semesters: [],
@@ -76,6 +80,8 @@ export default function OlqTypeForm({ initialData, onSubmit, onCancel, loading, 
         course_id: initialData.course_id || "",
         type_name: initialData.type_name,
         type_code: initialData.type_code,
+        is_multiplier: initialData.is_multiplier || false,
+        multiplier: initialData.multiplier || "1",
         is_active: initialData.is_active,
         estimated_marks: sortedMarks.map(m => ({
           id: m.id,
@@ -120,6 +126,8 @@ export default function OlqTypeForm({ initialData, onSubmit, onCancel, loading, 
         course_id: formData.course_id as number,
         type_name: formData.type_name,
         type_code: formData.type_code,
+        is_multiplier: formData.is_multiplier,
+        multiplier: formData.multiplier,
         is_active: formData.is_active,
         estimated_marks: formData.estimated_marks.map((m, index) => ({
           event_name: m.event_name,
@@ -257,6 +265,48 @@ export default function OlqTypeForm({ initialData, onSubmit, onCancel, loading, 
               <p className="mt-1 text-sm text-red-500">{errors.type_code}</p>
             )}
           </div>
+        </div>
+      </div>
+
+      {/* Multiplier Settings */}
+      <div className="border border-gray-200 rounded-lg p-6">
+        <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+          <Icon icon="hugeicons:mathematics-01" className="w-5 h-5 text-orange-500" />
+          Multiplier Settings
+        </h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="flex items-center gap-3 p-3 border rounded-lg cursor-pointer bg-gray-50/50">
+            <input
+              type="checkbox"
+              id="is_multiplier"
+              checked={formData.is_multiplier}
+              onChange={(e) => handleChange("is_multiplier", e.target.checked)}
+              className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+            />
+            <label htmlFor="is_multiplier" className="text-sm font-medium text-gray-700 cursor-pointer">
+              Enable Marks Multiplier
+            </label>
+          </div>
+
+          {formData.is_multiplier && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Multiplier Value (e.g., 1.5, 2.0)
+              </label>
+              <input
+                type="text"
+                value={formData.multiplier}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (val === "" || /^\d*\.?\d*$/.test(val)) {
+                    handleChange("multiplier", val);
+                  }
+                }}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="1.5"
+              />
+            </div>
+          )}
         </div>
       </div>
 

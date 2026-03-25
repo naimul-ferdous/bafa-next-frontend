@@ -138,10 +138,9 @@ export const ctwResultsModuleService = {
   /**
    * Get modules that have estimated marks for a given course + semester
    */
-  async getModulesWithEstimatedMarks(params: { course_id: number; semester_id: number }): Promise<CtwResultsModule[]> {
+  async getModulesWithEstimatedMarks(params: { semester_id: number }): Promise<CtwResultsModule[]> {
     try {
       const query = new URLSearchParams();
-      query.append('course_id', params.course_id.toString());
       query.append('semester_id', params.semester_id.toString());
 
       const endpoint = `/ctw-results-modules/with-estimated-marks?${query.toString()}`;
@@ -157,10 +156,9 @@ export const ctwResultsModuleService = {
   /**
    * Get estimated marks for a module (optionally filtered by course_id and semester_id)
    */
-  async getEstimatedMarks(moduleId: number, params?: { course_id?: number; semester_id?: number }): Promise<CtwResultsModuleEstimatedMark[]> {
+  async getEstimatedMarks(moduleId: number, params?: { semester_id?: number }): Promise<CtwResultsModuleEstimatedMark[]> {
     try {
       const query = new URLSearchParams();
-      if (params?.course_id) query.append('course_id', params.course_id.toString());
       if (params?.semester_id) query.append('semester_id', params.semester_id.toString());
 
       const endpoint = `/ctw-results-modules/${moduleId}/estimated-marks${query.toString() ? `?${query.toString()}` : ''}`;

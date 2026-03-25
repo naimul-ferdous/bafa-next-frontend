@@ -44,6 +44,8 @@ export interface CtwAssessmentOlqType {
   course_id?: number;
   type_name: string;
   type_code: string;
+  is_multiplier: boolean;
+  multiplier?: string;
   is_active: boolean;
   created_by?: number;
   created_at?: string;
@@ -142,6 +144,8 @@ export interface CtwAssessmentOlqTypeCreateData {
   course_id: number;
   type_name: string;
   type_code: string;
+  is_multiplier?: boolean;
+  multiplier?: string;
   is_active?: boolean;
   estimated_marks?: {
     event_name: string;

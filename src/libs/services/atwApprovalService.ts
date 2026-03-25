@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * ATW Approval Service
  * API calls for ATW result approval management
@@ -201,6 +202,16 @@ export const atwApprovalService = {
       return await apiClient.post('/atw-approvals/resubmit-rejected-cadet', data, token);
     } catch (error) {
       console.error('Failed to resubmit rejected cadet:', error);
+      throw error;
+    }
+  },
+
+  bulkApproveAndForwardProgram: async (data: { course_id: number; semester_id: number; program_id: number; authority_ids?: number[] }) => {
+    try {
+      const token = getToken();
+      return await apiClient.post('/atw-approvals/bulk-approve-forward-program', data, token);
+    } catch (error) {
+      console.error('Failed to bulk approve and forward program:', error);
       throw error;
     }
   },

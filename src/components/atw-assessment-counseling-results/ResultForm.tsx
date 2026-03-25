@@ -15,6 +15,7 @@ import { commonService } from "@/libs/services/commonService";
 import { atwAssessmentCounselingTypeService } from "@/libs/services/atwAssessmentCounselingTypeService";
 import { cadetService } from "@/libs/services/cadetService";
 import { atwAssessmentCounselingResultService } from "@/libs/services/atwAssessmentCounselingResultService";
+import { atwUserAssignService } from "@/libs/services/atwUserAssignService";
 import { useAuth } from "@/libs/hooks/useAuth";
 import DatePicker from "@/components/form/input/DatePicker";
 import SearchableSelect from "@/components/form/SearchableSelect";
@@ -52,9 +53,6 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
   // Dropdown data
   const [courses, setCourses] = useState<SystemCourse[]>([]);
   const [semesters, setSemesters] = useState<SystemSemester[]>([]);
-  const [programs, setPrograms] = useState<SystemProgram[]>([]);
-  const [branches, setBranches] = useState<SystemBranch[]>([]);
-  const [groups, setGroups] = useState<SystemGroup[]>([]);
   const [exams, setExams] = useState<SystemExam[]>([]);
   const [cadets, setCadets] = useState<any[]>([]);
   const [cadetToResultMap, setCadetToResultMap] = useState<{ [cadetId: number]: number }>({});
@@ -68,216 +66,85 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
   const [detectedType, setDetectedType] = useState<AtwAssessmentCounselingType | null>(null);
   const [availableEvents, setAvailableEvents] = useState<AtwAssessmentCounselingEvent[]>([]);
 
-  // Load dropdown data
+  // 1. Initial Load: Get Courses and Exams
   useEffect(() => {
-    const loadDropdownData = async () => {
+    const loadInitialOptions = async () => {
       try {
         setLoadingDropdowns(true);
-        const commonData = await commonService.getResultOptions();
-
-        if (commonData) {
-          setCourses(commonData.courses || []);
-          setPrograms(commonData.programs || []);
-          setBranches(commonData.branches || []);
-          setGroups(commonData.groups || []);
-          setExams(commonData.exams || []);
+        const options = await atwAssessmentCounselingResultService.getFormOptions();
+        if (options) {
+          setCourses(options.courses);
+          setExams(options.exams);
         }
       } catch (err) {
-        console.error("Failed to load dropdown data:", err);
-        setError("Failed to load required data. Please refresh the page.");
+        console.error("Failed to load initial form options:", err);
+        setError("Failed to load form options. Please refresh.");
       } finally {
         setLoadingDropdowns(false);
       }
     };
-
-    loadDropdownData();
+    loadInitialOptions();
   }, []);
 
-  // Fetch semesters whenever course changes
+  // 2. Chained Data Load: When Course or Semester changes
   useEffect(() => {
-    if (!formData.course_id) {
-      setSemesters([]);
-      setCadetToResultMap({});
-      return;
-    }
-    const fetchSemesters = async () => {
-      setLoadingSemesters(true);
-      try {
-        const data = await commonService.getSemestersByCourse(formData.course_id);
-        setSemesters(data);
-        // Only auto-select the first semester if none is currently selected 
-        // or if the current one doesn't belong to the new course
-        if (data.length > 0) {
-          const currentValid = data.some(s => s.id === formData.semester_id);
-          if (!currentValid) {
-            setFormData(prev => ({ ...prev, semester_id: data[0].id }));
-          }
-        }
-      } catch (err) {
-        console.error("Failed to fetch semesters:", err);
-      } finally {
-        setLoadingSemesters(false);
-      }
-    };
-    fetchSemesters();
-  }, [formData.course_id]);
+    if (!formData.course_id) return;
 
-  // Fetch existing results to label cadets (only in create mode)
-  useEffect(() => {
-    if (isEdit || !formData.course_id || !formData.semester_id) {
-      setCadetToResultMap({});
-      return;
-    }
-
-    const fetchExistingResults = async () => {
+    const loadContextData = async () => {
       try {
-        const res = await atwAssessmentCounselingResultService.getAllResults({
+        if (!formData.semester_id) setLoadingSemesters(true);
+        else setLoadingCadets(true);
+
+        const options = await atwAssessmentCounselingResultService.getFormOptions({
           course_id: formData.course_id,
-          semester_id: formData.semester_id,
-          per_page: 1000,
-        });
-        
-        const map: { [key: number]: number } = {};
-        res.data.forEach(r => {
-          (r.result_cadets || []).forEach(c => {
-            map[c.cadet_id] = r.id;
-          });
-        });
-        setCadetToResultMap(map);
-      } catch (err) {
-        console.error("Failed to fetch existing results:", err);
-      }
-    };
-
-    fetchExistingResults();
-  }, [formData.course_id, formData.semester_id, isEdit]);
-
-  // Auto-select instructor
-  useEffect(() => {
-    if (user?.id && !isEdit) {
-      setFormData(prev => ({ ...prev, instructor_id: user.id }));
-    }
-  }, [user?.id, isEdit]);
-
-  // Load cadets when course+semester are selected
-  useEffect(() => {
-    if (!formData.course_id || !formData.semester_id) {
-      setCadets([]);
-      return;
-    }
-    const fetchCadets = async () => {
-      setLoadingCadets(true);
-      try {
-        const res = await cadetService.getAllCadets({
-          course_id: formData.course_id,
-          semester_id: formData.semester_id,
-          program_id: formData.program_id || undefined,
-          branch_id: formData.branch_id || undefined,
-          group_id: formData.group_id || undefined,
-          is_current: 1,
-          per_page: 1000,
-        });
-        const mapped = res.data
-          .map((c: any) => ({
-            id: c.id,
-            name: c.name,
-            cadet_number: c.cadet_number,
-            bd_no: c.cadet_number,
-            program_id: c.program_id,
-            branch_id: c.branch_id,
-            group_id: c.group_id,
-            is_active: true,
-          }));
-        setCadets(mapped);
-      } catch (err) {
-        console.error("Failed to fetch cadets:", err);
-      } finally {
-        setLoadingCadets(false);
-      }
-    };
-    fetchCadets();
-  }, [formData.course_id, formData.semester_id, formData.program_id, formData.branch_id, formData.group_id]);
-
-  // Fetch Counseling Type when course and semester change
-  useEffect(() => {
-    const fetchCounselingType = async () => {
-      if (!formData.course_id || !formData.semester_id) {
-        setDetectedType(null);
-        setAvailableEvents([]);
-        return;
-      }
-
-      try {
-        const response = await atwAssessmentCounselingTypeService.getAllTypes({
-          course_id: formData.course_id,
-          semester_id: formData.semester_id,
+          semester_id: formData.semester_id || undefined
         });
 
-        if (response.data && response.data.length > 0) {
-          const type = response.data.find(t => t.is_active) || response.data[0];
-          setDetectedType(type);
-          setFormData(prev => ({ ...prev, atw_assessment_counseling_type_id: type.id }));
-          
-          const fullType = await atwAssessmentCounselingTypeService.getType(type.id);
-          if (fullType && fullType.events) {
-            const activeEvents = fullType.events.filter(e => e.is_active).sort((a, b) => (a.order || 0) - (b.order || 0));
-            setAvailableEvents(activeEvents);
+        if (options) {
+          // If only course selected, update semesters
+          if (!formData.semester_id) {
+            setSemesters(options.semesters);
+            // Auto-select first semester
+            if (options.semesters.length > 0) {
+              setFormData(prev => ({ ...prev, semester_id: options.semesters[0].id }));
+            }
+          } 
+          // If both selected, update cadets, events, and duplicate map
+          else {
+            setCadets(options.cadets);
+            setCadetToResultMap(options.existing_results_map);
             
-            // Initialize remarks if not already set
-            if (Object.keys(eventRemarks).length === 0) {
-                const initialRemarks: { [key: number]: string } = {};
-                activeEvents.forEach(e => {
-                    initialRemarks[e.id] = "";
-                });
-                setEventRemarks(initialRemarks);
+            if (options.counseling_type) {
+              setDetectedType(options.counseling_type);
+              setFormData(prev => ({ ...prev, atw_assessment_counseling_type_id: options.counseling_type!.id }));
+              
+              const activeEvents = (options.counseling_type.events || [])
+                .filter((e: AtwAssessmentCounselingEvent) => e.is_active)
+                .sort((a: AtwAssessmentCounselingEvent, b: AtwAssessmentCounselingEvent) => (a.order || 0) - (b.order || 0));
+              setAvailableEvents(activeEvents);
+
+              // Reset/Init remarks
+              const initialRemarks: { [key: number]: string } = {};
+              activeEvents.forEach((e: AtwAssessmentCounselingEvent) => { initialRemarks[e.id] = ""; });
+              setEventRemarks(initialRemarks);
+            } else {
+              setDetectedType(null);
+              setAvailableEvents([]);
             }
           }
-        } else {
-          setDetectedType(null);
-          setAvailableEvents([]);
-          setFormData(prev => ({ ...prev, atw_assessment_counseling_type_id: 0 }));
         }
       } catch (err) {
-        console.error("Failed to fetch counseling type:", err);
-      }
-    };
-
-    if (!isEdit) {
-      fetchCounselingType();
-    }
-  }, [formData.course_id, formData.semester_id, isEdit]);
-
-  // Load cadets based on filters (admin only)
-  useEffect(() => {
-    if (isInstructor || isEdit) return;
-    const loadCadets = async () => {
-      if (!formData.course_id || !formData.semester_id) {
-        setCadets([]);
-        return;
-      }
-
-      try {
-        setLoadingCadets(true);
-        const cadetsRes = await cadetService.getAllCadets({
-          per_page: 500,
-          course_id: formData.course_id,
-          semester_id: formData.semester_id,
-          program_id: formData.program_id || undefined,
-          branch_id: formData.branch_id || undefined,
-          group_id: formData.group_id || undefined,
-        });
-        setCadets(cadetsRes.data.filter(c => c.is_active));
-      } catch (err) {
-        console.error("Failed to load cadets:", err);
+        console.error("Failed to load context data:", err);
       } finally {
+        setLoadingSemesters(false);
         setLoadingCadets(false);
       }
     };
 
-    loadCadets();
-  }, [isInstructor, isEdit, formData.course_id, formData.semester_id, formData.program_id, formData.branch_id, formData.group_id]);
+    loadContextData();
+  }, [formData.course_id, formData.semester_id]);
 
-  // Populate form with initial data
+  // Populate form with initial data (Edit mode)
   useEffect(() => {
     if (initialData) {
       setFormData({
@@ -328,7 +195,6 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
     if (field === "cadet_id") {
       const selectedCadet = cadets.find(c => c.id === value);
       
-      // Check for duplicate counseling
       if (!isEdit && value && cadetToResultMap[value]) {
         setDuplicateWarning({
           name: selectedCadet?.name || "this cadet",
@@ -377,7 +243,6 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
     try {
       const selectedCadet = cadets.find(c => c.id === formData.cadet_id);
       
-      // Format date from dd/mm/yyyy to yyyy-mm-dd
       const dateParts = formData.counseling_date.split("/");
       const formattedDate = dateParts.length === 3 
         ? `${dateParts[2]}-${dateParts[1]}-${dateParts[0]}` 
@@ -416,9 +281,6 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
   };
 
   const filtersSelected = formData.course_id && formData.semester_id;
-  
-  const filteredCadets = cadets;
-
   const showEvents = filtersSelected && detectedType && availableEvents.length > 0 && formData.cadet_id > 0 && !duplicateWarning;
 
   if (loadingDropdowns) {
@@ -438,14 +300,14 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
         </div>
       )}
 
-      {/* Top Dropdowns - Redesigned Layout */}
+      {/* Top Dropdowns */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div>
           <label className="block text-sm font-bold text-gray-700 mb-2 uppercase tracking-wide">Select Course<span className="text-red-500">*</span></label>
           <SearchableSelect
-            options={courses.map(c => ({ value: c.id.toString(), label: c.name }))}
+            options={courses.map((c: any) => ({ value: c.id.toString(), label: c.name }))}
             value={formData.course_id.toString()}
-            onChange={(val) => handleChange("course_id", parseInt(val))}
+            onChange={(val: string) => handleChange("course_id", parseInt(val))}
             placeholder="Select Course"
             required
           />
@@ -454,9 +316,9 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
         <div>
           <label className="block text-sm font-bold text-gray-700 mb-2 uppercase tracking-wide">Select Semester<span className="text-red-500">*</span></label>
           <SearchableSelect
-            options={semesters.map(s => ({ value: s.id.toString(), label: s.name }))}
+            options={semesters.map((s: any) => ({ value: s.id.toString(), label: s.name }))}
             value={formData.semester_id.toString()}
-            onChange={(val) => handleChange("semester_id", parseInt(val))}
+            onChange={(val: string) => handleChange("semester_id", parseInt(val))}
             placeholder={
               loadingSemesters 
                 ? "Loading semesters..." 
@@ -466,7 +328,7 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
                     ? "No semesters found" 
                     : "Select Semester"
             }
-            disabled={true} // Set to true as per request (auto-selected and not selectable)
+            disabled={!formData.course_id || loadingSemesters}
             required
           />
         </div>
@@ -476,9 +338,9 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
         <div>
           <label className="block text-sm font-bold text-gray-700 mb-2 uppercase tracking-wide">Select Exam Type<span className="text-red-500">*</span></label>
           <SearchableSelect
-            options={exams.map(e => ({ value: e.id.toString(), label: e.name }))}
+            options={exams.map((e: any) => ({ value: e.id.toString(), label: e.name }))}
             value={formData.exam_type_id.toString()}
-            onChange={(val) => handleChange("exam_type_id", parseInt(val))}
+            onChange={(val: string) => handleChange("exam_type_id", parseInt(val))}
             placeholder="Select Exam Type"
             required
           />
@@ -486,20 +348,20 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
 
         <div>
           <label className="block text-sm font-bold text-gray-700 mb-2 uppercase tracking-wide">Select Cadet <span className="text-gray-500 font-normal italic">(Search by Name or BD No)</span><span className="text-red-500">*</span></label>
-          
           <SearchableSelect
-            options={filteredCadets.map(c => ({ 
-              value: c.id.toString(), 
-              label: `${c.name} (${c.bd_no || c.cadet_number})${cadetToResultMap[c.id] ? " — [ALREADY COUNSELED]" : ""}` 
+            options={cadets.map((c: any) => ({
+              value: c.id.toString(),
+              label: `${c.name} (${c.bd_no || c.cadet_number})${cadetToResultMap[c.id] ? " — [ALREADY COUNSELED]" : ""}`,
+              ...(cadetToResultMap[c.id] ? { className: "text-orange-500 font-medium" } : {}),
             }))}
             value={formData.cadet_id.toString()}
-            onChange={(val) => handleChange("cadet_id", parseInt(val))}
+            onChange={(val: string) => handleChange("cadet_id", parseInt(val))}
             placeholder={
-              !formData.course_id
-                ? "Select course/semester first"
+              !formData.course_id || !formData.semester_id
+                ? "Select course & semester first"
                 : loadingCadets
                   ? "Loading cadets..."
-                  : filteredCadets.length === 0
+                  : cadets.length === 0
                     ? "No assigned cadets found"
                     : "Search for a cadet..."
             }
@@ -509,7 +371,7 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
         </div>
       </div>
 
-      {/* Input Matrix / Table - Exactly following the 'before' format structure */}
+      {/* Input Matrix */}
       {!showEvents ? (
         <div className="text-center py-12 text-gray-500 border border-dashed border-black rounded-xl">
           <Icon icon="hugeicons:user-edit" className="w-12 h-12 mx-auto mb-3 text-black" />
@@ -552,7 +414,7 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
               </tr>
             </thead>
             <tbody>
-              {availableEvents.map((event, index) => (
+              {availableEvents.map((event: AtwAssessmentCounselingEvent, index: number) => (
                 <tr key={event.id} className={index !== availableEvents.length - 1 ? "border-b border-black" : ""}>
                   <td className="px-4 py-3 text-sm text-gray-900 border-r border-black font-medium">
                     {event.event_name}
@@ -560,7 +422,7 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
                   <td className="px-4 py-3 border-r border-black min-w-[450px]">
                     <textarea
                       value={eventRemarks[event.id] || ""}
-                      onChange={(e) => handleEventRemarkChange(event.id, e.target.value)}
+                      onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => handleEventRemarkChange(event.id, e.target.value)}
                       className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none min-h-[80px] resize-none text-sm"
                       placeholder="Enter remarks..."
                       required
@@ -571,7 +433,7 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
                       <td rowSpan={availableEvents.length} className="px-4 py-3 border-r border-black align-middle text-center bg-white max-w-[150px]">
                         <DatePicker
                           value={formData.counseling_date}
-                          onChange={(e) => handleChange("counseling_date", e.target.value)}
+                          onChange={(e: any) => handleChange("counseling_date", e.target.value)}
                           placeholder="Select Date"
                           className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none text-center"
                         />

@@ -338,6 +338,38 @@ export const atwAssessmentOlqResultService = {
       throw error;
     }
   },
+
+  /**
+   * Bulk approve cadets
+   */
+  async bulkApprove(data: { result_id: number; cadet_ids: number[]; authority_id: number }): Promise<boolean> {
+    try {
+      const token = getToken();
+      if (!token) throw new Error('Authentication token not found.');
+
+      const result = await apiClient.post<any>('/atw-assessment-olq-results/bulk-approve', data, token);
+      return result?.success || false;
+    } catch (error) {
+      console.error('Failed to bulk approve:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Bulk reject cadets
+   */
+  async bulkReject(data: { result_id: number; cadet_ids: number[]; authority_id: number; reason?: string }): Promise<boolean> {
+    try {
+      const token = getToken();
+      if (!token) throw new Error('Authentication token not found.');
+
+      const result = await apiClient.post<any>('/atw-assessment-olq-results/bulk-reject', data, token);
+      return result?.success || false;
+    } catch (error) {
+      console.error('Failed to bulk reject:', error);
+      throw error;
+    }
+  },
 };
 
 export default atwAssessmentOlqResultService;

@@ -10,7 +10,7 @@ import { atwInstructorAssignSubjectService } from "@/libs/services/atwInstructor
 import { atwSubjectGroupService } from "@/libs/services/atwSubjectGroupService";
 import { useAuth } from "@/libs/hooks/useAuth";
 import { Icon } from "@iconify/react";
-import type { SystemCourse, SystemSemester, SystemProgram, SystemExam, AtwSubjectsModuleMarksheetMark, AtwSubjectModule } from "@/libs/types/system";
+import type { SystemCourse, SystemSemester, SystemProgram, SystemProgramChangeableSemester, SystemExam, AtwSubjectsModuleMarksheetMark, AtwSubjectModule } from "@/libs/types/system";
 import type { AtwResult } from "@/libs/types/atwResult";
 import Link from "next/link";
 
@@ -49,6 +49,7 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
     course_id: 0,
     semester_id: 0,
     program_id: 0,
+    system_programs_changeable_semester_id: null as number | null,
     exam_type_id: 0,
     atw_subject_id: 0, // This will store the Subject Module ID
     instructor_id: 0,
@@ -84,8 +85,12 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
             course_id: formData.course_id,
             semester_id: formData.semester_id,
             program_id: formData.program_id,
+            ...(formData.system_programs_changeable_semester_id
+              ? { system_programs_changeable_semester_id: formData.system_programs_changeable_semester_id }
+              : { changeable_semester_null: true }
+            ),
             exam_type_id: formData.exam_type_id,
-            atw_subject_id: formData.atw_subject_id, // This is the module ID
+            atw_subject_id: formData.atw_subject_id,
             instructor_id: formData.instructor_id
           });
 
@@ -118,6 +123,7 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
     formData.course_id,
     formData.semester_id,
     formData.program_id,
+    formData.system_programs_changeable_semester_id,
     formData.exam_type_id,
     formData.atw_subject_id,
     formData.instructor_id,
@@ -130,6 +136,8 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
   const [semesters, setSemesters] = useState<SystemSemester[]>([]);
   const [programs, setPrograms] = useState<SystemProgram[]>([]);
   const [exams, setExams] = useState<SystemExam[]>([]);
+  // Tracks which program IDs can show as a base (non-changeable) option; null = no restriction (admin)
+  const [baseAllowedProgramIds, setBaseAllowedProgramIds] = useState<Set<number> | null>(null);
   const [subjectMappings, setSubjectMappings] = useState<AtwSubjectModule[]>([]);
   const [loadingDropdowns, setLoadingDropdowns] = useState(true);
   const [loadingCadets, setLoadingCadets] = useState(false);
@@ -149,32 +157,75 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
         if (options) {
           let coursesList = options.courses;
 
+          // programs now include changeable_semesters from getResultOptions
+          let programsList: SystemProgram[] = options.programs;
+
           if (!userIsSystemAdmin && user?.id) {
-            // Fetch UNIQUE courses from instructor assignments
+            // Fetch UNIQUE courses and programs from instructor assignments
             try {
               const res = await atwInstructorAssignSubjectService.getAll({
                 instructor_id: user.id,
                 per_page: 1000
               });
-              
+
               if (res && res.data && res.data.length > 0) {
                 const assignedCourseIds = new Set(res.data.map((as: any) => Number(as.course_id)));
+                const assignedProgramIds = new Set(res.data.map((as: any) => Number(as.program_id)));
+                const assignedChangeableIds = new Set(
+                  res.data
+                    .filter((as: any) => as.system_programs_changeable_semester_id != null)
+                    .map((as: any) => Number(as.system_programs_changeable_semester_id))
+                );
+                const programsWithBaseAssignments = new Set(
+                  res.data
+                    .filter((as: any) => as.system_programs_changeable_semester_id == null)
+                    .map((as: any) => Number(as.program_id))
+                );
                 coursesList = options.courses.filter(c => assignedCourseIds.has(Number(c.id)));
+                programsList = options.programs
+                  .filter(p => assignedProgramIds.has(Number(p.id)))
+                  .map(p => ({
+                    ...p,
+                    changeable_semesters: (p.changeable_semesters || []).filter(
+                      (cs: SystemProgramChangeableSemester) => assignedChangeableIds.has(Number(cs.id))
+                    )
+                  }));
+                setBaseAllowedProgramIds(programsWithBaseAssignments);
               } else {
                 // Try alternate method
                 const instructorAssignments = await atwInstructorAssignSubjectService.getByInstructor(user.id);
                 if (instructorAssignments && instructorAssignments.length > 0) {
                   const assignedCourseIds = new Set(instructorAssignments.map((as: any) => Number(as.course_id)));
+                  const assignedProgramIds = new Set(instructorAssignments.map((as: any) => Number(as.program_id)));
+                  const assignedChangeableIds = new Set(
+                    instructorAssignments
+                      .filter((as: any) => as.system_programs_changeable_semester_id != null)
+                      .map((as: any) => Number(as.system_programs_changeable_semester_id))
+                  );
+                  const programsWithBaseAssignments = new Set(
+                    instructorAssignments
+                      .filter((as: any) => as.system_programs_changeable_semester_id == null)
+                      .map((as: any) => Number(as.program_id))
+                  );
                   coursesList = options.courses.filter(c => assignedCourseIds.has(Number(c.id)));
+                  programsList = options.programs
+                    .filter(p => assignedProgramIds.has(Number(p.id)))
+                    .map(p => ({
+                      ...p,
+                      changeable_semesters: (p.changeable_semesters || []).filter(
+                        (cs: SystemProgramChangeableSemester) => assignedChangeableIds.has(Number(cs.id))
+                      )
+                    }));
+                  setBaseAllowedProgramIds(programsWithBaseAssignments);
                 }
               }
             } catch (err) {
-              console.error("Failed to fetch instructor assignments for course filtering:", err);
+              console.error("Failed to fetch instructor assignments for course/program filtering:", err);
             }
           }
 
           setCourses(coursesList);
-          setPrograms(options.programs);
+          setPrograms(programsList);
           setExams(options.exams);
         }
       } catch (err) {
@@ -198,11 +249,16 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
     try {
       let modules: AtwSubjectModule[] = [];
 
+      const changeableFilter = formData.system_programs_changeable_semester_id
+        ? { system_programs_changeable_semester_id: formData.system_programs_changeable_semester_id }
+        : { changeable_semester_null: true };
+
       if (userIsSystemAdmin) {
         // Admin: Load subjects available for this Semester + Program
         const response = await atwSubjectGroupService.getAllSubjectGroups({
           semester_id: formData.semester_id,
           program_id: formData.program_id,
+          ...changeableFilter,
           per_page: 500,
         });
 
@@ -216,6 +272,7 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
           course_id: formData.course_id,
           semester_id: formData.semester_id,
           program_id: formData.program_id,
+          ...changeableFilter,
           per_page: 500
         });
 
@@ -249,7 +306,7 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
     } catch (err) {
       console.error("Failed to load subjects:", err);
     }
-  }, [formData.course_id, formData.semester_id, formData.program_id, userIsSystemAdmin, user, isEdit, initialData]);
+  }, [formData.course_id, formData.semester_id, formData.program_id, formData.system_programs_changeable_semester_id, userIsSystemAdmin, user, isEdit, initialData]);
 
   useEffect(() => {
     loadSubjects();
@@ -257,31 +314,31 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
 
   useEffect(() => {
     if (formData.atw_subject_id) {
-      const module = subjectMappings.find(s => s.id === formData.atw_subject_id);
-      setSelectedSubjectMapping(module || null);
-      
-      if (module?.marksheet?.marks) {
+      const subjectModule = subjectMappings.find(s => s.id === formData.atw_subject_id);
+      setSelectedSubjectMapping(subjectModule || null);
+
+      if (subjectModule?.marksheet?.marks) {
         const groups: { [key: string]: AtwSubjectsModuleMarksheetMark[] } = {};
-        module.marksheet.marks.forEach(mark => {
+        subjectModule.marksheet.marks.forEach(mark => {
           const type = mark.type || "Other";
           if (!groups[type]) groups[type] = [];
           groups[type].push(mark);
         });
         setMarkGroups(Object.entries(groups).map(([type, marks]) => ({ type, marks })));
-        setFormData(prev => ({ ...prev, atw_subject_module_id: module.id } as any));
+        setFormData(prev => ({ ...prev, atw_subject_module_id: subjectModule.id } as any));
       } else {
         // Fallback: if we are in Edit mode and the initialData has the subject with marks
         if (isEdit && initialData?.subject?.id === formData.atw_subject_id && initialData.subject.marksheet?.marks) {
-          const module = initialData.subject;
-          setSelectedSubjectMapping(module);
+          const fallbackModule = initialData.subject;
+          setSelectedSubjectMapping(fallbackModule);
           const groups: { [key: string]: AtwSubjectsModuleMarksheetMark[] } = {};
-          module.marksheet.marks.forEach((mark: any) => {
+          fallbackModule.marksheet.marks.forEach((mark: any) => {
             const type = mark.type || "Other";
             if (!groups[type]) groups[type] = [];
             groups[type].push(mark);
           });
           setMarkGroups(Object.entries(groups).map(([type, marks]) => ({ type, marks })));
-          setFormData(prev => ({ ...prev, atw_subject_module_id: module.id } as any));
+          setFormData(prev => ({ ...prev, atw_subject_module_id: fallbackModule.id } as any));
         } else {
           setMarkGroups([]);
           setFormData(prev => ({ ...prev, atw_subject_module_id: 0 } as any));
@@ -307,11 +364,15 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
         setLoadingCadets(true);
 
         // Get ALL cadets assigned to this course, semester, program where is_current is true
+        // If a changeable program is selected (e.g. BSc in Engineering), filter by that too
         const cadetsRes = await cadetService.getAllCadets({
           per_page: 500,
           course_id: formData.course_id,
           semester_id: formData.semester_id,
           program_id: formData.program_id,
+          ...(formData.system_programs_changeable_semester_id
+            ? { changeable_program_id: formData.system_programs_changeable_semester_id }
+            : { exclude_changeable: 1 }),
           is_current: 1
         });
         
@@ -359,6 +420,7 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
         course_id: initialData.course_id,
         semester_id: initialData.semester_id,
         program_id: initialData.program_id,
+        system_programs_changeable_semester_id: initialData.system_programs_changeable_semester_id ?? null,
         exam_type_id: initialData.exam_type_id,
         atw_subject_id: initialData.atw_subject_id || initialData.atw_subject_module_id || 0,
         instructor_id: initialData.instructor_id || 0,
@@ -412,9 +474,43 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
     fetchSemesters();
   }, [formData.course_id, isEdit]);
 
+  // Get changeable program options for selected semester (SubjectForm pattern)
+  const getChangeableOptions = (): { csId: number; programId: number; label: string }[] => {
+    if (!formData.semester_id) return [];
+    const result: { csId: number; programId: number; label: string }[] = [];
+    programs.forEach(p => {
+      p.changeable_semesters?.forEach((cs: SystemProgramChangeableSemester) => {
+        if (cs.semester_id === formData.semester_id) {
+          result.push({ csId: cs.id, programId: p.id, label: `${cs.name} (${cs.code})` });
+        }
+      });
+    });
+    return result;
+  };
+
+  // Encoded select value (SubjectForm pattern)
+  const progSelectValue = formData.system_programs_changeable_semester_id
+    ? `cs:${formData.system_programs_changeable_semester_id}:${formData.program_id}`
+    : formData.program_id === 0 ? '0' : String(formData.program_id);
+
+  const handleProgramChange = (val: string) => {
+    if (!val || val === '0') {
+      setFormData(prev => ({ ...prev, program_id: 0, system_programs_changeable_semester_id: null, atw_subject_id: 0 }));
+      return;
+    }
+    if (val.startsWith('cs:')) {
+      const parts = val.split(':');
+      setFormData(prev => ({ ...prev, system_programs_changeable_semester_id: Number(parts[1]), program_id: Number(parts[2]), atw_subject_id: 0 }));
+    } else {
+      setFormData(prev => ({ ...prev, program_id: Number(val), system_programs_changeable_semester_id: null, atw_subject_id: 0 }));
+    }
+  };
+
   const handleChange = (field: string, value: any) => {
     if (field === 'course_id') {
-      setFormData(prev => ({ ...prev, [field]: value, semester_id: 0 }));
+      setFormData(prev => ({ ...prev, [field]: value, semester_id: 0, program_id: 0, system_programs_changeable_semester_id: null, atw_subject_id: 0 }));
+    } else if (field === 'semester_id') {
+      setFormData(prev => ({ ...prev, [field]: value, program_id: 0, system_programs_changeable_semester_id: null, atw_subject_id: 0 }));
     } else {
       setFormData(prev => ({ ...prev, [field]: value }));
     }
@@ -461,26 +557,73 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
     try {
       const submitData = {
         ...formData,
+        system_programs_changeable_semester_id: formData.system_programs_changeable_semester_id ?? null,
         atw_subject_module_id: moduleId, // Ensure module ID is sent
-        cadets: cadetRows.filter(c => c.cadet_id > 0).map(c => ({
-          cadet_id: c.cadet_id,
-          cadet_bd_no: c.cadet_bd_no,
-          remarks: c.remarks || undefined,
-          is_present: c.is_present,
-          absent_reason: c.is_present ? undefined : c.absent_reason,
-          is_active: c.is_active,
-          marks: Object.entries(c.marks).map(([markId, achievedMark]) => ({
-            atw_subject_module_id: moduleId,
-            atw_subjects_module_marksheet_mark_id: parseInt(markId),
-            achieved_mark: typeof achievedMark === "number" ? achievedMark : (parseFloat(achievedMark as string) || 0),
-            is_active: true,
-          })),
-        })),
+        cadets: cadetRows.filter(c => c.cadet_id > 0).map(c => {
+          const allMarksList = selectedSubjectMapping?.marksheet?.marks || [];
+          const combinedMarks = allMarksList.filter(m => m.is_combined);
+          return {
+            cadet_id: c.cadet_id,
+            cadet_bd_no: c.cadet_bd_no,
+            remarks: c.remarks || undefined,
+            is_present: c.is_present,
+            absent_reason: c.is_present ? undefined : c.absent_reason,
+            is_active: c.is_active,
+            marks: [
+              ...Object.entries(c.marks).map(([markId, achievedMark]) => ({
+                atw_subject_module_id: moduleId,
+                atw_subjects_module_marksheet_mark_id: parseInt(markId),
+                achieved_mark: typeof achievedMark === "number" ? achievedMark : (parseFloat(achievedMark as string) || 0),
+                is_active: true,
+              })),
+              ...(c.is_present ? combinedMarks.map(m => ({
+                atw_subject_module_id: moduleId,
+                atw_subjects_module_marksheet_mark_id: m.id,
+                achieved_mark: calcCombinedValue(m, c.marks),
+                is_active: true,
+              })) : []),
+            ],
+          };
+        }),
       };
       await onSubmit(submitData);
     } catch (err: any) {
       setError(err.message || `Failed to ${isEdit ? 'update' : 'create'} result`);
     }
+  };
+
+  // Set of mark IDs that are referenced by a combined mark (should be excluded from total)
+  const refMarkIds = useMemo(() => {
+    const marks = selectedSubjectMapping?.marksheet?.marks || [];
+    return new Set(marks.flatMap(m =>
+      m.is_combined && m.combined_cols ? m.combined_cols.map(c => c.referenced_mark_id) : []
+    ));
+  }, [selectedSubjectMapping]);
+
+  // Map of mark ID → mark object for combined value lookups
+  const marksById = useMemo(() => {
+    const marks = selectedSubjectMapping?.marksheet?.marks || [];
+    return Object.fromEntries(marks.map(m => [m.id, m]));
+  }, [selectedSubjectMapping]);
+
+  // Calculate a combined mark's auto value: best (n-1) of n referenced inputs, scaled to combined_percentage
+  const calcCombinedValue = (mark: AtwSubjectsModuleMarksheetMark, cadetMarkValues: { [markId: number]: number | string }): number => {
+    if (!mark.combined_cols || mark.combined_cols.length === 0) return 0;
+    const bestCount = mark.combined_cols.length - 1;
+    if (bestCount <= 0) return 0;
+    const refValues = mark.combined_cols.map(col => {
+      const refMark = marksById[col.referenced_mark_id];
+      const val = cadetMarkValues[col.referenced_mark_id];
+      const inputVal = val !== undefined && val !== "" ? parseFloat(String(val)) || 0 : 0;
+      const estMark = Number(refMark?.estimate_mark) || 0;
+      return { inputVal, estMark };
+    });
+    refValues.sort((a, b) => b.inputVal - a.inputVal);
+    const best = refValues.slice(0, bestCount);
+    const sumInputs = best.reduce((acc, r) => acc + r.inputVal, 0);
+    const sumEstimates = best.reduce((acc, r) => acc + r.estMark, 0);
+    if (sumEstimates === 0) return sumInputs;
+    return (sumInputs / sumEstimates) * Number(mark.percentage);
   };
 
   const filtersSelected = formData.course_id && formData.semester_id && formData.program_id;
@@ -550,9 +693,16 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
 
             <div>
               <Label>Program <span className="text-red-500">*</span></Label>
-              <select value={formData.program_id} onChange={(e) => handleChange("program_id", parseInt(e.target.value))} className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed" required disabled={isEdit}>
+              <select value={progSelectValue} onChange={(e) => handleProgramChange(e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed" required disabled={isEdit}>
                 <option value={0}>Select Program</option>
-                {programs.map(program => (<option key={program.id} value={program.id}>{program.name} ({program.code})</option>))}
+                {programs
+                  .filter(p => !baseAllowedProgramIds || baseAllowedProgramIds.has(Number(p.id)))
+                  .map(p => (
+                    <option key={p.id} value={p.id}>{p.name} ({p.code})</option>
+                  ))}
+                {getChangeableOptions().map(c => (
+                  <option key={`cs-${c.csId}`} value={`cs:${c.csId}:${c.programId}`}>{c.label}</option>
+                ))}
               </select>
             </div>
 
@@ -623,7 +773,7 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
             <div className="overflow-x-auto">
               <table className="w-full border-collapse border border-black text-sm">
                 <thead>
-                  {/* First header row - Mark type groups */}
+                  {/* First header row - Mark type groups (single-col groups span all 3 rows) */}
                   <tr>
                     <th className="border border-black px-3 py-2 text-center" rowSpan={3}>SL</th>
                     <th className="border border-black px-3 py-2 text-center" rowSpan={3}>BD NO.</th>
@@ -631,67 +781,81 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
                     <th className="border border-black px-3 py-2 text-left" rowSpan={3}>NAME</th>
                     <th className="border border-black px-3 py-2 text-center" rowSpan={3}>BRANCH</th>
                     <th className="border border-black px-3 py-2 text-center" rowSpan={3}>PRESENT</th>
-                    {markGroups.map(group => (
-                      <th
-                        key={group.type}
-                        className="border border-black px-3 py-2 text-center font-semibold uppercase"
-                        colSpan={group.marks.reduce((acc, m) => acc + (Number(m.estimate_mark) !== Number(m.percentage) ? 2 : 1), 0)}
-                      >
-                        {group.type}
-                      </th>
-                    ))}
+                    {markGroups.map(group => {
+                      const colSpan = group.marks.reduce((acc, m) => acc + (!m.is_combined && Number(m.estimate_mark) !== Number(m.percentage) ? 2 : 1), 0);
+                      if (colSpan === 1) {
+                        const m = group.marks[0];
+                        const est = Number(m.estimate_mark);
+                        const pct = Number(m.percentage);
+                        return (
+                          <th key={group.type} className="border border-black px-2 py-1 text-center font-semibold uppercase min-w-[100px]" rowSpan={3}>
+                            <div className="text-xs">{m.name}</div>
+                            <div className="text-xs font-bold">{(!m.is_combined && est !== pct) ? `${est}/${pct}` : pct}</div>
+                          </th>
+                        );
+                      }
+                      return (
+                        <th key={group.type} className="border border-black px-3 py-2 text-center font-semibold uppercase" colSpan={colSpan}>
+                          {group.type}
+                        </th>
+                      );
+                    })}
                     <th className="border border-black px-3 py-2 text-center font-bold" rowSpan={3}>TOTAL</th>
                   </tr>
-                  {/* Second header row - Individual marks */}
+                  {/* Second header row - mark names for multi-col groups only */}
                   <tr>
-                    {markGroups.flatMap(group =>
-                      group.marks.map(mark => (
+                    {markGroups.flatMap(group => {
+                      const colSpan = group.marks.reduce((acc, m) => acc + (!m.is_combined && Number(m.estimate_mark) !== Number(m.percentage) ? 2 : 1), 0);
+                      if (colSpan === 1) return [];
+                      return group.marks.map(mark => (
                         <th key={mark.id}
                           className="border border-black px-2 py-2 text-center"
-                          colSpan={Number(mark.estimate_mark) !== Number(mark.percentage) ? 2 : 1}
+                          colSpan={!mark.is_combined && Number(mark.estimate_mark) !== Number(mark.percentage) ? 2 : 1}
                         >
                           <div className="text-xs font-medium uppercase">{mark.name}</div>
                         </th>
-                      ))
-                    )}
+                      ));
+                    })}
                   </tr>
-                  {/* Third header row - Sub-labels */}
+                  {/* Third header row - sub-labels for multi-col groups only */}
                   <tr>
-                    {markGroups.flatMap(group =>
-                      group.marks.map(mark => {
-                        if (Number(mark.estimate_mark) !== Number(mark.percentage)) {
+                    {markGroups.flatMap(group => {
+                      const colSpan = group.marks.reduce((acc, m) => acc + (!m.is_combined && Number(m.estimate_mark) !== Number(m.percentage) ? 2 : 1), 0);
+                      if (colSpan === 1) return [];
+                      return group.marks.map(mark => {
+                        if (!mark.is_combined && Number(mark.estimate_mark) !== Number(mark.percentage)) {
                           return (
                             <React.Fragment key={`sub-${mark.id}`}>
                               <th className="border border-black px-1 py-1 text-center w-[80px] min-w-[80px] max-w-[80px]">{Number(mark.estimate_mark).toFixed(0)}</th>
                               <th className="border border-black px-1 py-1 text-center w-[80px] min-w-[80px] max-w-[80px]">{Number(mark.percentage).toFixed(0)}</th>
                             </React.Fragment>
                           );
-                        } else {
-                          return (
-                            <th key={`sub-${mark.id}`} className="border border-black px-1 py-1 text-center w-[100px] min-w-[100px] max-w-[100px]">
-                              {Number(mark.percentage).toFixed(0)}
-                            </th>
-                          );
                         }
-                      })
-                    )}
+                        return (
+                          <th key={`sub-${mark.id}`} className="border border-black px-1 py-1 text-center w-[100px] min-w-[100px] max-w-[100px]">
+                            {Number(mark.percentage).toFixed(0)}
+                          </th>
+                        );
+                      });
+                    })}
                   </tr>
                 </thead>
                 <tbody>
                   {cadetRows.map((cadet, index) => {
-                    // Calculate row total
+                    // Calculate row total — referenced marks excluded (combined replaces them)
                     const rowTotal = markGroups.reduce((acc, group) => {
                       return acc + group.marks.reduce((groupAcc, mark) => {
+                        if (refMarkIds.has(mark.id)) return groupAcc; // skip — counted via combined
+                        if (mark.is_combined) {
+                          return groupAcc + (cadet.is_present ? calcCombinedValue(mark, cadet.marks) : 0);
+                        }
                         const markVal = cadet.marks[mark.id];
                         const inputMark = markVal !== undefined && markVal !== "" ? parseFloat(String(markVal)) || 0 : 0;
                         let adjustedMark = inputMark;
-
-                        // If estimate_mark and percentage are different, convert input to percentage equivalent
                         if (Number(mark.estimate_mark) !== Number(mark.percentage) && mark.estimate_mark > 0) {
                           adjustedMark = (inputMark / mark.estimate_mark) * mark.percentage;
                         }
-
-                        return groupAcc + adjustedMark;
+                        return groupAcc + (cadet.is_present ? adjustedMark : 0);
                       }, 0);
                     }, 0);
 
@@ -716,7 +880,16 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
                           group.marks.map(mark => {
                             const markVal = cadet.marks[mark.id];
                             const inputMark = markVal !== undefined && markVal !== "" ? parseFloat(String(markVal)) || 0 : 0;
-                            const isSplit = Number(mark.estimate_mark) !== Number(mark.percentage);
+                            const isSplit = !mark.is_combined && Number(mark.estimate_mark) !== Number(mark.percentage);
+
+                            if (mark.is_combined) {
+                              const combinedVal = cadet.is_present ? calcCombinedValue(mark, cadet.marks) : 0;
+                              return (
+                                <td key={mark.id} className={`border border-black px-2 py-1 text-center w-[100px] min-w-[100px] max-w-[100px] font-bold ${!cadet.is_present ? "bg-gray-200 text-gray-400" : "bg-blue-50 text-blue-800"}`}>
+                                  {cadet.is_present ? combinedVal.toFixed(2) : "—"}
+                                </td>
+                              );
+                            }
 
                             if (isSplit) {
                               const convertedValue = mark.estimate_mark > 0 ? (inputMark / mark.estimate_mark) * mark.percentage : 0;

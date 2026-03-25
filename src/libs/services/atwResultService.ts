@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * ATW Result Service
  * API calls for ATW result management
@@ -21,6 +22,8 @@ interface ResultQueryParams {
   course_id?: number;
   semester_id?: number;
   program_id?: number;
+  system_programs_changeable_semester_id?: number | null;
+  changeable_semester_null?: boolean;
   exam_type_id?: number;
   instructor_id?: number;
   atw_subject_id?: number;
@@ -89,6 +92,32 @@ interface SingleMarkApiResponse {
 
 export const atwResultService = {
   /**
+   * Get combined data for ATW results view
+   */
+  async getCombinedViewData(params?: ResultQueryParams): Promise<any> {
+    try {
+      const query = new URLSearchParams();
+
+      if (params?.page) query.append('page', params.page.toString());
+      if (params?.per_page) query.append('per_page', params.per_page.toString());
+      if (params?.search) query.append('search', params.search);
+      if (params?.course_id) query.append('course_id', params.course_id.toString());
+      if (params?.semester_id) query.append('semester_id', params.semester_id.toString());
+      if (params?.program_id) query.append('program_id', params.program_id.toString());
+      if (params?.instructor_id) query.append('instructor_id', params.instructor_id.toString());
+
+      const endpoint = `/atw-results/combined-view${query.toString() ? `?${query.toString()}` : ''}`;
+      const token = getToken();
+      const result = await apiClient.get<{ success: boolean; data: any }>(endpoint, token);
+
+      return result?.data || null;
+    } catch (error) {
+      console.error('Failed to fetch combined view data:', error);
+      return null;
+    }
+  },
+
+  /**
    * Get all results with pagination
    */
   async getAllResults(params?: ResultQueryParams): Promise<ResultPaginatedResponse> {
@@ -101,6 +130,8 @@ export const atwResultService = {
       if (params?.course_id) query.append('course_id', params.course_id.toString());
       if (params?.semester_id) query.append('semester_id', params.semester_id.toString());
       if (params?.program_id) query.append('program_id', params.program_id.toString());
+      if (params?.system_programs_changeable_semester_id) query.append('system_programs_changeable_semester_id', params.system_programs_changeable_semester_id.toString());
+      if (params?.changeable_semester_null) query.append('changeable_semester_null', '1');
       if (params?.exam_type_id) query.append('exam_type_id', params.exam_type_id.toString());
       if (params?.instructor_id) query.append('instructor_id', params.instructor_id.toString());
       if (params?.atw_subject_id) query.append('atw_subject_id', params.atw_subject_id.toString());
@@ -138,6 +169,8 @@ export const atwResultService = {
       if (params.course_id) query.append('course_id', params.course_id.toString());
       if (params.semester_id) query.append('semester_id', params.semester_id.toString());
       if (params.program_id) query.append('program_id', params.program_id.toString());
+      if (params.system_programs_changeable_semester_id) query.append('system_programs_changeable_semester_id', params.system_programs_changeable_semester_id.toString());
+      if (params.changeable_semester_null) query.append('changeable_semester_null', '1');
 
       if (params.exam_type_id) query.append('exam_type_id', params.exam_type_id.toString());
       if (params.instructor_id) query.append('instructor_id', params.instructor_id.toString());

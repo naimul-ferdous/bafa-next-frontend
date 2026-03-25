@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { Icon } from "@iconify/react";
 import { atwAssessmentOlqResultService } from "@/libs/services/atwAssessmentOlqResultService";
@@ -41,6 +41,7 @@ export default function OlqResultDetailsPage() {
 
   // Bulk select state
   const [selectedCadetIds, setSelectedCadetIds] = useState<number[]>([]);
+  const [activeTabIndex, setActiveTabIndex] = useState(0);
 
   // Approval modal
   const [approvalModal, setApprovalModal] = useState<{
@@ -48,7 +49,9 @@ export default function OlqResultDetailsPage() {
     cadetIds: number[];
     loading: boolean;
     error: string;
-  }>({ open: false, cadetIds: [], loading: false, error: "" });
+    type: "approve" | "reject";
+    reason?: string;
+  }>({ open: false, cadetIds: [], loading: false, error: "", type: "approve" });
 
   // Forward modal
   const [forwardModal, setForwardModal] = useState<{
@@ -66,32 +69,19 @@ export default function OlqResultDetailsPage() {
       if (data) {
         setResult(data);
         setSelectedCadetIds([]);
-        // Load ALL approvals filtered by this result's context
-        const approvalsParams: any = {
-          course_id:   data.course_id,
-          semester_id: data.semester_id,
-          program_id:  data.program_id,
-          branch_id:   data.branch_id,
-          allData:     true,
-        };
 
-        const approvalsRes = await atwOlqCadetApprovalService.getApprovals(approvalsParams);
-        setApprovals(approvalsRes.data);
+        // Use approvals from the combined API response
+        if (data.cadet_approvals) {
+          setApprovals(data.cadet_approvals);
+        }
 
-        // Fetch ALL semester approvals to check forward status
-        const semesterAppRes = await atwOlqSemesterApprovalService.getApprovals({
-          ...approvalsParams
-        });
-        if (semesterAppRes.data && semesterAppRes.data.length > 0) {
-          setSemesterApprovals(semesterAppRes.data);
+        if (data.semester_approvals) {
+          setSemesterApprovals(data.semester_approvals);
           // Check if there is an approval for the current user
-          const myApproval = user?.id 
-            ? semesterAppRes.data.find((a) => a.forwarded_by === user.id)
+          const myApproval = user?.id
+            ? data.semester_approvals.find((a) => a.forwarded_by === user.id)
             : null;
           setSemesterApproval(myApproval || null);
-        } else {
-          setSemesterApprovals([]);
-          setSemesterApproval(null);
         }
       } else {
         setError("OLQ Result not found");
@@ -132,7 +122,7 @@ export default function OlqResultDetailsPage() {
             setCurrentAuthorityId(null);
             setCurrentAuthority(null);
           }
-          
+
         }
       } catch (err) {
         console.error("Failed to fetch approval authorities:", err);
@@ -182,45 +172,36 @@ export default function OlqResultDetailsPage() {
     setSelectedCadetIds(allPendingSelected ? [] : pendingCadetIds);
 
   const openApprovalModal = (cadetIds: number[]) =>
-    setApprovalModal({ open: true, cadetIds, loading: false, error: "" });
+    setApprovalModal({ open: true, cadetIds, loading: false, error: "", type: "approve" });
 
-  const confirmApproval = async () => {
+  const openRejectModal = (cadetIds: number[]) =>
+    setApprovalModal({ open: true, cadetIds, loading: false, error: "", type: "reject", reason: "" });
+
+  const confirmBulkAction = async () => {
     if (!result || !currentAuthorityId) return;
     setApprovalModal((prev) => ({ ...prev, loading: true, error: "" }));
     try {
-      await Promise.all(
-        approvalModal.cadetIds.map(async (cadetId) => {
-          const approval = getCurrentCadetApproval(cadetId);
-          if (approval) {
-            // Update existing record
-            await atwOlqCadetApprovalService.update(approval.id, {
-              status:        "approved",
-              approved_by:   user?.id,
-              approved_date: new Date().toISOString(),
-            });
-          } else {
-            // Create if not exists
-            await atwOlqCadetApprovalService.store({
-              course_id:   result.course_id,
-              semester_id: result.semester_id,
-              program_id:  result.program_id,
-              branch_id:   result.branch_id,
-              cadet_id:    cadetId,
-              status:      "approved",
-              approved_by: user?.id,
-              approved_date: new Date().toISOString(),
-              authority_id: currentAuthorityId,
-            });
-          }
-        })
-      );
+      if (approvalModal.type === "approve") {
+        await atwAssessmentOlqResultService.bulkApprove({
+          result_id: result.id,
+          cadet_ids: approvalModal.cadetIds,
+          authority_id: currentAuthorityId,
+        });
+      } else {
+        await atwAssessmentOlqResultService.bulkReject({
+          result_id: result.id,
+          cadet_ids: approvalModal.cadetIds,
+          authority_id: currentAuthorityId,
+          reason: approvalModal.reason,
+        });
+      }
       setApprovalModal((prev) => ({ ...prev, open: false, loading: false }));
       await loadData();
     } catch (err: any) {
       setApprovalModal((prev) => ({
         ...prev,
         loading: false,
-        error: err?.message || "Failed to approve. Please try again.",
+        error: err?.message || `Failed to ${approvalModal.type}. Please try again.`,
       }));
     }
   };
@@ -233,7 +214,6 @@ export default function OlqResultDetailsPage() {
         course_id: result.course_id,
         semester_id: result.semester_id,
         program_id: result.program_id,
-        branch_id: result.branch_id,
         status: "pending",
         forwarded_by: user?.id || undefined,
         forwarded_at: new Date().toISOString(),
@@ -251,6 +231,51 @@ export default function OlqResultDetailsPage() {
     setSelectedPrintType(type);
     setIsPrintModalOpen(false);
     setTimeout(() => window.print(), 100);
+  };
+
+  const estimatedMarks = result?.olq_type?.estimated_marks || [];
+
+  const calculateTotal = useCallback((cadetMarks: any[]) => {
+    let total = 0;
+    estimatedMarks.forEach((em) => {
+      const mark = cadetMarks.find((m: any) => m.atw_assessment_olq_type_estimated_mark_id === em.id);
+      const achieved = mark ? parseFloat(String(mark.achieved_mark || 0)) : 0;
+      total += parseFloat(String(em.estimated_mark || 0)) * achieved;
+    });
+    if (result?.olq_type?.is_multiplier) {
+      const mult = parseFloat(result.olq_type.multiplier || "1");
+      total *= mult;
+    }
+    return total;
+  }, [estimatedMarks, result?.olq_type?.is_multiplier, result?.olq_type?.multiplier]);
+
+  const rankedCadets = useMemo(() => {
+    return (result?.result_cadets || [])
+      .map((cadet) => ({
+        cadet_id: cadet.cadet_id,
+        total: cadet.is_present ? calculateTotal(cadet.marks || []) : -1,
+        cadet_number: cadet.cadet?.cadet_number || cadet.bd_no || "",
+      }))
+      .sort((a, b) => b.total !== a.total ? b.total - a.total : a.cadet_number.localeCompare(b.cadet_number, undefined, { numeric: true }));
+  }, [result?.result_cadets, calculateTotal]);
+
+  const maxTotal = useMemo(() => {
+    let total = 0;
+    estimatedMarks.forEach((em) => {
+      total += parseFloat(String(em.estimated_mark || 0)) * 10;
+    });
+    if (result?.olq_type?.is_multiplier) {
+      const mult = parseFloat(result.olq_type.multiplier || "1");
+      total *= mult;
+    }
+    return total || 1; // Prevent division by zero
+  }, [estimatedMarks, result?.olq_type?.is_multiplier, result?.olq_type?.multiplier]);
+
+  const getPosition = (cadetId: number) => {
+    const cadet = result?.result_cadets?.find((c) => c.cadet_id === cadetId);
+    if (!cadet?.is_present) return "—";
+    const index = rankedCadets.findIndex((rc) => rc.cadet_id === cadetId);
+    return index === -1 ? "—" : getOrdinal(index + 1);
   };
 
   if (loading) {
@@ -280,37 +305,12 @@ export default function OlqResultDetailsPage() {
     );
   }
 
-  const estimatedMarks = result.olq_type?.estimated_marks || [];
-
-  const calculateTotal = (cadetMarks: { achieved_mark: number | string; atw_assessment_olq_type_estimated_mark_id: number }[]) => {
-    let total = 0;
-    estimatedMarks.forEach((em) => {
-      const mark = cadetMarks.find((m) => m.atw_assessment_olq_type_estimated_mark_id === em.id);
-      const achieved = mark ? parseFloat(String(mark.achieved_mark || 0)) : 0;
-      total += parseFloat(String(em.estimated_mark || 0)) * achieved;
-    });
-    if (result.olq_type?.type_code?.toLowerCase() === "for_116b") total *= 1.5;
-    return total;
-  };
-
-  const rankedCadets = (result.result_cadets || [])
-    .map((cadet) => ({
-      cadet_id: cadet.cadet_id,
-      total: cadet.is_present ? calculateTotal(cadet.marks || []) : -1,
-      cadet_number: cadet.cadet?.cadet_number || cadet.bd_no || "",
-    }))
-    .sort((a, b) => b.total !== a.total ? b.total - a.total : a.cadet_number.localeCompare(b.cadet_number, undefined, { numeric: true }));
-
-  const getPosition = (cadetId: number) => {
-    const cadet = result.result_cadets?.find((c) => c.cadet_id === cadetId);
-    if (!cadet?.is_present) return "—";
-    const index = rankedCadets.findIndex((rc) => rc.cadet_id === cadetId);
-    return index === -1 ? "—" : getOrdinal(index + 1);
-  };
+  const groupedCadets = result.grouped_cadets || [];
+  const activeGroup = groupedCadets[activeTabIndex];
 
   return (
     <div className="print-no-border bg-white rounded-lg border border-gray-200">
-       <style jsx global>{`
+      <style jsx global>{`
         @media print {
           .cv-content {
             width: 100% !important;
@@ -326,11 +326,15 @@ export default function OlqResultDetailsPage() {
           .no-print {
             display: none !important;
           }
+          .tab-container {
+            display: none !important;
+          }
         }
       `}</style>
 
       {/* Dynamic @page rules — overrides browser default header/footer with custom content */}
-      <style dangerouslySetInnerHTML={{ __html: `
+      <style dangerouslySetInnerHTML={{
+        __html: `
         @media print {
           @page {
             size: A3 landscape;
@@ -374,15 +378,24 @@ export default function OlqResultDetailsPage() {
         </button>
 
         <div className="flex items-center gap-3">
-          {/* Bulk approve button */}
+          {/* Bulk select buttons */}
           {selectedCadetIds.length > 0 && (
-            <button
-              onClick={() => openApprovalModal(selectedCadetIds)}
-              className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2 text-sm font-medium"
-            >
-              <Icon icon="hugeicons:checkmark-circle-02" className="w-4 h-4" />
-              Approve Selected ({selectedCadetIds.length})
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => openApprovalModal(selectedCadetIds)}
+                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2 text-sm font-medium"
+              >
+                <Icon icon="hugeicons:checkmark-circle-02" className="w-4 h-4" />
+                Approve ({selectedCadetIds.length})
+              </button>
+              <button
+                onClick={() => openRejectModal(selectedCadetIds)}
+                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 flex items-center gap-2 text-sm font-medium"
+              >
+                <Icon icon="hugeicons:cancel-circle" className="w-4 h-4" />
+                Reject ({selectedCadetIds.length})
+              </button>
+            </div>
           )}
 
           {/* Forward button — conditional logic */}
@@ -425,17 +438,51 @@ export default function OlqResultDetailsPage() {
             <span className="uppercase">No {result.course?.name}</span> : {result.program?.name}
           </p>
           <p className="text-center font-medium text-gray-900 tracking-wider pb-2">({result.semester?.name})</p>
+
+          {/* Active Tab Indicator for Print */}
+          <div className="hidden print:block mt-2">
+            <p className="text-center text-lg font-bold text-blue-800 uppercase underline decoration-2 underline-offset-4">
+              {activeGroup?.name}
+            </p>
+          </div>
         </div>
 
+        {groupedCadets.length > 1 && (
+          <div className="tab-container no-print mb-2">
+            <div className="flex flex-wrap justify-end gap-2">
+              {groupedCadets.map((group, index) => (
+                <button
+                  key={`tab-${index}`}
+                  onClick={() => setActiveTabIndex(index)}
+                  className={`px-4 py-2 rounded-full text-sm font-bold transition-all duration-200 flex items-center gap-2 ${activeTabIndex === index
+                      ? "bg-blue-600 text-white border border-blue-200"
+                      : "bg-white text-gray-600 border border-gray-200 hover:bg-gray-50 hover:border-gray-300"
+                    }`}
+                >
+                  <Icon
+                    icon={group.is_flying_group ? "hugeicons:airplane-01" : "hugeicons:user-group"}
+                    className={`w-4 h-4 ${activeTabIndex === index ? "text-white" : "text-gray-400"}`}
+                  />
+                  {group.name}
+                  <span className={`ml-1 px-1.5 py-0.5 rounded-full text-[10px] ${activeTabIndex === index ? "bg-blue-500 text-white" : "bg-gray-100 text-gray-500"
+                    }`}>
+                    {group.cadets.length}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Cadets & Marks Table */}
-        {result.result_cadets && result.result_cadets.length > 0 && (
+        {activeGroup && activeGroup.cadets.length > 0 && (
           <div className="mb-6">
             <div className="overflow-x-auto">
               <table className="w-full border-collapse border border-black text-sm">
                 <thead>
                   <tr>
                     {/* Bulk select header — no-print */}
-                    {hasApprovalAuthority && (
+                    {hasApprovalAuthority && !allCadetsApproved && (
                       <th className="border border-black px-2 py-2 text-center no-print w-10" rowSpan={3}>
                         <input
                           type="checkbox"
@@ -448,9 +495,9 @@ export default function OlqResultDetailsPage() {
                     )}
                     <th className="border border-black px-3 py-2 text-center" rowSpan={2}>Sl.</th>
                     <th className="border border-black px-3 py-2 text-center" rowSpan={2}>BD</th>
-                    <th className="border border-black px-3 py-2 text-left"   rowSpan={2}>Rk</th>
-                    <th className="border border-black px-3 py-2 text-left"   rowSpan={2}>Name</th>
-                    <th className="border border-black px-3 py-2 text-left"   rowSpan={2}>Br</th>
+                    <th className="border border-black px-3 py-2 text-left" rowSpan={2}>Rk</th>
+                    <th className="border border-black px-3 py-2 text-left" rowSpan={2}>Name</th>
+                    <th className="border border-black px-3 py-2 text-left" rowSpan={2}>Br</th>
                     <th
                       className="border border-black px-3 py-2 text-center font-bold"
                       colSpan={estimatedMarks.length + 3}
@@ -460,7 +507,7 @@ export default function OlqResultDetailsPage() {
                     <th className="border border-black px-3 py-2 text-center font-bold no-print" rowSpan={3}>
                       Status Timeline
                     </th>
-                    {hasApprovalAuthority && (
+                    {hasApprovalAuthority && !allCadetsApproved && (
                       <th className="border border-black px-3 py-2 text-center font-bold no-print" rowSpan={3}>
                         Action
                       </th>
@@ -475,7 +522,7 @@ export default function OlqResultDetailsPage() {
                       </th>
                     ))}
                     <th className="border border-black px-3 py-2 text-center font-bold" rowSpan={2}>
-                      Total {result.olq_type?.type_code?.toLowerCase() === "for_116b" ? "x 1.5" : ""}
+                      Total {result.olq_type?.is_multiplier ? `x ${result.olq_type.multiplier}` : ""}
                     </th>
                     <th className="border border-black px-3 py-2 text-center" rowSpan={2}>Position</th>
                     <th className="border border-black px-3 py-2 text-center font-bold">Percentile</th>
@@ -491,23 +538,22 @@ export default function OlqResultDetailsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {result.result_cadets.map((cadet, index) => {
+                  {activeGroup.cadets.map((cadet: any, cadetIndex: number) => {
                     const cadetName = cadet.cadet?.name || "Unknown";
-                    const currentRank = cadet.cadet?.assigned_ranks?.find((r) => r.is_current)?.rank || cadet.cadet?.assigned_ranks?.[0]?.rank;
+                    const currentRank = cadet.cadet?.assigned_ranks?.find((r: any) => r.is_current)?.rank || cadet.cadet?.assigned_ranks?.[0]?.rank;
                     const cadetRank = currentRank?.short_name || currentRank?.name || "—";
-                    const currentBranch = cadet.cadet?.assigned_branchs?.find((b) => b.is_current)?.branch || cadet.cadet?.assigned_branchs?.[0]?.branch;
+                    const currentBranch = cadet.cadet?.assigned_branchs?.find((b: any) => b.is_current)?.branch || cadet.cadet?.assigned_branchs?.[0]?.branch;
                     const cadetBranchCode = currentBranch?.code || "—";
-                    
+
                     const currentApproval = getCurrentCadetApproval(cadet.cadet_id);
                     const isApproved = currentApproval?.status === "approved";
+                    const isRejected = currentApproval?.status === "rejected";
                     const isSelected = selectedCadetIds.includes(cadet.cadet_id);
 
                     return (
-                      <tr
-                        key={cadet.cadet_id}
-                      >
+                      <tr key={cadet.cadet_id}>
                         {/* Checkbox + approve cell — no-print */}
-                        {hasApprovalAuthority && (
+                        {hasApprovalAuthority && !allCadetsApproved && (
                           <td className="border border-black px-2 py-2 text-center no-print">
                             <div className="flex flex-col items-center gap-1">
                               <input
@@ -521,7 +567,7 @@ export default function OlqResultDetailsPage() {
                           </td>
                         )}
 
-                        <td className="border border-black px-3 py-2 text-center font-medium">{index + 1}</td>
+                        <td className="border border-black px-3 py-2 text-center font-medium">{cadetIndex + 1}</td>
                         <td className="border border-black px-3 py-2 text-center">{cadet.bd_no}</td>
                         <td className="border border-black px-3 py-2 text-center">{cadetRank}</td>
                         <td className={`border border-black px-3 py-2 font-medium ${!cadet.is_present ? "text-red-500" : ""}`}>
@@ -530,7 +576,7 @@ export default function OlqResultDetailsPage() {
                         <td className="border border-black px-3 py-2 text-center">{cadetBranchCode}</td>
 
                         {estimatedMarks.map((em, i) => {
-                          const mark = cadet.marks?.find((m) => m.atw_assessment_olq_type_estimated_mark_id === em.id);
+                          const mark = cadet.marks?.find((m: any) => m.atw_assessment_olq_type_estimated_mark_id === em.id);
                           const achieved = mark ? parseFloat(String(mark.achieved_mark)) : 0;
                           return (
                             <td key={i} className="border border-black px-2 py-2 text-center">
@@ -547,7 +593,7 @@ export default function OlqResultDetailsPage() {
                         </td>
                         <td className="border border-black px-2 py-2 text-center font-medium">
                           {cadet.is_present
-                            ? ((calculateTotal(cadet.marks || []) / 300) * 100).toFixed(2)
+                            ? ((calculateTotal(cadet.marks || []) / maxTotal) * 100).toFixed(2)
                             : "—"}
                         </td>
 
@@ -584,18 +630,30 @@ export default function OlqResultDetailsPage() {
                         </td>
 
                         {/* Action column — no-print */}
-                        {hasApprovalAuthority && (
+                        {hasApprovalAuthority && !allCadetsApproved && (
                           <td className="border border-black px-2 py-2 text-center no-print">
-                            {!isApproved && (
-                              <button
-                                onClick={() => openApprovalModal([cadet.cadet_id])}
-                                className="inline-flex items-center gap-1 px-2.5 py-1 bg-green-600 hover:bg-green-700 text-white text-[10px] font-bold rounded"
-                                title="Approve this cadet"
-                              >
-                                <Icon icon="hugeicons:checkmark-circle-02" className="w-3 h-3" />
-                                Approve
-                              </button>
-                            )}
+                            <div className="flex flex-col gap-1">
+                              {!isApproved && (
+                                <button
+                                  onClick={() => openApprovalModal([cadet.cadet_id])}
+                                  className="inline-flex items-center gap-1 px-2.5 py-1 bg-green-600 hover:bg-green-700 text-white text-[10px] font-bold rounded"
+                                  title="Approve this cadet"
+                                >
+                                  <Icon icon="hugeicons:checkmark-circle-02" className="w-3 h-3" />
+                                  Approve
+                                </button>
+                              )}
+                              {!isRejected && !isApproved && (
+                                <button
+                                  onClick={() => openRejectModal([cadet.cadet_id])}
+                                  className="inline-flex items-center gap-1 px-2.5 py-1 bg-red-600 hover:bg-red-700 text-white text-[10px] font-bold rounded"
+                                  title="Reject this cadet"
+                                >
+                                  <Icon icon="hugeicons:cancel-circle" className="w-3 h-3" />
+                                  Reject
+                                </button>
+                              )}
+                            </div>
                           </td>
                         )}
                       </tr>
@@ -615,14 +673,29 @@ export default function OlqResultDetailsPage() {
         </div>
       </div>
 
-      {/* Approve Confirmation Modal */}
+      {/* Approve/Reject Confirmation Modal */}
       <Modal isOpen={approvalModal.open} onClose={() => setApprovalModal((p) => ({ ...p, open: false }))} showCloseButton className="max-w-sm">
         <div className="p-6">
-          <h2 className="text-lg font-bold text-gray-900 mb-1">Approve Cadet{approvalModal.cadetIds.length > 1 ? "s" : ""}</h2>
+          <h2 className="text-lg font-bold text-gray-900 mb-1">
+            {approvalModal.type === "approve" ? "Approve" : "Reject"} Cadet{approvalModal.cadetIds.length > 1 ? "s" : ""}
+          </h2>
           <p className="text-sm text-gray-500 mb-4">
-            Approve <span className="font-semibold text-gray-700">{approvalModal.cadetIds.length}</span> cadet{approvalModal.cadetIds.length > 1 ? "s" : ""}?
+            {approvalModal.type === "approve" ? "Approve" : "Reject"} <span className="font-semibold text-gray-700">{approvalModal.cadetIds.length}</span> cadet{approvalModal.cadetIds.length > 1 ? "s" : ""}?
             This action cannot be undone.
           </p>
+
+          {approvalModal.type === "reject" && (
+            <div className="mb-4">
+              <label className="block text-xs font-bold uppercase text-gray-500 mb-1">Rejection Reason</label>
+              <textarea
+                value={approvalModal.reason}
+                onChange={(e) => setApprovalModal(p => ({ ...p, reason: e.target.value }))}
+                className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-red-500 focus:outline-none min-h-[80px]"
+                placeholder="Enter reason for rejection..."
+              />
+            </div>
+          )}
+
           {approvalModal.error && (
             <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm flex items-center gap-2">
               <Icon icon="hugeicons:alert-circle" className="w-4 h-4 flex-shrink-0" />
@@ -637,13 +710,14 @@ export default function OlqResultDetailsPage() {
               Cancel
             </button>
             <button
-              onClick={confirmApproval}
-              disabled={approvalModal.loading}
-              className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 flex items-center gap-2 text-sm font-medium"
+              onClick={confirmBulkAction}
+              disabled={approvalModal.loading || (approvalModal.type === "reject" && !approvalModal.reason?.trim())}
+              className={`px-6 py-2 text-white rounded-lg disabled:opacity-50 flex items-center gap-2 text-sm font-medium ${approvalModal.type === "approve" ? "bg-green-600 hover:bg-green-700" : "bg-red-600 hover:bg-red-700"
+                }`}
             >
               {approvalModal.loading
-                ? <><Icon icon="hugeicons:fan-01" className="w-4 h-4 animate-spin" />Approving...</>
-                : <><Icon icon="hugeicons:checkmark-circle-02" className="w-4 h-4" />Approve</>
+                ? <><Icon icon="hugeicons:fan-01" className="w-4 h-4 animate-spin" />Processing...</>
+                : <><Icon icon={approvalModal.type === "approve" ? "hugeicons:checkmark-circle-02" : "hugeicons:cancel-circle"} className="w-4 h-4" />{approvalModal.type === "approve" ? "Approve" : "Reject"}</>
               }
             </button>
           </div>

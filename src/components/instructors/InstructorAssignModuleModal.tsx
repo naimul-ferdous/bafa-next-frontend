@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { Icon } from "@iconify/react";
 import { Modal } from "@/components/ui/modal";
 import type { InstructorBiodata, CtwInstructorAssignModule } from "@/libs/types/user";
-import type { SystemCourse, SystemSemester, SystemProgram, SystemBranch, SystemGroup, CtwResultsModule } from "@/libs/types/ctw";
+import type { SystemCourse, SystemSemester, CtwResultsModule } from "@/libs/types/ctw";
 import { commonService } from "@/libs/services/commonService";
 import { ctwInstructorAssignModuleService } from "@/libs/services/ctwInstructorAssignModuleService";
 import { ctwResultsModuleService } from "@/libs/services/ctwResultsModuleService";
@@ -25,9 +25,6 @@ export default function InstructorAssignModuleModal({
 }: InstructorAssignModuleModalProps) {
   const [courses, setCourses] = useState<SystemCourse[]>([]);
   const [semesters, setSemesters] = useState<SystemSemester[]>([]);
-  const [programs, setPrograms] = useState<SystemProgram[]>([]);
-  const [branches, setBranches] = useState<SystemBranch[]>([]);
-  const [groups, setGroups] = useState<SystemGroup[]>([]);
   const [modules, setModules] = useState<CtwResultsModule[]>([]);
   const [existingAssignments, setExistingAssignments] = useState<CtwInstructorAssignModule[]>([]);
   const [allExistingAssignments, setAllExistingAssignments] = useState<CtwInstructorAssignModule[]>([]);
@@ -39,9 +36,6 @@ export default function InstructorAssignModuleModal({
   // Form state
   const [selectedCourseId, setSelectedCourseId] = useState<number | "">("");
   const [selectedSemesterId, setSelectedSemesterId] = useState<number | "">("");
-  const [selectedProgramId, setSelectedProgramId] = useState<number | "">("");
-  const [selectedBranchId, setSelectedBranchId] = useState<number | "">("");
-  const [selectedGroupId, setSelectedGroupId] = useState<number | "">("");
   const [selectedModuleIds, setSelectedModuleIds] = useState<number[]>([]);
 
   // Load dropdown data
@@ -51,7 +45,7 @@ export default function InstructorAssignModuleModal({
     }
   }, [isOpen, instructor]);
 
-  // Load modules progressively: fetch after course + semester, re-fetch on program/branch/group change
+  // Load modules after course + semester selected
   useEffect(() => {
     if (selectedCourseId && selectedSemesterId) {
       loadModules();
@@ -60,41 +54,16 @@ export default function InstructorAssignModuleModal({
       setAllExistingAssignments([]);
       setSelectedModuleIds([]);
     }
-  }, [selectedCourseId, selectedSemesterId, selectedProgramId, selectedBranchId, selectedGroupId]);
+  }, [selectedCourseId, selectedSemesterId]);
 
-  // Reset downstream selections when upstream changes
   const handleCourseChange = (value: number | "") => {
     setSelectedCourseId(value);
     setSelectedSemesterId("");
-    setSelectedProgramId("");
-    setSelectedBranchId("");
-    setSelectedGroupId("");
     setSelectedModuleIds([]);
   };
 
   const handleSemesterChange = (value: number | "") => {
     setSelectedSemesterId(value);
-    setSelectedProgramId("");
-    setSelectedBranchId("");
-    setSelectedGroupId("");
-    setSelectedModuleIds([]);
-  };
-
-  const handleProgramChange = (value: number | "") => {
-    setSelectedProgramId(value);
-    setSelectedBranchId("");
-    setSelectedGroupId("");
-    setSelectedModuleIds([]);
-  };
-
-  const handleBranchChange = (value: number | "") => {
-    setSelectedBranchId(value);
-    setSelectedGroupId("");
-    setSelectedModuleIds([]);
-  };
-
-  const handleGroupChange = (value: number | "") => {
-    setSelectedGroupId(value);
     setSelectedModuleIds([]);
   };
 
@@ -111,9 +80,6 @@ export default function InstructorAssignModuleModal({
       if (options) {
         setCourses(options.courses);
         setSemesters(options.semesters);
-        setPrograms(options.programs);
-        setBranches(options.branches);
-        setGroups(options.groups);
       }
 
       setExistingAssignments(assignments);
@@ -128,19 +94,14 @@ export default function InstructorAssignModuleModal({
   const loadModules = async () => {
     setLoadingModules(true);
     try {
-      // Build filter params - only include selected values
       const assignmentFilters: Record<string, number | string> = {
         course_id: Number(selectedCourseId),
         semester_id: Number(selectedSemesterId),
         per_page: 1000,
       };
-      if (selectedProgramId) assignmentFilters.program_id = Number(selectedProgramId);
-      if (selectedBranchId) assignmentFilters.branch_id = Number(selectedBranchId);
-      if (selectedGroupId) assignmentFilters.group_id = Number(selectedGroupId);
 
       const [modulesWithEM, assignmentsRes] = await Promise.all([
         ctwResultsModuleService.getModulesWithEstimatedMarks({
-          course_id: Number(selectedCourseId),
           semester_id: Number(selectedSemesterId),
         }),
         ctwInstructorAssignModuleService.getAll(assignmentFilters as any)
@@ -164,10 +125,7 @@ export default function InstructorAssignModuleModal({
       (a) =>
         a.ctw_results_module_id === moduleId &&
         a.course_id === Number(selectedCourseId) &&
-        a.semester_id === Number(selectedSemesterId) &&
-        (!selectedProgramId || a.program_id === Number(selectedProgramId)) &&
-        (!selectedBranchId || a.branch_id === Number(selectedBranchId)) &&
-        (!selectedGroupId || a.group_id === Number(selectedGroupId))
+        a.semester_id === Number(selectedSemesterId)
     );
   };
 
@@ -222,9 +180,6 @@ export default function InstructorAssignModuleModal({
         semester_id: Number(selectedSemesterId),
         module_ids: selectedModuleIds,
       };
-      if (selectedProgramId) payload.program_id = Number(selectedProgramId);
-      if (selectedBranchId) payload.branch_id = Number(selectedBranchId);
-      if (selectedGroupId) payload.group_id = Number(selectedGroupId);
 
       const result = await ctwInstructorAssignModuleService.bulkAssign(payload);
 
@@ -261,9 +216,6 @@ export default function InstructorAssignModuleModal({
   const handleClose = () => {
     setSelectedCourseId("");
     setSelectedSemesterId("");
-    setSelectedProgramId("");
-    setSelectedBranchId("");
-    setSelectedGroupId("");
     setSelectedModuleIds([]);
     setModules([]);
     setError(null);
@@ -312,7 +264,7 @@ export default function InstructorAssignModuleModal({
                             {assignment.module?.full_name || "Unknown Module"} ({assignment.module?.code})
                           </p>
                           <p className="text-xs text-gray-500">
-                            {assignment.course?.code} | {assignment.semester?.name} | {assignment.program?.code} | {assignment.branch?.code}{assignment.group?.name ? ` | ${assignment.group.name}` : ''}
+                            {assignment.course?.code} | {assignment.semester?.name}
                           </p>
                         </div>
                       </div>
@@ -338,7 +290,7 @@ export default function InstructorAssignModuleModal({
 
             {/* Add New Assignment Form */}
             <form onSubmit={handleSubmit}>
-              <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                 {/* Course Selection */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -379,62 +331,6 @@ export default function InstructorAssignModuleModal({
                   </select>
                 </div>
 
-                {/* Program Selection */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Program <span className="text-gray-400 text-xs">(Optional)</span>
-                  </label>
-                  <select
-                    value={selectedProgramId}
-                    onChange={(e) => handleProgramChange(e.target.value ? Number(e.target.value) : "")}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                  >
-                    <option value="">All Programs</option>
-                    {programs.map((program) => (
-                      <option key={program.id} value={program.id}>
-                        {program.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Branch Selection */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Branch <span className="text-gray-400 text-xs">(Optional)</span>
-                  </label>
-                  <select
-                    value={selectedBranchId}
-                    onChange={(e) => handleBranchChange(e.target.value ? Number(e.target.value) : "")}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                  >
-                    <option value="">All Branches</option>
-                    {branches.map((branch) => (
-                      <option key={branch.id} value={branch.id}>
-                        {branch.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Group Selection (Optional) */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Group <span className="text-gray-400 text-xs">(Optional)</span>
-                  </label>
-                  <select
-                    value={selectedGroupId}
-                    onChange={(e) => handleGroupChange(e.target.value ? Number(e.target.value) : "")}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                  >
-                    <option value="">All Groups</option>
-                    {groups.map((group) => (
-                      <option key={group.id} value={group.id}>
-                        {group.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
               </div>
 
               {/* Modules Selection - show after course + semester selected */}

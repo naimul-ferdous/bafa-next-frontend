@@ -102,6 +102,7 @@ export interface CadetSemesterAssignment extends CadetAssignment {
   semester_id: number;
   result?: string;
   is_current?: boolean;
+  is_changeable?: boolean;
   semester?: SystemSemester;
 }
 
@@ -130,11 +131,25 @@ export interface CadetBranchAssignment extends CadetAssignment {
   branch?: SystemBranch;
 }
 
+export interface CadetUniversityAssignment extends CadetAssignment {
+  university_id: number;
+  university_semester_id?: number | null;
+  semester_id: number;
+  atw_university_department_id?: number | null;
+  changeable_program_id?: number | null;
+  university?: import('@/libs/types/system').SystemUniversity;
+  university_semester?: { id: number; name: string; short_name: string | null; code: string | null } | null;
+  department?: import('@/libs/types/system').AtwUniversityDepartment;
+  semester?: import('@/libs/types/system').SystemSemester;
+  changeable_program?: import('@/libs/types/system').SystemProgramChangeableSemester;
+}
+
 export interface SystemBranch {
   id: number;
   name: string;
   code: string;
   description?: string;
+  is_university?: boolean;
   is_active?: boolean;
 }
 
@@ -232,6 +247,7 @@ export interface CadetProfile {
   assigned_programs?: CadetProgramAssignment[];
   assigned_groups?: CadetGroupAssignment[];
   assigned_branchs?: CadetBranchAssignment[];
+  assigned_universities?: CadetUniversityAssignment[];
   family_members?: any[];
   educations?: any[];
   educational_records?: any[];
@@ -590,7 +606,7 @@ export interface InstructorAssignWing {
   instructor?: User;
 }
 
-import type { AtwSubjectModule } from './system';
+import type { AtwSubjectModule, SystemProgramChangeableSemester } from './system';
 
 export interface AtwInstructorAssignSubject {
   id: number;
@@ -598,6 +614,7 @@ export interface AtwInstructorAssignSubject {
   course_id: number;
   semester_id: number;
   program_id: number;
+  system_programs_changeable_semester_id?: number | null;
   subject_id: number;
   is_active: boolean;
   created_at: string;
@@ -607,6 +624,7 @@ export interface AtwInstructorAssignSubject {
   course?: SystemCourse;
   semester?: SystemSemester;
   program?: SystemProgram;
+  changeable_program?: SystemProgramChangeableSemester;
 }
 
 export interface AtwInstructorAssignCadet {

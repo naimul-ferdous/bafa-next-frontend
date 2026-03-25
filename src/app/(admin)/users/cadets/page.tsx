@@ -19,6 +19,7 @@ import CadetPromotionModal from "@/components/cadets/CadetPromotionModal";
 import CadetDemotionModal from "@/components/cadets/CadetDemotionModal";
 import CadetRankAssignmentModal from "@/components/cadets/CadetRankAssignmentModal";
 import CadetAssignWingModal from "@/components/users/CadetAssignWingModal";
+import CadetAssignUniversityModal from "@/components/cadets/CadetAssignUniversityModal";
 import { useAuth } from "@/context/AuthContext";
 
 function CadetsPageContent() {
@@ -26,7 +27,7 @@ function CadetsPageContent() {
   const { user, userIsSystemAdmin, userIsInstructor } = useAuth();
   const [cadets, setCadets] = useState<CadetProfile[]>([]);
   const [loading, setLoading] = useState(true);
-  
+
   // Block modal state
   const [blockModalOpen, setBlockModalOpen] = useState(false);
   const [blockingCadet, setBlockingCadet] = useState<CadetProfile | null>(null);
@@ -43,10 +44,14 @@ function CadetsPageContent() {
   const [demotingCadet, setDemotingCadet] = useState<CadetProfile | null>(null);
   const [rankModalOpen, setRankModalOpen] = useState(false);
   const [rankingCadet, setRankingCadet] = useState<CadetProfile | null>(null);
-  
+
   // Wing assignment modal state
   const [wingModalOpen, setWingModalOpen] = useState(false);
   const [wingingCadet, setWingingCadet] = useState<CadetProfile | null>(null);
+
+  // University assignment modal state
+  const [universityModalOpen, setUniversityModalOpen] = useState(false);
+  const [universityingCadet, setUniversityingCadet] = useState<CadetProfile | null>(null);
 
   const [searchTerm, setSearchTerm] = useState("");
   const [perPage, setPerPage] = useState(10);
@@ -122,6 +127,25 @@ function CadetsPageContent() {
   useEffect(() => { loadCadets(); }, [loadCadets]);
 
   useEffect(() => {
+    if (cadets.length === 0) return;
+    const matched = cadets.filter((cadet) => {
+      const currentSemester = cadet.assigned_semesters?.find((s) => s.is_current);
+      const currentProgram = cadet.assigned_programs?.find((p) => p.is_current);
+      const currentBranch = cadet.assigned_branchs?.find((b) => b.is_current);
+
+      return (
+        currentSemester?.is_changeable === true &&
+        currentProgram?.program?.is_changeable === true &&
+        currentBranch?.branch?.is_university === true
+      );
+    });
+
+    if (matched.length > 0) {
+      console.log("[ATW Eligible Cadets]", matched);
+    }
+  }, [cadets]);
+
+  useEffect(() => {
     const handleCadetAssignmentUpdate = () => loadCadets();
     window.addEventListener('cadetAssignmentUpdated', handleCadetAssignmentUpdate);
     return () => window.removeEventListener('cadetAssignmentUpdated', handleCadetAssignmentUpdate);
@@ -136,6 +160,18 @@ function CadetsPageContent() {
   const handleBlockCadet = (cadet: CadetProfile) => { setBlockingCadet(cadet); setBlockModalOpen(true); };
   const handleUnblockCadet = (cadet: CadetProfile) => { setUnblockingCadet(cadet); setUnblockModalOpen(true); };
   const handleAssignWing = (cadet: CadetProfile) => { setWingingCadet(cadet); setWingModalOpen(true); };
+  const handleAssignUniversity = (cadet: CadetProfile) => { setUniversityingCadet(cadet); setUniversityModalOpen(true); };
+
+  const isUniversityEligible = (cadet: CadetProfile) => {
+    const currentSemester = cadet.assigned_semesters?.find((s) => s.is_current);
+    const currentProgram = cadet.assigned_programs?.find((p) => p.is_current);
+    const currentBranch = cadet.assigned_branchs?.find((b) => b.is_current);
+    return (
+      currentSemester?.is_changeable === true &&
+      currentProgram?.program?.is_changeable === true &&
+      currentBranch?.branch?.is_university === true
+    );
+  };
 
   const confirmBlock = async () => {
     if (!blockingCadet) return;
@@ -204,17 +240,17 @@ function CadetsPageContent() {
   const columns: Column<CadetProfile>[] = [
     { key: "id", header: "SL.", className: "text-center text-gray-900", render: (_, index) => (pagination.from || 0) + (index) },
     { key: "cadet_number", header: "BD Number", className: "font-mono text-sm text-gray-900" },
-    { 
-      key: "name", 
-      header: "Name", 
+    {
+      key: "name",
+      header: "Name",
       className: "font-medium text-gray-900",
       render: (cadet) => (
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-full bg-gray-100 flex-shrink-0 overflow-hidden border border-gray-200 relative">
             {cadet.profile_picture || cadet.profile_photo ? (
-              <Image 
-                src={cadet.profile_picture || cadet.profile_photo || ""} 
-                alt={cadet.name} 
+              <Image
+                src={cadet.profile_picture || cadet.profile_photo || ""}
+                alt={cadet.name}
                 fill
                 className="object-cover"
               />
@@ -228,17 +264,17 @@ function CadetsPageContent() {
         </div>
       )
     },
-    { 
-      key: "rank", 
-      header: "Rank", 
+    {
+      key: "rank",
+      header: "Rank",
       render: (cadet) => {
         const currentRank = cadet.rank || cadet.assigned_ranks?.find(r => r.is_current)?.rank || cadet.assigned_ranks?.[0]?.rank;
         const rankName = currentRank?.short_name || currentRank?.name;
-        
+
         if (rankName) return rankName;
 
         return (
-          <button 
+          <button
             onClick={(e) => {
               e.stopPropagation();
               handleAssignCadet(cadet);
@@ -251,48 +287,94 @@ function CadetsPageContent() {
         );
       }
     },
-    { 
-      key: "course", 
-      header: "Current Course", 
+    {
+      key: "university",
+      header: "University",
+      render: (cadet) => {
+        const currentSemesterId = cadet.assigned_semesters?.find(s => s.is_current)?.semester_id;
+        const uniAssignment = cadet.assigned_universities?.find(u => u.semester_id === currentSemesterId && u.is_current)
+          ?? cadet.assigned_universities?.find(u => u.is_current);
+        if (!uniAssignment) return <span className="text-gray-400">—</span>;
+        return (
+          <div>
+            <p className="text-sm font-medium text-gray-900">{uniAssignment.university?.name || "—"}</p>
+            {uniAssignment.department?.name && (
+              <p className="text-xs text-gray-500">{uniAssignment.department.name}</p>
+            )}
+          </div>
+        );
+      }
+    },
+    {
+      key: "course",
+      header: "Current Course",
       render: (cadet) => {
         const currentCourse = cadet.assigned_courses?.find(c => c.is_current)?.course || cadet.assigned_courses?.[0]?.course;
         return currentCourse?.name || "—";
       }
     },
-    { 
-      key: "semester", 
-      header: "Current Semester", 
+    {
+      key: "semester",
+      header: "Current Semester",
       render: (cadet) => {
         const currentSemester = cadet.assigned_semesters?.find(s => s.is_current)?.semester || cadet.assigned_semesters?.[0]?.semester;
         return currentSemester?.name || "—";
       }
     },
-    { 
-      key: "program", 
-      header: "Current Program", 
+    {
+      key: "program",
+      header: "Current Program",
       render: (cadet) => {
-        const currentProgram = cadet.assigned_programs?.find(p => p.is_current)?.program || cadet.assigned_programs?.[0]?.program;
-        return currentProgram?.name || "—";
+        const currentProgramAssign = cadet.assigned_programs?.find(p => p.is_current) ?? cadet.assigned_programs?.[0];
+        const currentSemesterId = cadet.assigned_semesters?.find(s => s.is_current)?.semester_id;
+        const uniAssignment = cadet.assigned_universities?.find(u => u.semester_id === currentSemesterId && u.is_current)
+          ?? cadet.assigned_universities?.find(u => u.is_current);
+        const changeableProgram = uniAssignment?.changeable_program ?? null;
+        return (
+          <div>
+            <p className="text-sm font-medium text-gray-900">{currentProgramAssign?.program?.name || "—"}</p>
+            {changeableProgram && (
+              <p className="text-xs text-indigo-500">{changeableProgram.name}
+                {changeableProgram.short_name && <span className="text-gray-400"> · {changeableProgram.short_name}</span>}
+              </p>
+            )}
+          </div>
+        );
       }
     },
-    { 
-      key: "branch", 
-      header: "Current Branch", 
+    {
+      key: "branch",
+      header: "Current Branch",
       render: (cadet) => {
         const currentBranch = cadet.assigned_branchs?.find(b => b.is_current)?.branch || cadet.assigned_branchs?.[0]?.branch;
-        return currentBranch?.name || "—";
+        const currentSemesterId = cadet.assigned_semesters?.find(s => s.is_current)?.semester_id;
+        const uniAssignment = cadet.assigned_universities?.find(u => u.semester_id === currentSemesterId && u.is_current)
+          ?? cadet.assigned_universities?.find(u => u.is_current);
+        return (
+          <div>
+            <p className="text-sm font-medium text-gray-900">{currentBranch?.name || "—"}</p>
+            {uniAssignment?.department?.name && (
+              <p className="text-xs text-blue-500">{uniAssignment.department.name}</p>
+            )}
+          </div>
+        );
       }
     },
-    { key: "is_active", header: "Status", className: "text-center", render: (cadet) => (
-      <span className={`inline-flex items-center px-2.5 py-1 text-xs font-semibold rounded-full ${cadet.is_active ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}`}>
-        {cadet.is_active ? "Active" : "Inactive"}
-      </span>
-    )},
+    {
+      key: "is_active", header: "Status", className: "text-center", render: (cadet) => (
+        <span className={`inline-flex items-center px-2.5 py-1 text-xs font-semibold rounded-full ${cadet.is_active ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}`}>
+          {cadet.is_active ? "Active" : "Inactive"}
+        </span>
+      )
+    },
     ...(userIsSystemAdmin ? [{
       key: "actions", header: "Actions", headerAlign: "center" as const, className: "text-center no-print", render: (cadet: CadetProfile) => (
         <div className="flex items-center justify-center gap-1" onClick={(e) => e.stopPropagation()}>
           <button onClick={() => handleEditCadet(cadet)} className="p-1 text-yellow-600 hover:bg-yellow-50 rounded" title="Edit"><Icon icon="hugeicons:pencil-edit-01" className="w-4 h-4" /></button>
           <button onClick={() => handleAssignWing(cadet)} className="p-1 text-green-600 hover:bg-green-50 rounded" title="Assign Wing"><Icon icon="hugeicons:hierarchy-square-01" className="w-4 h-4" /></button>
+          {isUniversityEligible(cadet) && (
+            <button onClick={() => handleAssignUniversity(cadet)} className="p-1 text-blue-600 hover:bg-blue-50 rounded" title="Assign University"><Icon icon="hugeicons:university" className="w-4 h-4" /></button>
+          )}
           <button onClick={() => handlePromoteCadet(cadet)} className="p-1 text-purple-600 hover:bg-purple-50 rounded" title="Promote"><Icon icon="hugeicons:graduation-scroll" className="w-4 h-4" /></button>
           <button onClick={() => handleDemoteCadet(cadet)} className="p-1 text-orange-600 hover:bg-orange-50 rounded" title="Demote"><Icon icon="hugeicons:sort-by-down-02" className="w-4 h-4" /></button>
           {cadet.is_active ? (
@@ -302,7 +384,15 @@ function CadetsPageContent() {
           )}
         </div>
       )
-    }] : []),
+    }] : [{
+      key: "actions", header: "Actions", headerAlign: "center" as const, className: "text-center no-print", render: (cadet: CadetProfile) => (
+        <div className="flex items-center justify-center gap-1" onClick={(e) => e.stopPropagation()}>
+          {isUniversityEligible(cadet) && (
+            <button onClick={() => handleAssignUniversity(cadet)} className="p-1 text-blue-600 hover:bg-blue-50 rounded" title="Assign University"><Icon icon="hugeicons:university" className="w-4 h-4" /></button>
+          )}
+        </div>
+      )
+    }]),
   ];
 
   return (
@@ -319,8 +409,8 @@ function CadetsPageContent() {
           <input type="text" placeholder="Search by name, cadet number, batch..." value={searchTerm} onChange={(e) => handleSearchChange(e.target.value)} className="pl-10 pr-4 py-2 border border-gray-200 rounded-lg bg-white text-gray-900 w-full focus:outline-none focus:ring-0" />
         </div>
         <div className="flex items-center gap-3">
-          <button 
-            onClick={() => setShowFilters(!showFilters)} 
+          <button
+            onClick={() => setShowFilters(!showFilters)}
             className={`px-4 py-2 rounded-lg flex items-center gap-1 border ${showFilters ? 'bg-blue-50 border-blue-200 text-blue-600' : 'bg-white border-gray-200 text-gray-700'} hover:bg-gray-50 transition-colors`}
           >
             <Icon icon="hugeicons:filter" className="w-4 h-4 mr-1" />
@@ -343,7 +433,7 @@ function CadetsPageContent() {
               <Icon icon="hugeicons:filter" className="w-4 h-4" />
               Advanced Filters
             </h3>
-            <button 
+            <button
               onClick={resetFilters}
               className="text-xs text-blue-600 hover:text-blue-700 font-medium flex items-center gap-1"
             >
@@ -351,12 +441,12 @@ function CadetsPageContent() {
               Reset Filters
             </button>
           </div>
-          
+
           <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
             <div>
               <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1 ml-1">Course</label>
-              <select 
-                value={filters.course_id} 
+              <select
+                value={filters.course_id}
                 onChange={(e) => handleFilterChange("course_id", e.target.value)}
                 className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
               >
@@ -369,8 +459,8 @@ function CadetsPageContent() {
 
             <div>
               <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1 ml-1">Semester</label>
-              <select 
-                value={filters.semester_id} 
+              <select
+                value={filters.semester_id}
                 onChange={(e) => handleFilterChange("semester_id", e.target.value)}
                 className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
               >
@@ -383,8 +473,8 @@ function CadetsPageContent() {
 
             <div>
               <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1 ml-1">Program</label>
-              <select 
-                value={filters.program_id} 
+              <select
+                value={filters.program_id}
                 onChange={(e) => handleFilterChange("program_id", e.target.value)}
                 className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
               >
@@ -397,8 +487,8 @@ function CadetsPageContent() {
 
             <div>
               <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1 ml-1">Branch</label>
-              <select 
-                value={filters.branch_id} 
+              <select
+                value={filters.branch_id}
                 onChange={(e) => handleFilterChange("branch_id", e.target.value)}
                 className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
               >
@@ -411,8 +501,8 @@ function CadetsPageContent() {
 
             <div>
               <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1 ml-1">Group</label>
-              <select 
-                value={filters.group_id} 
+              <select
+                value={filters.group_id}
                 onChange={(e) => handleFilterChange("group_id", e.target.value)}
                 className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
               >
@@ -425,8 +515,8 @@ function CadetsPageContent() {
 
             <div>
               <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1 ml-1">Rank</label>
-              <select 
-                value={filters.rank_id} 
+              <select
+                value={filters.rank_id}
                 onChange={(e) => handleFilterChange("rank_id", e.target.value)}
                 className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
               >
@@ -466,29 +556,30 @@ function CadetsPageContent() {
       <CadetDemotionModal isOpen={demotionModalOpen} onClose={() => setDemotionModalOpen(false)} cadet={demotingCadet} onSuccess={loadCadets} />
       <CadetRankAssignmentModal isOpen={rankModalOpen} onClose={() => setRankModalOpen(false)} cadet={rankingCadet} onSuccess={loadCadets} />
       <CadetAssignWingModal isOpen={wingModalOpen} onClose={() => setWingModalOpen(false)} cadet={wingingCadet} onSuccess={loadCadets} />
-      
-      <ConfirmationModal 
-        isOpen={blockModalOpen} 
-        onClose={() => setBlockModalOpen(false)} 
-        onConfirm={confirmBlock} 
-        title="Block Cadet" 
-        message={`Are you sure you want to block/deactivate "${blockingCadet?.name}"?`} 
-        confirmText="Block" 
-        cancelText="Cancel" 
-        loading={blockLoading} 
-        variant="danger" 
+      <CadetAssignUniversityModal isOpen={universityModalOpen} onClose={() => setUniversityModalOpen(false)} cadet={universityingCadet} onSuccess={loadCadets} />
+
+      <ConfirmationModal
+        isOpen={blockModalOpen}
+        onClose={() => setBlockModalOpen(false)}
+        onConfirm={confirmBlock}
+        title="Block Cadet"
+        message={`Are you sure you want to block/deactivate "${blockingCadet?.name}"?`}
+        confirmText="Block"
+        cancelText="Cancel"
+        loading={blockLoading}
+        variant="danger"
       />
-      
-      <ConfirmationModal 
-        isOpen={unblockModalOpen} 
-        onClose={() => setUnblockModalOpen(false)} 
-        onConfirm={confirmUnblock} 
-        title="Unblock Cadet" 
-        message={`Are you sure you want to activate/unblock "${unblockingCadet?.name}"?`} 
-        confirmText="Unblock" 
-        cancelText="Cancel" 
-        loading={unblockLoading} 
-        variant="success" 
+
+      <ConfirmationModal
+        isOpen={unblockModalOpen}
+        onClose={() => setUnblockModalOpen(false)}
+        onConfirm={confirmUnblock}
+        title="Unblock Cadet"
+        message={`Are you sure you want to activate/unblock "${unblockingCadet?.name}"?`}
+        confirmText="Unblock"
+        cancelText="Cancel"
+        loading={unblockLoading}
+        variant="success"
       />
     </div>
   );

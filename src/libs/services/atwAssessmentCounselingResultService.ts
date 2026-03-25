@@ -162,7 +162,7 @@ export const atwAssessmentCounselingResultService = {
   /**
    * Get results grouped by course and semester with pagination
    */
-  async getGroupedResults(params?: { instructor_id?: number; authority_id?: number; course_id?: number; semester_id?: number; page?: number; per_page?: number; search?: string; allData?: boolean }): Promise<ResultPaginatedResponse & { data: any[] }> {
+  async getGroupedResults(params?: { instructor_id?: number; authority_id?: number; course_id?: number; semester_id?: number; page?: number; per_page?: number; search?: string; allData?: boolean }): Promise<ResultPaginatedResponse & { data: any[]; semester_approvals: any[]; authorities: any[]; my_authority: any; has_counseling_assign: boolean }> {
     try {
       const query = new URLSearchParams();
       if (params?.instructor_id) query.append('instructor_id', params.instructor_id.toString());
@@ -186,10 +186,65 @@ export const atwAssessmentCounselingResultService = {
         total: result?.pagination?.total || 0,
         from: result?.pagination?.from || 0,
         to: result?.pagination?.to || 0,
+        semester_approvals: result?.semester_approvals || [],
+        authorities: result?.authorities || [],
+        my_authority: result?.my_authority || null,
+        has_counseling_assign: result?.has_counseling_assign || false,
       };
     } catch (error) {
       console.error('Failed to fetch grouped results:', error);
-      return { data: [], current_page: 1, last_page: 1, per_page: 10, total: 0, from: 0, to: 0 };
+      return { data: [], current_page: 1, last_page: 1, per_page: 10, total: 0, from: 0, to: 0, semester_approvals: [], authorities: [], my_authority: null, has_counseling_assign: false };
+    }
+  },
+
+  /**
+   * Get options for the counseling form
+   */
+  async getFormOptions(params?: { course_id?: number; semester_id?: number }): Promise<{
+    courses: any[];
+    semesters: any[];
+    exams: any[];
+    counseling_type: AtwAssessmentCounselingType | null;
+    cadets: any[];
+    existing_results_map: { [cadetId: number]: number };
+  } | null> {
+    try {
+      const query = new URLSearchParams();
+      if (params?.course_id) query.append('course_id', params.course_id.toString());
+      if (params?.semester_id) query.append('semester_id', params.semester_id.toString());
+
+      const token = getToken();
+      const res = await apiClient.get<any>(`/atw-assessment-counseling-results/form-options?${query.toString()}`, token);
+      return res?.data || null;
+    } catch (error) {
+      console.error('Failed to fetch counseling form options:', error);
+      return null;
+    }
+  },
+
+  /**
+   * Get consolidated results for a specific course and semester
+   */
+  async getConsolidatedResults(params: { course_id: number; semester_id: number }): Promise<{
+    results: AtwAssessmentCounselingResult[];
+    approvals: any[];
+    semester_approvals: any[];
+    authorities: any[];
+    my_authority: any;
+    assigned_cadets: any[];
+    stats: { total_cadets: number; total_counseled: number; total_approved: number };
+  } | null> {
+    try {
+      const query = new URLSearchParams();
+      query.append('course_id', params.course_id.toString());
+      query.append('semester_id', params.semester_id.toString());
+
+      const token = getToken();
+      const res = await apiClient.get<any>(`/atw-assessment-counseling-results/consolidated?${query.toString()}`, token);
+      return res?.data || null;
+    } catch (error) {
+      console.error('Failed to fetch consolidated results:', error);
+      return null;
     }
   },
 };

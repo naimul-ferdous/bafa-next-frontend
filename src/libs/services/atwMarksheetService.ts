@@ -59,6 +59,7 @@ interface MarksheetCreateData {
     percentage?: number;
     estimate_mark?: number;
     is_active?: boolean;
+    is_combined?: boolean;
   }>;
 }
 

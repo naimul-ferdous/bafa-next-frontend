@@ -14,6 +14,8 @@ interface CadetQueryParams {
   course_id?: number;
   semester_id?: number;
   program_id?: number;
+  changeable_program_id?: number;
+  exclude_changeable?: number;
   branch_id?: number;
   group_id?: number;
   rank_id?: number;
@@ -88,6 +90,8 @@ export const cadetService = {
       if (params?.course_id) query.append('course_id', params.course_id.toString());
       if (params?.semester_id) query.append('semester_id', params.semester_id.toString());
       if (params?.program_id) query.append('program_id', params.program_id.toString());
+      if (params?.changeable_program_id) query.append('changeable_program_id', params.changeable_program_id.toString());
+      if (params?.exclude_changeable) query.append('exclude_changeable', params.exclude_changeable.toString());
       if (params?.branch_id) query.append('branch_id', params.branch_id.toString());
       if (params?.group_id) query.append('group_id', params.group_id.toString());
       if (params?.rank_id) query.append('rank_id', params.rank_id.toString());

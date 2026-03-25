@@ -5,8 +5,9 @@ import React, { useState, useEffect, useMemo, useRef } from "react";
 import Input from "@/components/form/input/InputField";
 import Label from "@/components/form/Label";
 import { Icon } from "@iconify/react";
-import type { AtwSubjectModule, AtwSubjectsModuleMarksheet } from "@/libs/types/system";
+import type { AtwSubjectModule, AtwSubjectsModuleMarksheet, SystemUniversity } from "@/libs/types/system";
 import { atwMarksheetService } from "@/libs/services/atwMarksheetService";
+import { universityService } from "@/libs/services/universityService";
 
 interface SubjectFormProps {
   initialData?: AtwSubjectModule | null;
@@ -21,6 +22,7 @@ export default function SubjectModuleForm({ initialData, onSubmit, onCancel, loa
 
   const [formData, setFormData] = useState({
     atw_subjects_module_marksheet_id: "" as number | "",
+    university_id: "" as number | "",
     subject_name: "",
     subject_code: "",
     subject_legend: "",
@@ -34,9 +36,8 @@ export default function SubjectModuleForm({ initialData, onSubmit, onCancel, loa
   });
 
   const [marksheets, setMarksheets] = useState<AtwSubjectsModuleMarksheet[]>([]);
-  
+  const [universities, setUniversities] = useState<SystemUniversity[]>([]);
   const [loadingMarksheets, setLoadingMarksheets] = useState(false);
-  
   const [error, setError] = useState("");
 
   // Load initial options
@@ -44,10 +45,12 @@ export default function SubjectModuleForm({ initialData, onSubmit, onCancel, loa
     const fetchOptions = async () => {
       try {
         setLoadingMarksheets(true);
-
-        const marksheetsRes = await atwMarksheetService.getAllMarksheets({ per_page: 100 });
-
+        const [marksheetsRes, universitiesRes] = await Promise.all([
+          atwMarksheetService.getAllMarksheets({ per_page: 100 }),
+          universityService.getAllUniversities({ per_page: 200 }),
+        ]);
         setMarksheets(marksheetsRes.data || []);
+        setUniversities(universitiesRes.data || []);
       } catch (err) {
         console.error("Failed to load form options:", err);
       } finally {
@@ -62,6 +65,7 @@ export default function SubjectModuleForm({ initialData, onSubmit, onCancel, loa
     if (initialData) {
       setFormData({
         atw_subjects_module_marksheet_id: initialData.atw_subjects_module_marksheet_id || "",
+        university_id: initialData.university_id || "",
         subject_name: initialData.subject_name || "",
         subject_code: initialData.subject_code || "",
         subject_legend: initialData.subject_legend || "",
@@ -105,8 +109,26 @@ export default function SubjectModuleForm({ initialData, onSubmit, onCancel, loa
   }, [marksheets, formData.atw_subjects_module_marksheet_id]);
 
   const previewSamples = useMemo(() => {
-    if (!selectedMarksheet?.marks) return [];
-    return selectedMarksheet.marks.map(m => Math.max(0, (Number(m.estimate_mark) || 0) - 1));
+    const marks = selectedMarksheet?.marks || [];
+    if (marks.length === 0) return [];
+    const sampleById: { [id: number]: number } = {};
+    marks.forEach(m => {
+      if (!m.is_combined) sampleById[m.id] = Math.max(0, (Number(m.estimate_mark) || 0) - 1);
+    });
+    marks.forEach(m => {
+      if (m.is_combined && m.combined_cols && m.combined_cols.length > 0) {
+        const bestCount = m.combined_cols.length - 1;
+        if (bestCount <= 0) { sampleById[m.id] = 0; return; }
+        const refVals = m.combined_cols.map(col => {
+          const refMark = marks.find(r => r.id === col.referenced_mark_id);
+          return { sample: sampleById[col.referenced_mark_id] ?? 0, est: Number(refMark?.estimate_mark) || 0 };
+        }).sort((a, b) => b.sample - a.sample).slice(0, bestCount);
+        const sumIn = refVals.reduce((a, r) => a + r.sample, 0);
+        const sumEst = refVals.reduce((a, r) => a + r.est, 0);
+        sampleById[m.id] = sumEst > 0 ? (sumIn / sumEst) * Number(m.percentage) : sumIn;
+      }
+    });
+    return marks.map(m => sampleById[m.id] ?? 0);
   }, [selectedMarksheet]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -119,6 +141,7 @@ export default function SubjectModuleForm({ initialData, onSubmit, onCancel, loa
         subjects_full_mark: parseFloat(formData.subjects_full_mark) || 0,
         subjects_credit: parseFloat(formData.subjects_credit) || 0,
         atw_subjects_module_marksheet_id: formData.atw_subjects_module_marksheet_id === "" ? null : formData.atw_subjects_module_marksheet_id,
+        university_id: formData.university_id === "" ? null : formData.university_id,
       };
       await onSubmit(submitData);
     } catch (err: any) {
@@ -176,6 +199,25 @@ export default function SubjectModuleForm({ initialData, onSubmit, onCancel, loa
               </div>
             </div>
             <p className="mt-1 text-[10px] text-gray-500 italic">Manage marksheets in the Marksheets section.</p>
+          </div>
+
+          <div>
+            <Label>University</Label>
+            <div className="relative">
+              <select
+                value={formData.university_id}
+                onChange={(e) => handleChange("university_id", e.target.value ? parseInt(e.target.value) : "")}
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none appearance-none"
+              >
+                <option value="">Select University</option>
+                {universities.map(u => (
+                  <option key={u.id} value={u.id}>{u.name} ({u.code})</option>
+                ))}
+              </select>
+              <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
+                <Icon icon="hugeicons:arrow-down-01" />
+              </div>
+            </div>
           </div>
 
           <div>
@@ -264,20 +306,32 @@ export default function SubjectModuleForm({ initialData, onSubmit, onCancel, loa
         {/* Selected Marksheet Preview */}
         {selectedMarksheet && (() => {
           const marks = selectedMarksheet.marks || [];
-          const previewGroups = Object.values(
-            marks.reduce((acc, m, idx) => {
-              const key = m.type || `__none_${idx}`;
-              if (!acc[key]) acc[key] = { type: m.type || "", marks: [] as (typeof m & { _idx: number })[] };
-              acc[key].marks.push({ ...m, _idx: idx });
-              return acc;
-            }, {} as Record<string, { type: string; marks: (typeof marks[0] & { _idx: number })[] }>)
+
+          // Build set of referenced mark IDs from combined_cols — shown but excluded from Total
+          const refMarkIds = new Set(
+            marks.flatMap(m => m.is_combined && m.combined_cols ? m.combined_cols.map(c => c.referenced_mark_id) : [])
           );
 
+          // Show ALL marks
+          const visibleMarks = marks.map((m, idx) => ({ ...m, _idx: idx }));
+
+          const previewGroups = Object.values(
+            visibleMarks.reduce((acc, m) => {
+              const key = m.type || `__none_${m._idx}`;
+              if (!acc[key]) acc[key] = { type: m.type || "", marks: [] as (typeof m & { _idx: number })[] };
+              acc[key].marks.push(m);
+              return acc;
+            }, {} as Record<string, { type: string; marks: (typeof visibleMarks[0])[] }>)
+          );
+
+          // Total only counts non-referenced marks
           const previewTotal = previewGroups.reduce((acc, group) =>
             acc + group.marks.reduce((gacc, m) => {
+              if (refMarkIds.has(m.id)) return gacc;
+              const sample = previewSamples[m._idx] ?? 0;
+              if (m.is_combined) return gacc + sample;
               const est = Number(m.estimate_mark) || 0;
               const pct = Number(m.percentage) || 0;
-              const sample = previewSamples[m._idx] ?? 0;
               return gacc + (est !== pct && est > 0 ? (sample / est) * pct : sample);
             }, 0), 0);
 
@@ -297,7 +351,7 @@ export default function SubjectModuleForm({ initialData, onSubmit, onCancel, loa
                         <th
                           key={gi}
                           className="border border-black px-3 py-2 text-center font-semibold uppercase"
-                          colSpan={group.marks.reduce((acc, m) => acc + (Number(m.estimate_mark) !== Number(m.percentage) ? 2 : 1), 0)}
+                          colSpan={group.marks.reduce((acc, m) => acc + (!m.is_combined && Number(m.estimate_mark) !== Number(m.percentage) ? 2 : 1), 0)}
                         >
                           {group.type || '—'}
                         </th>
@@ -309,7 +363,7 @@ export default function SubjectModuleForm({ initialData, onSubmit, onCancel, loa
                         group.marks.map((m, mi) => (
                           <th key={`${gi}-${mi}`}
                             className="border border-black px-2 py-2 text-center"
-                            colSpan={Number(m.estimate_mark) !== Number(m.percentage) ? 2 : 1}
+                            colSpan={!m.is_combined && Number(m.estimate_mark) !== Number(m.percentage) ? 2 : 1}
                           >
                             <div className="text-xs font-medium uppercase">{m.name || '—'}</div>
                           </th>
@@ -321,7 +375,7 @@ export default function SubjectModuleForm({ initialData, onSubmit, onCancel, loa
                         group.marks.map((m, mi) => {
                           const est = Number(m.estimate_mark);
                           const pct = Number(m.percentage);
-                          if (est !== pct) {
+                          if (!m.is_combined && est !== pct) {
                             return (
                               <React.Fragment key={`${gi}-${mi}`}>
                                 <th className="border border-black px-1 py-1 text-center w-[80px] min-w-[80px]">{est.toFixed(0)}</th>
@@ -350,6 +404,13 @@ export default function SubjectModuleForm({ initialData, onSubmit, onCancel, loa
                           const est = Number(m.estimate_mark) || 0;
                           const pct = Number(m.percentage) || 0;
                           const sample = previewSamples[m._idx] ?? 0;
+                          if (m.is_combined) {
+                            return (
+                              <td key={`${gi}-${mi}`} className="border border-black px-2 py-1 text-center text-gray-400 italic text-xs min-w-[100px]">
+                                {sample.toFixed(0)}
+                              </td>
+                            );
+                          }
                           const isSplit = est !== pct;
                           if (isSplit) {
                             const converted = est > 0 ? (sample / est) * pct : 0;

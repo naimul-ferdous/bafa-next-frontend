@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { Icon } from "@iconify/react";
 import { atwSubjectModuleService } from "@/libs/services/atwSubjectModuleService";
@@ -54,6 +54,29 @@ export default function SubjectDetailsPage() {
   const handlePrint = () => {
     window.print();
   };
+
+  const previewSamples = useMemo(() => {
+    const marks = subject?.marksheet?.marks || [];
+    if (marks.length === 0) return [];
+    const sampleById: { [id: number]: number } = {};
+    marks.forEach(m => {
+      if (!m.is_combined) sampleById[m.id] = Math.max(0, (Number(m.estimate_mark) || 0) - 1);
+    });
+    marks.forEach(m => {
+      if (m.is_combined && m.combined_cols && m.combined_cols.length > 0) {
+        const bestCount = m.combined_cols.length - 1;
+        if (bestCount <= 0) { sampleById[m.id] = 0; return; }
+        const refVals = m.combined_cols.map(col => {
+          const refMark = marks.find(r => r.id === col.referenced_mark_id);
+          return { sample: sampleById[col.referenced_mark_id] ?? 0, est: Number(refMark?.estimate_mark) || 0 };
+        }).sort((a, b) => b.sample - a.sample).slice(0, bestCount);
+        const sumIn = refVals.reduce((a, r) => a + r.sample, 0);
+        const sumEst = refVals.reduce((a, r) => a + r.est, 0);
+        sampleById[m.id] = sumEst > 0 ? (sumIn / sumEst) * Number(m.percentage) : sumIn;
+      }
+    });
+    return marks.map(m => sampleById[m.id] ?? 0);
+  }, [subject]);
 
   if (loading) {
     return (
@@ -190,39 +213,132 @@ export default function SubjectDetailsPage() {
                 </div>
               </div>
 
-              {subject.marksheet.marks && subject.marksheet.marks.length > 0 && (
-                <table className="w-full border-collapse border border-gray-900">
-                  <thead>
-                    <tr className="bg-gray-100">
-                      <th className="border border-gray-900 px-4 py-2 text-left text-gray-900 font-semibold text-xs">SL.</th>
-                      <th className="border border-gray-900 px-4 py-2 text-left text-gray-900 font-semibold text-xs">COMPONENT TITLE</th>
-                      <th className="border border-gray-900 px-4 py-2 text-left text-gray-900 font-semibold text-xs">TYPE</th>
-                      <th className="border border-gray-900 px-4 py-2 text-center text-gray-900 font-semibold text-xs">MAX MARK</th>
-                      <th className="border border-gray-900 px-4 py-2 text-center text-gray-900 font-semibold text-xs">WEIGHT (%)</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {subject.marksheet.marks.map((mark, index) => (
-                      <tr key={mark.id}>
-                        <td className="border border-gray-900 px-4 py-2 text-center text-gray-900">{index + 1}</td>
-                        <td className="border border-gray-900 px-4 py-2 text-gray-900 font-medium">{mark.name}</td>
-                        <td className="border border-gray-900 px-4 py-2 text-gray-900">{mark.type ? formatType(mark.type) : "N/A"}</td>
-                        <td className="border border-gray-900 px-4 py-2 text-center text-gray-900">{mark.estimate_mark}</td>
-                        <td className="border border-gray-900 px-4 py-2 text-center text-gray-900 font-bold">{mark.percentage}%</td>
-                      </tr>
-                    ))}
-                    <tr className="bg-gray-50 font-bold">
-                      <td colSpan={3} className="border border-gray-900 px-4 py-2 text-right text-gray-900">TOTAL:</td>
-                      <td className="border border-gray-900 px-4 py-2 text-center text-gray-900">
-                        {subject.marksheet.marks.reduce((sum, mark) => sum + (parseFloat(String(mark.estimate_mark)) || 0), 0).toFixed(0)}
-                      </td>
-                      <td className="border border-gray-900 px-4 py-2 text-center text-blue-700">
-                        {subject.marksheet.marks.reduce((sum, mark) => sum + (parseFloat(String(mark.percentage)) || 0), 0).toFixed(0)}%
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              )}
+              {subject.marksheet.marks && subject.marksheet.marks.length > 0 && (() => {
+                const marks = subject.marksheet!.marks!;
+
+                const refMarkIds = new Set(
+                  marks.flatMap(m => m.is_combined && m.combined_cols ? m.combined_cols.map(c => c.referenced_mark_id) : [])
+                );
+
+                const visibleMarks = marks.map((m, idx) => ({ ...m, _idx: idx }));
+
+                const previewGroups = Object.values(
+                  visibleMarks.reduce((acc, m) => {
+                    const key = m.type || `__none_${m._idx}`;
+                    if (!acc[key]) acc[key] = { type: m.type || "", marks: [] as (typeof m & { _idx: number })[] };
+                    acc[key].marks.push(m);
+                    return acc;
+                  }, {} as Record<string, { type: string; marks: (typeof visibleMarks[0])[] }>)
+                );
+
+                const previewTotal = previewGroups.reduce((acc, group) =>
+                  acc + group.marks.reduce((gacc, m) => {
+                    if (refMarkIds.has(m.id)) return gacc;
+                    const sample = previewSamples[m._idx] ?? 0;
+                    if (m.is_combined) return gacc + sample;
+                    const est = Number(m.estimate_mark) || 0;
+                    const pct = Number(m.percentage) || 0;
+                    return gacc + (est !== pct && est > 0 ? (sample / est) * pct : sample);
+                  }, 0), 0);
+
+                return (
+                  <div className="overflow-x-auto">
+                    <table className="w-full border-collapse border border-black text-sm">
+                      <thead>
+                        <tr>
+                          <th className="border border-black px-3 py-2 text-center" rowSpan={3}>Sl</th>
+                          <th className="border border-black px-3 py-2 text-center" rowSpan={3}>BD/No</th>
+                          <th className="border border-black px-3 py-2 text-center" rowSpan={3}>Rank</th>
+                          <th className="border border-black px-3 py-2 text-left" rowSpan={3}>Name</th>
+                          <th className="border border-black px-3 py-2 text-center" rowSpan={3}>Branch</th>
+                          {previewGroups.map((group, gi) => (
+                            <th
+                              key={gi}
+                              className="border border-black px-3 py-2 text-center font-semibold uppercase"
+                              colSpan={group.marks.reduce((acc, m) => acc + (!m.is_combined && Number(m.estimate_mark) !== Number(m.percentage) ? 2 : 1), 0)}
+                            >
+                              {group.type || '—'}
+                            </th>
+                          ))}
+                          <th className="border border-black px-3 py-2 text-center font-bold" rowSpan={3}>Total</th>
+                        </tr>
+                        <tr>
+                          {previewGroups.flatMap((group, gi) =>
+                            group.marks.map((m, mi) => (
+                              <th key={`${gi}-${mi}`}
+                                className="border border-black px-2 py-2 text-center"
+                                colSpan={!m.is_combined && Number(m.estimate_mark) !== Number(m.percentage) ? 2 : 1}
+                              >
+                                <div className="text-xs font-medium uppercase">{m.name || '—'}</div>
+                              </th>
+                            ))
+                          )}
+                        </tr>
+                        <tr>
+                          {previewGroups.flatMap((group, gi) =>
+                            group.marks.map((m, mi) => {
+                              const est = Number(m.estimate_mark);
+                              const pct = Number(m.percentage);
+                              if (!m.is_combined && est !== pct) {
+                                return (
+                                  <React.Fragment key={`${gi}-${mi}`}>
+                                    <th className="border border-black px-1 py-1 text-center w-[80px] min-w-[80px]">{est.toFixed(0)}</th>
+                                    <th className="border border-black px-1 py-1 text-center w-[80px] min-w-[80px]">{pct.toFixed(0)}</th>
+                                  </React.Fragment>
+                                );
+                              }
+                              return (
+                                <th key={`${gi}-${mi}`} className="border border-black px-1 py-1 text-center min-w-[100px]">
+                                  {pct.toFixed(0)}
+                                </th>
+                              );
+                            })
+                          )}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr>
+                          <td className="border border-black px-3 py-2 text-center text-gray-400 italic text-xs">1</td>
+                          <td className="border border-black px-3 py-2 text-center text-gray-400 italic text-xs">BD-001</td>
+                          <td className="border border-black px-3 py-2 text-center text-gray-400 italic text-xs">Flt Cdt</td>
+                          <td className="border border-black px-3 py-2 text-gray-400 italic text-xs">Example Cadet</td>
+                          <td className="border border-black px-3 py-2 text-center text-gray-400 italic text-xs">GD(P)</td>
+                          {previewGroups.flatMap((group, gi) =>
+                            group.marks.map((m, mi) => {
+                              const est = Number(m.estimate_mark) || 0;
+                              const pct = Number(m.percentage) || 0;
+                              const sample = previewSamples[m._idx] ?? 0;
+                              if (m.is_combined) {
+                                return (
+                                  <td key={`${gi}-${mi}`} className="border border-black px-2 py-1 text-center text-gray-400 italic text-xs min-w-[100px]">
+                                    {sample.toFixed(0)}
+                                  </td>
+                                );
+                              }
+                              const isSplit = est !== pct;
+                              if (isSplit) {
+                                const converted = est > 0 ? (sample / est) * pct : 0;
+                                return (
+                                  <React.Fragment key={`${gi}-${mi}`}>
+                                    <td className="border border-black px-2 py-1 text-center text-gray-400 italic text-xs w-[80px] min-w-[80px]">{sample.toFixed(0)}</td>
+                                    <td className="border border-black px-2 py-1 text-center text-gray-400 italic text-xs w-[80px] min-w-[80px]">{converted.toFixed(2)}</td>
+                                  </React.Fragment>
+                                );
+                              }
+                              return (
+                                <td key={`${gi}-${mi}`} className="border border-black px-2 py-1 text-center text-gray-400 italic text-xs min-w-[100px]">
+                                  {sample.toFixed(0)}
+                                </td>
+                              );
+                            })
+                          )}
+                          <td className="border border-black px-3 py-2 text-center font-bold text-gray-500 text-xs">{previewTotal.toFixed(2)}</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                );
+              })()}
             </div>
           ) : (
             <p className="text-gray-500 italic p-4 bg-gray-50 rounded-lg border border-dashed text-center">No marksheet linked to this subject module.</p>

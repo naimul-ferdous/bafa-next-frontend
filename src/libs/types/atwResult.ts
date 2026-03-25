@@ -9,6 +9,7 @@ import type {
   SystemCourse,
   SystemSemester,
   SystemProgram,
+  SystemProgramChangeableSemester,
   SystemBranch,
   SystemExam,
   AtwSubjectModule,
@@ -37,9 +38,14 @@ export interface AtwResultMarkCadetApproval {
   authority_id?: number | null;
   status: 'pending' | 'approved' | 'rejected';
   rejected_reason?: string | null;
+  rejected_by?: number | null;
+  rejected_at?: string | null;
   approved_by?: number | null;
   approved_date?: string | null;
+  updated_at?: string | null;
+  is_active: boolean;
   approver?: { id: number; name: string } | null;
+  rejectedBy?: { id: number; name: string } | null;
 }
 
 // ATW Result Getting Cadet
@@ -90,6 +96,7 @@ export interface AtwResult {
   course_id: number;
   semester_id: number;
   program_id: number;
+  system_programs_changeable_semester_id?: number | null;
   branch_id: number;
   exam_type_id: number;
   instructor_id: number;
@@ -101,6 +108,7 @@ export interface AtwResult {
   course?: SystemCourse;
   semester?: SystemSemester;
   program?: SystemProgram;
+  changeable_program?: SystemProgramChangeableSemester;
   branch?: SystemBranch;
   exam_type?: SystemExam;
   instructor?: User;
@@ -141,9 +149,12 @@ export interface AtwResultCreateData {
   course_id: number;
   semester_id: number;
   program_id: number;
+  system_programs_changeable_semester_id?: number | null;
   branch_id: number;
   exam_type_id: number;
-  atw_subject_module_id: number;
+  atw_subject_module_id?: number;
+  atw_subject_id?: number;
+  instructor_id?: number;
   is_active?: boolean;
   cadets?: AtwResultCadetCreateData[];
 }

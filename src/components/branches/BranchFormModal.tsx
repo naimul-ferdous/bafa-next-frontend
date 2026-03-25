@@ -16,7 +16,7 @@ export default function BranchFormModal() {
   const [formData, setFormData] = useState({
     program_id: "" as number | "",
     name: "",
-    code: "",
+    short_name: "",
     description: "",
     category: "",
     is_active: true,
@@ -52,17 +52,16 @@ export default function BranchFormModal() {
       setFormData({
         program_id: editingBranch.program_id || "",
         name: editingBranch.name,
-        code: editingBranch.code,
+        short_name: editingBranch.short_name || "",
         description: editingBranch.description || "",
         category: editingBranch.category || "",
         is_active: editingBranch.is_active !== false,
       });
     } else {
-      // Reset form for new branch
       setFormData({
         program_id: "",
         name: "",
-        code: "",
+        short_name: "",
         description: "",
         category: "",
         is_active: true,
@@ -147,16 +146,8 @@ export default function BranchFormModal() {
               <Input value={formData.name} onChange={(e) => handleChange("name", e.target.value)} placeholder="Enter branch name" required />
             </div>
             <div>
-              <Label>
-                Code <span className="text-red-500">*</span>
-              </Label>
-              <Input
-                value={formData.code}
-                onChange={(e) => handleChange("code", e.target.value)}
-                placeholder="Enter branch code"
-                required
-                disabled={!!editingBranch}
-              />
+              <Label>Short Name</Label>
+              <Input value={formData.short_name} onChange={(e) => handleChange("short_name", e.target.value)} placeholder="e.g. ENG" />
             </div>
           </div>
 

@@ -114,12 +114,14 @@ function BranchesPageContent() {
   );
 
   const columns: Column<SystemBranch>[] = [
-    { key: "id", header: "SL.", className: "text-center text-gray-900", render: (branch, index) => (pagination.from || 0) + (index + 1) },
+    { key: "id", header: "SL.", className: "text-center text-gray-900", render: (branch, index) => (pagination.from || 0) + (index) },
     { key: "name", header: "Branch Name", className: "font-medium text-gray-900" },
     { key: "code", header: "Code", className: "text-gray-700 font-mono text-sm" },
     { key: "program", header: "Program", className: "text-gray-700", render: (branch) => branch.program?.name || "—" },
     { key: "category", header: "Category", className: "text-gray-700", render: (branch) => branch.category || "—" },
-    { key: "description", header: "Description", className: "text-gray-700", render: (branch) => branch.description || "—" },
+    { key: "description", header: "Description", className: "text-gray-700 max-w-xs", render: (branch) => (
+      <div className="max-w-xs truncate" title={branch.description || ""}>{branch.description || "—"}</div>
+    )},
     {
       key: "is_active",
       header: "Status",

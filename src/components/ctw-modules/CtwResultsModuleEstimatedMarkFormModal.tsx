@@ -9,23 +9,18 @@ import { Modal } from "@/components/ui/modal";
 import { ctwResultsModuleService } from "@/libs/services/ctwResultsModuleService";
 import { useCtwModuleEstimatedMarkModal } from "@/context/CtwModuleEstimatedMarkModalContext";
 import FullLogo from "@/components/ui/fulllogo";
-import { courseService } from "@/libs/services/courseService";
 import { semesterService } from "@/libs/services/semesterService";
-import { programService } from "@/libs/services/programService";
-import { branchService } from "@/libs/services/branchService";
 import { examService } from "@/libs/services/examService";
-import type { 
+import type {
   CtwResultsModuleEstimatedMark,
-  CtwResultsModuleEstimatedMarkDetail 
+  CtwResultsModuleEstimatedMarkDetail
 } from "@/libs/types/ctw";
+import type { SystemSemester, SystemExam } from "@/libs/types/system";
 
 export default function CtwResultsModuleEstimatedMarkFormModal() {
   const { isOpen, moduleId, editingMark, closeModal } = useCtwModuleEstimatedMarkModal();
   const [formData, setFormData] = useState({
-    course_id: 0,
     semester_id: 0,
-    program_id: 0,
-    branch_id: 0,
     exam_type_id: 0,
     estimated_mark_per_instructor: "" as string | number,
     conversation_mark: "" as string | number,
@@ -33,10 +28,7 @@ export default function CtwResultsModuleEstimatedMarkFormModal() {
     details: [] as CtwResultsModuleEstimatedMarkDetail[],
   });
 
-  const [courses, setCourses] = useState<SystemCourse[]>([]);
   const [semesters, setSemesters] = useState<SystemSemester[]>([]);
-  const [programs, setPrograms] = useState<SystemProgram[]>([]);
-  const [branches, setBranches] = useState<SystemBranch[]>([]);
   const [exams, setExams] = useState<SystemExam[]>([]);
   
   const [fetchingOptions, setFetchingOptions] = useState(false);
@@ -47,18 +39,12 @@ export default function CtwResultsModuleEstimatedMarkFormModal() {
     const fetchOptions = async () => {
       try {
         setFetchingOptions(true);
-        const [courseRes, semesterRes, programRes, branchRes, examRes] = await Promise.all([
-          courseService.getAllCourses({ per_page: 100 }),
+        const [semesterRes, examRes] = await Promise.all([
           semesterService.getAllSemesters({ per_page: 100 }),
-          programService.getAllPrograms({ per_page: 100 }),
-          branchService.getAllBranches({ per_page: 100 }),
           examService.getAllExams({ per_page: 100 }),
         ]);
 
-        setCourses(courseRes.data || []);
         setSemesters(semesterRes.data || []);
-        setPrograms(programRes.data || []);
-        setBranches(branchRes.data || []);
         setExams(examRes.data || []);
       } catch (err) {
         console.error("Failed to fetch form options:", err);
@@ -76,10 +62,7 @@ export default function CtwResultsModuleEstimatedMarkFormModal() {
   useEffect(() => {
     if (editingMark) {
       setFormData({
-        course_id: editingMark.course_id,
         semester_id: editingMark.semester_id,
-        program_id: editingMark.program_id || 0,
-        branch_id: editingMark.branch_id || 0,
         exam_type_id: editingMark.exam_type_id,
         estimated_mark_per_instructor: editingMark.estimated_mark_per_instructor ?? "",
         conversation_mark: editingMark.conversation_mark ?? "",
@@ -89,10 +72,7 @@ export default function CtwResultsModuleEstimatedMarkFormModal() {
     } else {
       // Reset form for new mark
       setFormData({
-        course_id: 0,
         semester_id: 0,
-        program_id: 0,
-        branch_id: 0,
         exam_type_id: 0,
         estimated_mark_per_instructor: "",
         conversation_mark: "",
@@ -135,8 +115,6 @@ export default function CtwResultsModuleEstimatedMarkFormModal() {
 
     try {
       const submitData: any = { ...formData };
-      if (submitData.program_id === 0) submitData.program_id = null;
-      if (submitData.branch_id === 0) submitData.branch_id = null;
 
       if (editingMark) {
         await ctwResultsModuleService.updateEstimatedMark(moduleId, editingMark.id, submitData);
@@ -176,20 +154,6 @@ export default function CtwResultsModuleEstimatedMarkFormModal() {
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <Label>Course <span className="text-red-500">*</span></Label>
-              <select
-                value={formData.course_id}
-                onChange={(e) => handleChange("course_id", parseInt(e.target.value))}
-                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500"
-                required
-              >
-                <option value={0}>Select Course</option>
-                {courses.map((item) => (
-                  <option key={item.id} value={item.id}>{item.name}</option>
-                ))}
-              </select>
-            </div>
-            <div>
               <Label>Semester <span className="text-red-500">*</span></Label>
               <select
                 value={formData.semester_id}
@@ -199,35 +163,6 @@ export default function CtwResultsModuleEstimatedMarkFormModal() {
               >
                 <option value={0}>Select Semester</option>
                 {semesters.map((item) => (
-                  <option key={item.id} value={item.id}>{item.name}</option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <Label>Program</Label>
-              <select
-                value={formData.program_id}
-                onChange={(e) => handleChange("program_id", parseInt(e.target.value))}
-                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500"
-              >
-                <option value={0}>Select Program (Optional)</option>
-                {programs.map((item) => (
-                  <option key={item.id} value={item.id}>{item.name}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <Label>Branch</Label>
-              <select
-                value={formData.branch_id}
-                onChange={(e) => handleChange("branch_id", parseInt(e.target.value))}
-                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500"
-              >
-                <option value={0}>Select Branch (Optional)</option>
-                {branches.map((item) => (
                   <option key={item.id} value={item.id}>{item.name}</option>
                 ))}
               </select>

@@ -87,7 +87,7 @@ function ExamsPageContent() {
   );
 
   const columns: Column<SystemExam>[] = [
-    { key: "id", header: "SL.", className: "text-center text-gray-900", render: (exam, index) => (pagination.from || 0) + (index + 1) },
+    { key: "id", header: "SL.", className: "text-center text-gray-900", render: (exam, index) => (pagination.from || 0) + (index) },
     { key: "name", header: "Exam Type Name", className: "font-medium text-gray-900" },
     { key: "code", header: "Code", className: "text-gray-700 font-mono text-sm" },
     { key: "description", header: "Description", className: "text-gray-700", render: (exam) => (

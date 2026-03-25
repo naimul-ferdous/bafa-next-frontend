@@ -19,6 +19,8 @@ interface DataTableProps<T> {
   hoverable?: boolean;
   onRowClick?: (item: T) => void;
   rowClassName?: (item: T, index: number) => string;
+  borderColor?: string; // e.g. "black" | "gray-200" | "slate-100"
+  rounded?: string;     // e.g. "lg" | "2xl" | "[1.5rem]"
 }
 
 export default function DataTable<T>({
@@ -29,12 +31,16 @@ export default function DataTable<T>({
   hoverable = true,
   onRowClick,
   rowClassName,
+  borderColor = "black",
+  rounded = "2xl",
 }: DataTableProps<T>) {
+  const b = `border-${borderColor}`;
+  const d = `divide-${borderColor}`;
   return (
-    <div className="bg-white rounded-lg border border-black overflow-hidden">
+    <div className={`bg-white rounded-${rounded} border ${b} overflow-hidden`}>
       <div className="overflow-x-auto">
         <table className="w-full border-collapse">
-          <thead className="border-b border-black">
+          <thead className={`border-b ${b}`}>
             <tr>
               {columns.map((column, index) => {
                 const alignClass = column.headerAlign === "center"
@@ -47,7 +53,7 @@ export default function DataTable<T>({
                   <th
                     key={index}
                     className={`px-4 py-3 ${alignClass} text-sm font-semibold text-gray-900 uppercase ${
-                      index < columns.length - 1 ? "border-r border-black" : ""
+                      index < columns.length - 1 ? `border-r ${b}` : ""
                     } ${column.className || ""}`}
                   >
                     {column.header}
@@ -56,7 +62,7 @@ export default function DataTable<T>({
               })}
             </tr>
           </thead>
-          <tbody className="divide-y divide-black">
+          <tbody className={`divide-y ${d}`}>
             {data.length === 0 ? (
               <tr>
                 <td
@@ -81,7 +87,7 @@ export default function DataTable<T>({
                     <td
                       key={colIndex}
                       className={`px-4 py-3 text-sm ${
-                        colIndex < columns.length - 1 ? "border-r border-black" : ""
+                        colIndex < columns.length - 1 ? `border-r ${b}` : ""
                       } ${column.className || ""}`}
                     >
                       {column.render

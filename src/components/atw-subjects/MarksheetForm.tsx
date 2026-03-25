@@ -4,6 +4,7 @@
 import React, { useState, useEffect, useMemo } from "react";
 import Input from "@/components/form/input/InputField";
 import Label from "@/components/form/Label";
+import SearchableSelect from "@/components/form/SearchableSelect";
 import { Icon } from "@iconify/react";
 import type { AtwSubjectsModuleMarksheet } from "@/libs/types/system";
 
@@ -22,7 +23,25 @@ interface MarkRow {
   percentage: number | string;
   estimate_mark: number | string;
   is_active: boolean;
+  is_combined: boolean;
+  combined_indices: number[];
 }
+
+const MARK_TYPE_OPTIONS = [
+  { value: "entrytest", label: "Entry Test" },
+  { value: "attendance", label: "Attendance" },
+  { value: "classtest", label: "Class Test" },
+  { value: "quiztest", label: "Quiz Test" },
+  { value: "assignment", label: "Assignment" },
+  { value: "presentation", label: "Presentation" },
+  { value: "viva", label: "Viva" },
+  { value: "note", label: "Note" },
+  { value: "experiment", label: "Experiment" },
+  { value: "midsemester", label: "Mid Semester" },
+  { value: "endsemester", label: "End Semester" },
+  { value: "combined", label: "Combined" },
+  { value: "performance", label: "Performance" },
+];
 
 export default function MarksheetForm({ initialData, onSubmit, onCancel, loading, isEdit = false }: MarksheetFormProps) {
   const [formData, setFormData] = useState({
@@ -32,20 +51,37 @@ export default function MarksheetForm({ initialData, onSubmit, onCancel, loading
     is_active: true,
   });
   const [marks, setMarks] = useState<MarkRow[]>([
-    { name: "", type: "", percentage: '', estimate_mark: '', is_active: true }
+    { name: "", type: "", percentage: '', estimate_mark: '', is_active: true, is_combined: false, combined_indices: [] }
   ]);
   const [error, setError] = useState("");
 
   useEffect(() => {
     if (initialData) {
-      setFormData({
-        name: initialData.name,
-        code: initialData.code,
-        full_mark: (initialData as any).full_mark ?? 100,
-        is_active: initialData.is_active,
-      });
-
       if (initialData.marks && initialData.marks.length > 0) {
+        // Build ID → positional index map so combined_cols can be converted to combined_indices
+        const idToIndex: Record<number, number> = {};
+        initialData.marks.forEach((m: any, idx: number) => { idToIndex[m.id] = idx; });
+
+        // Calculate full_mark: sum of percentages excluding rows referenced by combined marks
+        const refMarkIds = new Set(
+          initialData.marks.flatMap((m: any) =>
+            m.is_combined && Array.isArray(m.combined_cols)
+              ? m.combined_cols.map((c: any) => c.referenced_mark_id)
+              : []
+          )
+        );
+        const calculatedFullMark = initialData.marks.reduce((sum: number, m: any) => {
+          if (refMarkIds.has(m.id)) return sum;
+          return sum + (Number(m.percentage) || 0);
+        }, 0);
+
+        setFormData({
+          name: initialData.name,
+          code: initialData.code,
+          full_mark: calculatedFullMark || 100,
+          is_active: initialData.is_active,
+        });
+
         setMarks(initialData.marks.map((m: any) => ({
           id: m.id,
           name: m.name,
@@ -53,7 +89,20 @@ export default function MarksheetForm({ initialData, onSubmit, onCancel, loading
           percentage: m.percentage,
           estimate_mark: m.estimate_mark,
           is_active: m.is_active,
+          is_combined: m.is_combined ?? false,
+          combined_indices: m.is_combined && Array.isArray(m.combined_cols)
+            ? m.combined_cols
+                .map((c: any) => idToIndex[c.referenced_mark_id])
+                .filter((i: number) => i !== undefined)
+            : [],
         })));
+      } else {
+        setFormData({
+          name: initialData.name,
+          code: initialData.code,
+          full_mark: 100,
+          is_active: initialData.is_active,
+        });
       }
     }
   }, [initialData]);
@@ -71,7 +120,21 @@ export default function MarksheetForm({ initialData, onSubmit, onCancel, loading
   };
 
   const addMarkRow = () => {
-    setMarks(prev => [...prev, { name: "", type: "", percentage: '', estimate_mark: '', is_active: true }]);
+    setMarks(prev => [...prev, { name: "", type: "", percentage: '', estimate_mark: '', is_active: true, is_combined: false, combined_indices: [] }]);
+  };
+
+  const toggleCombinedIndex = (rowIndex: number, targetIndex: number) => {
+    setMarks(prev => {
+      const updated = [...prev];
+      const current = updated[rowIndex].combined_indices;
+      updated[rowIndex] = {
+        ...updated[rowIndex],
+        combined_indices: current.includes(targetIndex)
+          ? current.filter(i => i !== targetIndex)
+          : [...current, targetIndex],
+      };
+      return updated;
+    });
   };
 
   const removeMarkRow = (index: number) => {
@@ -80,23 +143,37 @@ export default function MarksheetForm({ initialData, onSubmit, onCancel, loading
     }
   };
 
-  const totalPercentage = marks.reduce((sum, m) => sum + (Number(m.percentage) || 0), 0);
   const fullMark = Number(formData.full_mark) || 0;
 
-  // Sample values for preview: estimate_mark - 1
+  // Indices that are referenced (checked) inside any combined row — excluded from total
+  const referencedByCombined = useMemo(() => {
+    const set = new Set<number>();
+    marks.forEach(m => { if (m.is_combined) m.combined_indices.forEach(i => set.add(i)); });
+    return set;
+  }, [marks]);
+
+  // Only count a row if it is NOT referenced by a combined row
+  const totalPercentage = marks.reduce((sum, m, i) => {
+    if (referencedByCombined.has(i)) return sum;
+    return sum + (Number(m.percentage) || 0);
+  }, 0);
+
+  // Sample values for preview: for combined rows use percentage-1, otherwise estimate_mark-1
   const previewSamples = useMemo(() => {
     return marks.map(m => {
-      const est = Number(m.estimate_mark) || 0;
-      return Math.max(0, est - 1);
+      if (m.is_combined) return Math.max(0, Number(m.percentage) - 1);
+      return Math.max(0, (Number(m.estimate_mark) || 0) - 1);
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [marks.map(m => m.estimate_mark).join('-')]);
+  }, [marks.map(m => m.is_combined ? m.percentage : m.estimate_mark).join('-')]);
 
-  // Auto-remove unfilled rows when total reaches full mark
+  // Auto-remove unfilled rows when total reaches full mark (skip referenced rows)
   useEffect(() => {
     if (fullMark > 0 && totalPercentage >= fullMark) {
       setMarks(prev => {
-        const filtered = prev.filter(m => Number(m.percentage) > 0);
+        const refSet = new Set<number>();
+        prev.forEach(m => { if (m.is_combined) m.combined_indices.forEach(i => refSet.add(i)); });
+        const filtered = prev.filter((m, i) => refSet.has(i) || Number(m.percentage) > 0);
         return filtered.length !== prev.length ? filtered : prev;
       });
     }
@@ -149,7 +226,6 @@ export default function MarksheetForm({ initialData, onSubmit, onCancel, loading
               type="number"
               step={1}
               min="0"
-              max="100"
               value={formData.full_mark}
               onChange={(e) => handleChange("full_mark", parseFloat(e.target.value) || 0)}
               placeholder="0"
@@ -159,22 +235,31 @@ export default function MarksheetForm({ initialData, onSubmit, onCancel, loading
 
         {/* Live Preview */}
         {marks.some(m => m.name.trim() || Number(m.percentage) > 0) && (() => {
+          // Indices referenced by combined rows — shown but excluded from Total
+          const refSet = new Set(marks.flatMap((m, i) => m.is_combined ? m.combined_indices : []));
+
+          // Show ALL marks that have content
+          const visibleMarks = marks
+            .map((m, idx) => ({ ...m, _idx: idx }))
+            .filter(m => m.name.trim() || Number(m.percentage) > 0);
+
           const previewGroups = Object.values(
-            marks
-              .filter(m => m.name.trim() || Number(m.percentage) > 0)
-              .reduce((acc, m, idx) => {
-                const key = m.type || `__none_${idx}`;
-                if (!acc[key]) acc[key] = { type: m.type, marks: [] as (MarkRow & { _idx: number })[] };
-                acc[key].marks.push({ ...m, _idx: idx });
-                return acc;
-              }, {} as Record<string, { type: string; marks: (MarkRow & { _idx: number })[] }>)
+            visibleMarks.reduce((acc, m) => {
+              const key = m.type || `__none_${m._idx}`;
+              if (!acc[key]) acc[key] = { type: m.type, marks: [] as (MarkRow & { _idx: number })[] };
+              acc[key].marks.push(m);
+              return acc;
+            }, {} as Record<string, { type: string; marks: (MarkRow & { _idx: number })[] }>)
           );
 
+          // Total only counts non-referenced marks
           const previewTotal = previewGroups.reduce((acc, group) =>
             acc + group.marks.reduce((gacc, m) => {
+              if (refSet.has(m._idx)) return gacc; // referenced — visible but not counted
+              const sample = previewSamples[m._idx] ?? 0;
+              if (m.is_combined) return gacc + sample;
               const est = Number(m.estimate_mark) || 0;
               const pct = Number(m.percentage) || 0;
-              const sample = previewSamples[m._idx] ?? 0;
               return gacc + (est !== pct && est > 0 ? (sample / est) * pct : sample);
             }, 0), 0);
 
@@ -194,7 +279,7 @@ export default function MarksheetForm({ initialData, onSubmit, onCancel, loading
                         <th
                           key={gi}
                           className="border border-black px-3 py-2 text-center font-semibold uppercase"
-                          colSpan={group.marks.reduce((acc, m) => acc + (Number(m.estimate_mark) !== Number(m.percentage) ? 2 : 1), 0)}
+                          colSpan={group.marks.reduce((acc, m) => acc + (!m.is_combined && Number(m.estimate_mark) !== Number(m.percentage) ? 2 : 1), 0)}
                         >
                           {group.type || '—'}
                         </th>
@@ -206,7 +291,7 @@ export default function MarksheetForm({ initialData, onSubmit, onCancel, loading
                         group.marks.map((m, mi) => (
                           <th key={`${gi}-${mi}`}
                             className="border border-black px-2 py-2 text-center"
-                            colSpan={Number(m.estimate_mark) !== Number(m.percentage) ? 2 : 1}
+                            colSpan={!m.is_combined && Number(m.estimate_mark) !== Number(m.percentage) ? 2 : 1}
                           >
                             <div className="text-xs font-medium uppercase">{m.name || '—'}</div>
                           </th>
@@ -218,7 +303,7 @@ export default function MarksheetForm({ initialData, onSubmit, onCancel, loading
                         group.marks.map((m, mi) => {
                           const est = Number(m.estimate_mark);
                           const pct = Number(m.percentage);
-                          if (est !== pct) {
+                          if (!m.is_combined && est !== pct) {
                             return (
                               <React.Fragment key={`${gi}-${mi}`}>
                                 <th className="border border-black px-1 py-1 text-center w-[80px] min-w-[80px]">{est.toFixed(0)}</th>
@@ -247,6 +332,13 @@ export default function MarksheetForm({ initialData, onSubmit, onCancel, loading
                           const est = Number(m.estimate_mark) || 0;
                           const pct = Number(m.percentage) || 0;
                           const sample = previewSamples[m._idx] ?? 0;
+                          if (m.is_combined) {
+                            return (
+                              <td key={`${gi}-${mi}`} className="border border-black px-2 py-1 text-center text-gray-400 italic text-xs min-w-[100px]">
+                                {sample.toFixed(0)}
+                              </td>
+                            );
+                          }
                           const isSplit = est !== pct;
                           if (isSplit) {
                             const converted = est > 0 ? (sample / est) * pct : 0;
@@ -289,12 +381,17 @@ export default function MarksheetForm({ initialData, onSubmit, onCancel, loading
                   <th className="border border-black px-4 py-2 text-left font-semibold text-gray-900">Select Type</th>
                   <th className="border border-black px-4 py-2 text-left font-semibold text-gray-900">Exam Mark</th>
                   <th className="border border-black px-4 py-2 text-left font-semibold text-gray-900">Mark Percentage</th>
+                  <th className="border border-black px-4 py-2 text-center font-semibold text-gray-900">Combined</th>
                   <th className="border border-black px-4 py-2 text-center font-semibold text-gray-900">Action</th>
                 </tr>
               </thead>
               <tbody>
                 {marks.map((mark, index) => {
-                  const otherTotal = marks.filter((_, i) => i !== index).reduce((sum, m) => sum + (Number(m.percentage) || 0), 0);
+                  const otherTotal = marks.reduce((sum, m, i) => {
+                    if (i === index) return sum;
+                    if (referencedByCombined.has(i)) return sum;
+                    return sum + (Number(m.percentage) || 0);
+                  }, 0);
                   const maxForRow = Math.max(0, fullMark - otherTotal);
                   return (
                     <tr key={index} className="bg-white">
@@ -309,56 +406,60 @@ export default function MarksheetForm({ initialData, onSubmit, onCancel, loading
                         />
                       </td>
                       <td className="border border-black px-2 py-2">
-                        <select
+                        <SearchableSelect
+                          options={MARK_TYPE_OPTIONS}
                           value={mark.type}
-                          onChange={(e) => handleMarkChange(index, "type", e.target.value)}
-                          className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                        >
-                          <option value="">Select a Subject Type</option>
-                          <option value="entrytest">Entry Test</option>
-                          <option value="attendance">Attendence</option>
-                          <option value="classtest">Class Test</option>
-                          <option value="quiztest">Quiz Test</option>
-                          <option value="assignment">Assignment</option>
-                          <option value="presentation">Presentation</option>
-                          <option value="viva">Viva</option>
-                          <option value="note">Note</option>
-                          <option value="experiment">Experiment</option>
-                          <option value="midsemester">Mid Semester</option>
-                          <option value="endsemester">End Semester</option>
-                        </select>
-                      </td>
-                      <td className="border border-black px-2 py-2">
-                        <input
-                          type="text"
-                          inputMode="decimal"
-                          pattern="[0-9]*\.?[0-9]*"
-                          value={mark.estimate_mark}
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            if (val === "") {
-                              handleMarkChange(index, "estimate_mark", "");
-                              return;
-                            }
-                            if (/^\d*\.?\d*$/.test(val)) {
-                              handleMarkChange(index, "estimate_mark", val);
-                            }
-                          }}
-                          onBlur={(e) => {
-                            const val = e.target.value;
-                            if (val !== "") {
-                              const parsed = parseFloat(val);
-                              if (!isNaN(parsed)) {
-                                handleMarkChange(index, "estimate_mark", parsed);
-                              } else {
-                                handleMarkChange(index, "estimate_mark", "");
-                              }
-                            }
-                          }}
-                          placeholder="Enter Exam Mark"
-                          className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                          onChange={(val) => handleMarkChange(index, "type", val)}
+                          placeholder="Select a Subject Type"
+                          searchPlaceholder="Search type..."
                         />
                       </td>
+                      {/* Exam Mark column */}
+                      <td className="border border-black px-2 py-2">
+                        {mark.is_combined ? (
+                          <div className="space-y-1 min-w-[160px]">
+                            {marks.map((m, i) => {
+                              if (i === index || m.is_combined) return null;
+                              return (
+                                <label key={i} className="flex items-center gap-2 cursor-pointer text-sm text-gray-700">
+                                  <input
+                                    type="checkbox"
+                                    checked={mark.combined_indices.includes(i)}
+                                    onChange={() => toggleCombinedIndex(index, i)}
+                                    className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                                  />
+                                  <span>{m.name || `Row ${i + 1}`}</span>
+                                </label>
+                              );
+                            })}
+                            {marks.filter((m, i) => i !== index && !m.is_combined).length === 0 && (
+                              <span className="text-xs text-gray-400 italic">No rows available</span>
+                            )}
+                          </div>
+                        ) : (
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            pattern="[0-9]*\.?[0-9]*"
+                            value={mark.estimate_mark}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              if (val === "") { handleMarkChange(index, "estimate_mark", ""); return; }
+                              if (/^\d*\.?\d*$/.test(val)) handleMarkChange(index, "estimate_mark", val);
+                            }}
+                            onBlur={(e) => {
+                              const val = e.target.value;
+                              if (val !== "") {
+                                const parsed = parseFloat(val);
+                                handleMarkChange(index, "estimate_mark", isNaN(parsed) ? "" : parsed);
+                              }
+                            }}
+                            placeholder="Enter Exam Mark"
+                            className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                          />
+                        )}
+                      </td>
+                      {/* Percentage / Total Mark column */}
                       <td className="border border-black px-2 py-2">
                         <input
                           type="text"
@@ -367,32 +468,47 @@ export default function MarksheetForm({ initialData, onSubmit, onCancel, loading
                           value={mark.percentage}
                           onChange={(e) => {
                             const val = e.target.value;
-                            if (val === "") {
-                              handleMarkChange(index, "percentage", "");
-                              return;
-                            }
+                            if (val === "") { handleMarkChange(index, "percentage", ""); return; }
                             if (/^\d*\.?\d*$/.test(val)) {
-                              const numVal = parseFloat(val);
-                              if (!isNaN(numVal) && numVal > maxForRow) {
-                                handleMarkChange(index, "percentage", maxForRow);
-                              } else {
-                                handleMarkChange(index, "percentage", val);
+                              if (!mark.is_combined) {
+                                const numVal = parseFloat(val);
+                                if (!isNaN(numVal) && numVal > maxForRow) {
+                                  handleMarkChange(index, "percentage", maxForRow);
+                                  return;
+                                }
                               }
+                              handleMarkChange(index, "percentage", val);
                             }
                           }}
                           onBlur={(e) => {
                             const val = e.target.value;
                             if (val !== "") {
                               const parsed = parseFloat(val);
-                              if (!isNaN(parsed)) {
-                                handleMarkChange(index, "percentage", parsed);
-                              } else {
-                                handleMarkChange(index, "percentage", "");
-                              }
+                              handleMarkChange(index, "percentage", isNaN(parsed) ? "" : parsed);
                             }
                           }}
-                          placeholder={`Max ${maxForRow}`}
+                          placeholder={mark.is_combined ? "Enter Total Mark" : `Max ${maxForRow}`}
                           className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                        />
+                      </td>
+                      <td className="border border-black px-2 py-2 text-center">
+                        <input
+                          type="checkbox"
+                          checked={mark.is_combined}
+                          onChange={(e) => {
+                            const checked = e.target.checked;
+                            setMarks(prev => {
+                              const updated = [...prev];
+                              updated[index] = {
+                                ...updated[index],
+                                is_combined: checked,
+                                estimate_mark: checked ? "" : updated[index].estimate_mark,
+                                combined_indices: checked ? updated[index].combined_indices : [],
+                              };
+                              return updated;
+                            });
+                          }}
+                          className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
                         />
                       </td>
                       <td className="border border-black px-2 py-2 text-center">

@@ -14,7 +14,7 @@ export default function CreateResultPage() {
     setLoading(true);
     try {
       await atwAssessmentCounselingResultService.createResult(data);
-      router.push("/atw/assessments/counselings/results/view");
+      router.push(`/atw/assessments/counselings/results/course/${data.course_id}/semester/${data.semester_id}`);
     } catch (err: any) {
       throw err;
     } finally {
@@ -23,7 +23,7 @@ export default function CreateResultPage() {
   };
 
   const handleCancel = () => {
-    router.push("/atw/assessments/counselings/results/view");
+    router.back();
   };
 
   return (

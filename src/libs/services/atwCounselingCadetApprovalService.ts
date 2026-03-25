@@ -105,6 +105,28 @@ export const atwCounselingCadetApprovalService = {
     }
   },
 
+  bulkApprove: async (payload: {
+    authority_id: number;
+    status: 'approved' | 'rejected';
+    approved_by?: number;
+    approved_date?: string;
+    rejection_reason?: string;
+    cadets: { cadet_id: number; course_id?: number; semester_id?: number; program_id?: number; branch_id?: number }[];
+  }): Promise<boolean> => {
+    try {
+      const token = getToken();
+      const result = await apiClient.post<{ success: boolean; message: string }>(
+        '/atw-counseling-cadet-approvals/bulk',
+        payload,
+        token
+      );
+      return result?.success || false;
+    } catch (error) {
+      console.error('Failed to bulk approve/reject:', error);
+      throw error;
+    }
+  },
+
   destroy: async (id: number): Promise<boolean> => {
     try {
       const token = getToken();

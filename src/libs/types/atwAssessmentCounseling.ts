@@ -88,6 +88,9 @@ export interface AtwAssessmentCounselingResultCadet {
     id: number;
     name: string;
     bd_no?: string;
+    cadet_number?: string;
+    assigned_ranks?: { is_current: boolean; rank?: { name: string; short_name?: string } }[];
+    assigned_branchs?: { is_current: boolean; branch?: { name: string } }[];
   };
   remarks?: AtwAssessmentCounselingResultRemark[];
 }
