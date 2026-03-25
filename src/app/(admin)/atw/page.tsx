@@ -635,7 +635,7 @@ export function ATWDashboardView() {
             {/* Welcome text */}
             <div className="flex items-center gap-2 mb-1">
               <h2 className="text-xl sm:text-2xl font-black text-slate-900">
-                {greeting.text}, {user?.name?.split(" ")[0] ?? "User"}
+                {greeting.text}, {user?.name ?? "User"}
               </h2>
               <span className="text-2xl">👋</span>
             </div>
@@ -732,19 +732,14 @@ export function ATWDashboardView() {
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
               <StatCard icon="hugeicons:book-02" iconBg="from-blue-500 to-indigo-600" bgImage="corner-1.png" title="Total Subjects" value={(authorityStatus?.total_subjects ?? 0).toLocaleString()} trend={4.9} trendUp />
               <StatCard icon="hugeicons:user-multiple" iconBg="from-violet-500 to-purple-700" bgImage="corner-2.png" title="Total Cadets" value={(authorityStatus?.total_cadets ?? 0).toLocaleString()} trend={2.7} trendUp />
-              <StatCard 
-                icon="hugeicons:layers-01" 
-                iconBg="from-indigo-500 to-violet-600" 
-                bgImage="corner-4.png" 
-                title="Running Courses" 
-                value={
-                  authorityStatus?.my_authority
-                    ? `${authorityStatus?.total_fully_approved_courses ?? 0}/${authorityStatus?.total_running_courses ?? 0}`
-                    : (authorityStatus?.total_running_courses ?? 0).toLocaleString()
-                } 
-                subtitle={authorityStatus?.my_authority ? "Fully Approved" : undefined}
-                trend={3.4} 
-                trendUp 
+              <StatCard
+                icon="hugeicons:layers-01"
+                iconBg="from-indigo-500 to-violet-600"
+                bgImage="corner-4.png"
+                title="Running Courses"
+                value={(authorityStatus?.total_running_courses ?? 0).toLocaleString()}
+                trend={3.4}
+                trendUp
               />
               <StatCard 
                 icon="hugeicons:chart-bar-line" 

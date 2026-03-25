@@ -207,14 +207,14 @@ export default function AtwSubjectDetailsPage() {
           <div className="flex justify-center mb-4"><FullLogo /></div>
           <h1 className="text-xl font-bold text-gray-900 uppercase tracking-wider">Bangladesh Air Force Academy</h1>
           <p className="font-bold text-gray-900 uppercase tracking-wider mt-2">
-            {isAtwAdmin ? "Subject Grouping Details" : `Subject Details - ${mod?.subject_name || subject.name}`}
+            {`Subject Grouped`}
           </p>
         </div>
 
-        {/* ── Subject Information & Marksheet Structure (Hidden for ATW Admin) ─────────────────────── */}
-        {!isAtwAdmin && (
-          <>
-            <section className="space-y-4">
+        {/* ── Subject Information & Marksheet Structure ─────────────────────── */}
+        {/* {(
+          <> */}
+            {/* <section className="space-y-4">
               <h2 className="text-lg font-bold text-gray-900 pb-1 border-b border-dashed border-gray-400">
                 Subject Information
               </h2>
@@ -240,12 +240,9 @@ export default function AtwSubjectDetailsPage() {
                   ) : "No file uploaded"} 
                 />
               </div>
-            </section>
+            </section> */}
 
-            <section className="space-y-4">
-              <h2 className="text-lg font-bold text-gray-900 pb-1 border-b border-dashed border-gray-400">
-                Marksheet Structure
-              </h2>
+            {/* <section className="space-y-4">
               {marksheet ? (
                 <div className="space-y-4">
                   <div className="flex items-center gap-8">
@@ -302,14 +299,14 @@ export default function AtwSubjectDetailsPage() {
               )}
             </section>
           </>
-        )}
+        )} */}
 
-        {/* ── Subject Group Details (Visible only for ATW Admin) ─────────────────────── */}
-        {semesterTree.length > 0 && isAtwAdmin && (
+        {/* ── Subject Group Details (Visible for all non-instructor users) ─────────────────────── */}
+        {semesterTree.length > 0 && !userIsInstructor && (
           <section className="space-y-4 pt-4">
-            <h2 className="text-lg font-bold text-gray-900 pb-1 border-b border-dashed border-gray-400">
+            {/* <h2 className="text-lg font-bold text-gray-900 pb-1 border-b border-dashed border-gray-400">
               Subject Group Details
-            </h2>
+            </h2> */}
             <div className="overflow-x-auto">
               <table className="w-full border-collapse border border-black text-sm text-left">
                 <thead className="uppercase font-bold">
