@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 const TOKEN_KEY = 'bafa_token_stored_credential';
 const AUTH_PAGES = ['/signin'];
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const token = request.cookies.get(TOKEN_KEY)?.value;
 
