@@ -7,9 +7,6 @@ const nextConfig: NextConfig = {
   trailingSlash: true,
   basePath: basePath,
   assetPrefix: basePath,
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
   typescript: {
     ignoreBuildErrors: true,
   },

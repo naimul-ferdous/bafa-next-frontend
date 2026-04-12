@@ -15,6 +15,73 @@ import { getOrdinal } from "@/libs/utils/formatter";
 
 const TWO_KM_5_STATION_MODULE_CODE = "2km_5_station";
 
+function SignatureBox({ auth, signer, approvedAt, position }: {
+  auth: any;
+  signer: { name: string; rank?: { name: string; short_name: string } | null; signature?: string | null; designation?: string | null } | null;
+  approvedAt?: string | null;
+  position?: 'first' | 'middle' | 'last';
+}) {
+  const [imgFailed, setImgFailed] = React.useState(false);
+
+  const dateStr = approvedAt
+    ? (() => {
+        const d = new Date(approvedAt);
+        const day   = String(d.getDate()).padStart(2, '0');
+        const month = d.toLocaleDateString('en-US', { month: 'short' }).toUpperCase();
+        const year  = d.getFullYear();
+        return `${day}-${month}-${year}`;
+      })()
+    : null;
+
+  const label = position === 'first'
+    ? 'Prepared & Checked By'
+    : position === 'last'
+      ? 'Approved By'
+      : auth.role?.name ?? auth.user?.name ?? '—';
+
+  const roleName = auth.role?.name ?? auth.user?.name ?? null;
+
+  return (
+    <div className="signature-box flex flex-col items-start min-w-[180px]">
+      <p className="sig-label text-sm font-bold uppercase text-gray-900 mb-1 tracking-wide">{label}</p>
+      <div className="sig-area w-full flex items-end justify-start pb-1 h-16">
+        {signer?.signature && !imgFailed ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={signer.signature}
+            alt=""
+            className="max-h-14 max-w-[150px] object-contain"
+            onError={() => setImgFailed(true)}
+          />
+        ) : (
+          <span className="text-sm italic text-gray-400">—</span>
+        )}
+      </div>
+      {signer ? (
+        <>
+          <p className="sig-name text-sm font-bold text-gray-900 uppercase mt-1">{signer.name}</p>
+          {signer?.rank?.short_name && (
+            <p className="sig-rank text-xs font-semibold text-orange-500">{signer.rank.short_name}</p>
+          )}
+          {signer?.designation && (
+            <p className="sig-designation text-xs text-gray-700">{signer.designation}</p>
+          )}
+          {dateStr && (
+            <p className="sig-date text-xs text-gray-500 pt-0.5 border-t border-gray-800 mt-1">{dateStr}</p>
+          )}
+        </>
+      ) : (
+        roleName && (
+          <>
+            <p className="text-sm text-gray-700 mt-1">{roleName}</p>
+            <p className="text-xs text-gray-400 pt-0.5 border-t border-gray-800 mt-1 w-full">Date: ___________</p>
+          </>
+        )
+      )}
+    </div>
+  );
+}
+
 export default function TwoKmFiveStationCourseSemesterResultPage() {
   const router = useRouter();
   const params = useParams();
@@ -366,11 +433,31 @@ export default function TwoKmFiveStationCourseSemesterResultPage() {
   };
 
   const hasStationData = stationDetails.length > 0;
+
+  // Determine per-station whether it records time or qty, based on actual submission data
+  const stationIsTimeBased = useMemo(() => {
+    const map = new Map<number, boolean>();
+    for (const sub of submissions) {
+      for (const markItem of (sub.instructor_details?.marks || [])) {
+        for (const d of (markItem.details || [])) {
+          const stationId = d.ctw_results_module_estimated_marks_details_id;
+          if (stationId === undefined) continue;
+          if (d.achieved_time !== null && d.achieved_time !== undefined) {
+            map.set(stationId, true);
+          } else if (!map.has(stationId)) {
+            map.set(stationId, false);
+          }
+        }
+      }
+    }
+    return map;
+  }, [submissions]);
+
   const maxTotal = stationDetails.reduce((sum: number, sd: any) => sum + parseFloat(String(sd.male_marks || 0)), 0);
   const convLimit = parseFloat(String(estimatedMark?.conversation_mark || 0));
   const instructorCount = moduleDetails?.instructor_count || 0;
   const isComplete = instructorCount > 0 && submissions.length >= instructorCount;
-  const instructorSlots = Array.from({ length: instructorCount }, (_, i) => i);
+  // const instructorSlots = Array.from({ length: instructorCount }, (_, i) => i);
 
   if (loading) {
     return (
@@ -493,7 +580,9 @@ export default function TwoKmFiveStationCourseSemesterResultPage() {
             <p className="text-center font-medium text-gray-900 uppercase underline tracking-wider">
               {courseDetails?.name} ({moduleDetails?.full_name || "2KM 5 Station"})
             </p>
-            <p className="text-center font-medium text-gray-900 uppercase underline tracking-wider">{semesterDetails?.name}</p>
+            <p className="text-center font-medium text-gray-900 uppercase underline tracking-wider">
+              {semesterDetails?.name}{examType ? ` | ${examType}` : ""}
+            </p>
           </div>
         </div>
 
@@ -527,7 +616,9 @@ export default function TwoKmFiveStationCourseSemesterResultPage() {
                 <tr>
                   {hasStationData && stationDetails.map((sd: any) => (
                     <React.Fragment key={sd.id}>
-                      <th className="border border-black px-1 py-1 text-center text-xs font-normal">Qty</th>
+                      <th className="border border-black px-1 py-1 text-center text-xs font-normal">
+                        {stationIsTimeBased.get(sd.id) ? "Time" : "Qty"}
+                      </th>
                       <th className="border border-black px-1 py-1 text-center text-xs font-normal">Mks</th>
                     </React.Fragment>
                   ))}
@@ -643,11 +734,61 @@ export default function TwoKmFiveStationCourseSemesterResultPage() {
           </div>
         </div>
 
-        <div className="mt-12 grid grid-cols-3 gap-8 text-center no-print">
-          <div className="border-t-2 border-black pt-2"><p className="font-bold text-sm uppercase tracking-widest">Instructor</p></div>
-          <div className="border-t-2 border-black pt-2"><p className="font-bold text-sm uppercase tracking-widest">Chief Instructor</p></div>
-          <div className="border-t-2 border-black pt-2"><p className="font-bold text-sm uppercase tracking-widest">Commandant</p></div>
-        </div>
+        {/* Signature Section */}
+        {(() => {
+          const signatureAuthorities = [...approvalAuthorities]
+            .filter((a: any) => a.is_signature)
+            .sort((a: any, b: any) => (a.sort ?? 0) - (b.sort ?? 0));
+          if (signatureAuthorities.length === 0) return null;
+          const allAuthsSorted = [...approvalAuthorities].sort((a: any, b: any) => (a.sort ?? 0) - (b.sort ?? 0));
+          return (
+            <div className="signature-section max-w-5xl mx-auto mt-10 flex justify-between gap-10 pr-2">
+              {signatureAuthorities.map((auth: any, sigIdx: number) => {
+                const sigPosition: 'first' | 'middle' | 'last' =
+                  sigIdx === 0 ? 'first'
+                  : sigIdx === signatureAuthorities.length - 1 ? 'last'
+                  : 'middle';
+
+                const authIdx = allAuthsSorted.findIndex((a: any) => a.id === auth.id);
+                const nextAuth = authIdx >= 0 && authIdx < allAuthsSorted.length - 1
+                  ? allAuthsSorted[authIdx + 1]
+                  : null;
+
+                // Signer = forwarder from next authority's module approval, fallback to own approver
+                let rawSigner: any = null;
+                if (nextAuth) {
+                  const nextApproval = moduleApprovals.find(
+                    (ma: any) => ma.authority_id === nextAuth.id && ma.forwarded_by != null
+                  );
+                  rawSigner = nextApproval?.forwarder ?? null;
+                }
+                if (!rawSigner) {
+                  const ownApproval = moduleApprovals.find(
+                    (ma: any) => ma.authority_id === auth.id && ma.approved_by != null
+                  );
+                  rawSigner = ownApproval?.approver ?? null;
+                }
+
+                const ownRecord = moduleApprovals.find((ma: any) => ma.authority_id === auth.id);
+                const nextRecord = nextAuth ? moduleApprovals.find((ma: any) => ma.authority_id === nextAuth.id) : null;
+                const approvedAt: string | null =
+                  ownRecord?.approved_at ?? ownRecord?.updated_at ?? ownRecord?.created_at
+                  ?? nextRecord?.created_at ?? null;
+
+                let designation: string | null = null;
+                if (rawSigner?.roles) {
+                  const primary = rawSigner.roles.find((r: any) => r.pivot?.is_primary);
+                  designation = primary?.name ?? rawSigner.roles[0]?.name ?? null;
+                }
+
+                const signer = rawSigner ? { ...rawSigner, designation } : null;
+                return (
+                  <SignatureBox key={auth.id} auth={auth} signer={signer} approvedAt={approvedAt} position={sigPosition} />
+                );
+              })}
+            </div>
+          );
+        })()}
 
         <div className="mt-12 text-center text-[10px] text-gray-500 font-medium italic">
           <p>Generated on: {new Date().toLocaleString("en-GB", { day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" })}</p>

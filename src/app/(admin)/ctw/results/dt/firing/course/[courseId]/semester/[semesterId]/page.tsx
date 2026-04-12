@@ -15,6 +15,49 @@ import { getOrdinal } from "@/libs/utils/formatter";
 
 const FIRING_MODULE_CODE = "firing";
 
+function SignatureBox({ auth, signer, approvedAt, position }: {
+  auth: any;
+  signer: { name: string; rank?: { name: string; short_name: string } | null; signature?: string | null; designation?: string | null } | null;
+  approvedAt?: string | null;
+  position?: 'first' | 'middle' | 'last';
+}) {
+  const [imgFailed, setImgFailed] = React.useState(false);
+  const dateStr = approvedAt ? (() => {
+    const d = new Date(approvedAt);
+    return `${String(d.getDate()).padStart(2, '0')}-${d.toLocaleDateString('en-US', { month: 'short' }).toUpperCase()}-${d.getFullYear()}`;
+  })() : null;
+  const label = position === 'first' ? 'Prepared & Checked By' : position === 'last' ? 'Approved By' : auth.role?.name ?? auth.user?.name ?? '—';
+  const roleName = auth.role?.name ?? auth.user?.name ?? null;
+  return (
+    <div className="signature-box flex flex-col items-start min-w-[180px]">
+      <p className="sig-label text-sm font-bold uppercase text-gray-900 mb-1 tracking-wide">{label}</p>
+      <div className="sig-area w-full flex items-end justify-start pb-1 h-16">
+        {signer?.signature && !imgFailed ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={signer.signature} alt="" className="max-h-14 max-w-[150px] object-contain" onError={() => setImgFailed(true)} />
+        ) : (
+          <span className="text-sm italic text-gray-400">—</span>
+        )}
+      </div>
+      {signer ? (
+        <>
+          <p className="sig-name text-sm font-bold text-gray-900 uppercase mt-1">{signer.name}</p>
+          {signer?.rank?.short_name && <p className="sig-rank text-xs font-semibold text-orange-500">{signer.rank.short_name}</p>}
+          {signer?.designation && <p className="sig-designation text-xs text-gray-700">{signer.designation}</p>}
+          {dateStr && <p className="sig-date text-xs text-gray-500 pt-0.5 border-t border-gray-800 mt-1">{dateStr}</p>}
+        </>
+      ) : (
+        roleName && (
+          <>
+            <p className="text-sm text-gray-700 mt-1">{roleName}</p>
+            <p className="text-xs text-gray-400 pt-0.5 border-t border-gray-800 mt-1 w-full">Date: ___________</p>
+          </>
+        )
+      )}
+    </div>
+  );
+}
+
 export default function FiringCourseSemesterResultPage() {
   const router = useRouter();
   const params = useParams();
@@ -551,7 +594,7 @@ export default function FiringCourseSemesterResultPage() {
               Awaiting {instructorCount - submissions.length} instructor{instructorCount - submissions.length > 1 ? "s" : ""}
             </span>
           )}
-          <button onClick={() => window.print()} className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 flex items-center gap-2 font-medium transition-all">
+          <button onClick={handlePrint} className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 flex items-center gap-2 font-medium transition-all">
             <Icon icon="hugeicons:printer" className="w-4 h-4" />Print
           </button>
         </div>
@@ -567,26 +610,15 @@ export default function FiringCourseSemesterResultPage() {
               {courseDetails?.name} ({moduleDetails?.full_name || "Firing"})
             </p>
             <p className="text-center font-medium text-gray-900 uppercase underline tracking-wider">
-              {semesterDetails?.name}
+              {semesterDetails?.name}{examType ? ` | ${examType}` : ""}
             </p>
           </div>
         </div>
 
         <div className="mb-6">
-          <h2 className="text-lg font-bold text-gray-900 mb-4 pb-1 border-b border-dashed border-gray-400 uppercase text-base">Course Information</h2>
-          <div className="grid grid-cols-2 gap-x-12 gap-y-3">
-            <div className="flex"><span className="w-48 text-gray-900 font-medium">Course</span><span className="mr-4">:</span><span className="text-gray-900 flex-1 font-bold">{courseDetails?.name || "N/A"}</span></div>
-            <div className="flex"><span className="w-48 text-gray-900 font-medium">Semester</span><span className="mr-4">:</span><span className="text-gray-900 flex-1 font-bold">{semesterDetails?.name || "N/A"}</span></div>
-            <div className="flex"><span className="w-48 text-gray-900 font-medium">Module</span><span className="mr-4">:</span><span className="text-gray-900 flex-1 font-bold">{moduleDetails?.full_name} ({moduleDetails?.short_name})</span></div>
-            <div className="flex"><span className="w-48 text-gray-900 font-medium">Exam Type</span><span className="mr-4">:</span><span className="text-gray-900 flex-1 font-bold">{examType || "N/A"}</span></div>
-            <div className="flex"><span className="w-48 text-gray-900 font-medium">Weightage (per inst)</span><span className="mr-4">:</span><span className="text-gray-900 flex-1 font-bold">{estimatedMarkPerInstructor}</span></div>
-            <div className="flex"><span className="w-48 text-gray-900 font-medium">Conversion Limit</span><span className="mr-4">:</span><span className="text-gray-900 flex-1 font-bold">{conversationMarkLimit}</span></div>
-          </div>
-        </div>
-
-        <div className="mb-6">
+          <h2 className="text-lg font-bold text-gray-900 mb-4 pb-1 border-b border-dashed border-gray-400 uppercase text-base">Cadets Marks</h2>
           <div className="overflow-x-auto">
-            <table className="w-full border-collapse border border-black text-sm">
+            <table className="w-full border-collapse border border-black">
               <thead>
                 <tr>
                   {canApproveAction && pendingCadetIds.length > 0 && allInstructorsSubmitted && (
@@ -599,17 +631,9 @@ export default function FiringCourseSemesterResultPage() {
                   <th rowSpan={2} className="border border-black px-2 py-2 text-center align-middle">Rank</th>
                   <th rowSpan={2} className="border border-black px-2 py-2 text-left align-middle">Name</th>
                   <th rowSpan={2} className="border border-black px-2 py-2 text-left align-middle">Branch</th>
-                  {instructorCount > 1 ? (
-                    <>
-                      <th colSpan={instructorCount} className="border border-black px-2 py-1 text-center align-middle font-bold">
-                        Instructors
-                      </th>
-                      <th rowSpan={2} className="border border-black px-2 py-2 text-center align-middle font-bold">Total - {totalWeightage}</th>
-                    </>
-                  ) : (
-                    <th rowSpan={2} className="border border-black px-2 py-2 text-center align-middle font-bold">Mark</th>
-                  )}
-                  <th rowSpan={2} className="border border-black px-2 py-2 text-center align-middle font-bold">Conv - {conversationMarkLimit}</th>
+                  <th colSpan={instructorCount || 1} className="border border-black px-2 py-1 text-center align-middle font-bold">Instructors</th>
+                  <th rowSpan={2} className="border border-black px-2 py-2 text-center align-middle font-bold">Total<br />({totalWeightage})</th>
+                  <th rowSpan={2} className="border border-black px-2 py-2 text-center align-middle font-bold">Conv.<br />({conversationMarkLimit})</th>
                   <th rowSpan={2} className="border border-black px-2 py-2 text-center align-middle font-bold">Position</th>
                   <th rowSpan={2} className="border border-black px-2 py-2 text-center align-middle font-bold">Remarks</th>
                   <th rowSpan={2} className="border border-black px-2 py-2 text-center align-middle no-print">Status</th>
@@ -618,10 +642,8 @@ export default function FiringCourseSemesterResultPage() {
                   )}
                 </tr>
                 <tr>
-                  {instructorCount > 1 && instructorSlots.map(i => (
-                    <th key={i} className="border border-black px-1 py-1 text-center align-middle font-bold">
-                      {`Instr ${i + 1}`}
-                    </th>
+                  {instructorSlots.map(i => (
+                    <th key={i} className="border border-black px-1 py-1 text-center align-middle font-bold">{`Instr ${i + 1}`}</th>
                   ))}
                 </tr>
               </thead>
@@ -647,82 +669,109 @@ export default function FiringCourseSemesterResultPage() {
                       <td className="border border-black px-2 py-2">
                         {item.cadet?.assigned_branchs?.filter((b: any) => b.is_current)?.[0]?.branch?.name || item.cadet?.assigned_branchs?.[0]?.branch?.name || "-"}
                       </td>
-                      {instructorCount > 1 ? (
-                        <>
-                          {instructorSlots.map(i => {
-                            const sub = submissions[i];
-                            const instructorId = sub?.instructor_details?.id;
-                            const mark = instructorId !== undefined ? item.instructorMarks[instructorId] : undefined;
-                            return (
-                              <td key={i} className="border border-black px-2 py-2 text-center">
-                                {mark !== undefined ? parseFloat(String(mark)).toFixed(1) : "-"}
-                              </td>
-                            );
-                          })}
-                          <td className="border border-black px-2 py-2 text-center font-bold">
-                            {isComplete ? item.totalAchieved.toFixed(1) : "-"}
+                      {instructorSlots.map(i => {
+                        const sub = submissions[i];
+                        const instructorId = sub?.instructor_details?.id;
+                        const mark = instructorId !== undefined ? item.instructorMarks[instructorId] : undefined;
+                        return (
+                          <td key={i} className="border border-black px-2 py-2 text-center">
+                            {mark !== undefined ? parseFloat(String(mark)).toFixed(1) : "-"}
                           </td>
-                        </>
-                      ) : (
-                        <td className="border border-black px-2 py-2 text-center font-bold">
-                          {isComplete ? item.totalAchieved.toFixed(1) : "-"}
-                        </td>
-                      )}
-                      <td className="border border-black px-2 py-2 text-center font-bold">
-                        {isComplete ? item.convertedMark.toFixed(2) : "-"}
-                      </td>
-                      <td className="border border-black px-2 py-2 text-center">
-                        {isComplete ? getOrdinal(item.position) : "-"}
-                      </td>
+                        );
+                      })}
+                      <td className="border border-black px-2 py-2 text-center font-bold">{isComplete ? item.totalAchieved.toFixed(1) : "-"}</td>
+                      <td className="border border-black px-2 py-2 text-center font-bold">{isComplete ? item.convertedMark.toFixed(2) : "-"}</td>
+                      <td className="border border-black px-2 py-2 text-center">{isComplete ? getOrdinal(item.position) : "-"}</td>
                       <td className={`border border-black px-2 py-2 text-center ${item.remark === "Failed" ? "text-red-600" : "text-gray-400"}`}>
                         {item.remark}
                       </td>
-                      {/* Status - per-authority timeline per instructor result */}
+                      {/* Status */}
                       <td className="border border-black px-2 py-2 no-print">
                         <div className="flex flex-col gap-1.5 min-w-[100px]">
-                          {instructorSlots.map(i => {
-                            const sub = submissions[i];
-                            const hasSubmitted = !!sub;
-                            const resultId = sub?.id;
-                            return (
-                              <div key={i}>
-                                <div className="text-[9px] font-bold text-gray-700 mb-0.5">Instr {i + 1}:</div>
-                                {!hasSubmitted ? (
-                                  <div className="flex items-center gap-1">
-                                    <Icon icon="hugeicons:clock-02" className="w-3 h-3 text-gray-400" />
-                                    <span className="text-[9px] text-gray-500">No Result</span>
+                          {instructorCount === 1 ? (
+                            (() => {
+                              const sub = submissions[0];
+                              const resultId = sub?.id;
+                              if (!resultId) return <span className="text-[9px] text-gray-500">No Result</span>;
+                              return approvalAuthorities.filter((a: any) => a.is_active).sort((a: any, b: any) => (a.sort ?? 0) - (b.sort ?? 0)).map((auth: any) => {
+                                const authStatus = (() => {
+                                  const approval = cadetApprovals.find((a: any) =>
+                                    Number(a.cadet_id) === Number(item.cadet.id) &&
+                                    Number(a.ctw_result_id) === Number(resultId) &&
+                                    Number(a.authority_id) === Number(auth.id) && a.is_active
+                                  );
+                                  if (approval?.status === "approved") return "approved";
+                                  if (approval?.status === "rejected") return "rejected";
+                                  return "pending";
+                                })();
+                                const isMe = auth.id === myAuthority?.id;
+                                return (
+                                  <div key={auth.id} className="flex items-center gap-1">
+                                    <span className="text-[8px] text-gray-500 flex-1">
+                                      {auth.role?.name || `Auth ${auth.sort}`}{isMe && <span className="text-blue-600">(me)</span>}
+                                    </span>
+                                    {authStatus === "approved" ? (
+                                      <span className="inline-flex items-center gap-0.5 text-green-700 text-[8px] font-bold">
+                                        <Icon icon="hugeicons:checkmark-circle-02" className="w-2.5 h-2.5" />Approved
+                                      </span>
+                                    ) : authStatus === "rejected" ? (
+                                      <span className="inline-flex items-center gap-0.5 text-red-700 text-[8px] font-bold">
+                                        <Icon icon="hugeicons:cancel-circle" className="w-2.5 h-2.5" />Rejected
+                                      </span>
+                                    ) : (
+                                      <span className="inline-flex items-center gap-0.5 text-yellow-700 text-[8px] font-bold">
+                                        <Icon icon="hugeicons:clock-01" className="w-2.5 h-2.5" />Pending
+                                      </span>
+                                    )}
                                   </div>
-                                ) : (
-                                  <div className="flex flex-col gap-0.5 pl-1">
-                                    {approvalAuthorities.filter((a: any) => a.is_active).sort((a: any, b: any) => (a.sort ?? 0) - (b.sort ?? 0)).map((auth: any) => {
-                                      const authStatus = getResultAuthorityStatus(resultId, item.cadet.id, auth.id);
-                                      const isMe = auth.id === myAuthority?.id;
-                                      return (
-                                        <div key={auth.id} className="flex items-center gap-1">
-                                          <span className="text-[8px] text-gray-500 flex-1">
-                                            {auth.role?.name || `Auth ${auth.sort}`}{isMe && <span className="text-blue-600">(me)</span>}
-                                          </span>
-                                          {authStatus === "approved" ? (
-                                            <span className="inline-flex items-center gap-0.5 text-green-700 text-[8px] font-bold">
-                                              <Icon icon="hugeicons:checkmark-circle-02" className="w-2.5 h-2.5" />Approved
+                                );
+                              });
+                            })()
+                          ) : (
+                            instructorSlots.map(i => {
+                              const sub = submissions[i];
+                              const hasSubmitted = !!sub;
+                              const resultId = sub?.id;
+                              return (
+                                <div key={i}>
+                                  <div className="text-[9px] font-bold text-gray-700 mb-0.5">Instr {i + 1}:</div>
+                                  {!hasSubmitted ? (
+                                    <div className="flex items-center gap-1">
+                                      <Icon icon="hugeicons:clock-02" className="w-3 h-3 text-gray-400" />
+                                      <span className="text-[9px] text-gray-500">No Result</span>
+                                    </div>
+                                  ) : (
+                                    <div className="flex flex-col gap-0.5 pl-1">
+                                      {approvalAuthorities.filter((a: any) => a.is_active).sort((a: any, b: any) => (a.sort ?? 0) - (b.sort ?? 0)).map((auth: any) => {
+                                        const authStatus = getResultAuthorityStatus(resultId, item.cadet.id, auth.id);
+                                        const isMe = auth.id === myAuthority?.id;
+                                        return (
+                                          <div key={auth.id} className="flex items-center gap-1">
+                                            <span className="text-[8px] text-gray-500 flex-1">
+                                              {auth.role?.name || `Auth ${auth.sort}`}{isMe && <span className="text-blue-600">(me)</span>}
                                             </span>
-                                          ) : authStatus === "rejected" ? (
-                                            <span className="inline-flex items-center gap-0.5 text-red-700 text-[8px] font-bold">
-                                              <Icon icon="hugeicons:cancel-circle" className="w-2.5 h-2.5" />Rejected
-                                            </span>
-                                          ) : (
-                                            <span className="inline-flex items-center gap-0.5 text-yellow-700 text-[8px] font-bold">
-                                              <Icon icon="hugeicons:clock-01" className="w-2.5 h-2.5" />Pending
-                                            </span>
-                                          )}
-                                        </div>
-                                      );
-                                    })}
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })}
+                                            {authStatus === "approved" ? (
+                                              <span className="inline-flex items-center gap-0.5 text-green-700 text-[8px] font-bold">
+                                                <Icon icon="hugeicons:checkmark-circle-02" className="w-2.5 h-2.5" />Approved
+                                              </span>
+                                            ) : authStatus === "rejected" ? (
+                                              <span className="inline-flex items-center gap-0.5 text-red-700 text-[8px] font-bold">
+                                                <Icon icon="hugeicons:cancel-circle" className="w-2.5 h-2.5" />Rejected
+                                              </span>
+                                            ) : (
+                                              <span className="inline-flex items-center gap-0.5 text-yellow-700 text-[8px] font-bold">
+                                                <Icon icon="hugeicons:clock-01" className="w-2.5 h-2.5" />Pending
+                                              </span>
+                                            )}
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })
+                          )}
                         </div>
                       </td>
                       {/* Action */}
@@ -759,17 +808,43 @@ export default function FiringCourseSemesterResultPage() {
           </div>
         </div>
 
-        <div className="mt-12 grid grid-cols-3 gap-8 text-center no-print">
-          <div className="border-t-2 border-black pt-2">
-            <p className="font-bold text-sm uppercase tracking-widest">Instructor</p>
-          </div>
-          <div className="border-t-2 border-black pt-2">
-            <p className="font-bold text-sm uppercase tracking-widest">Chief Instructor</p>
-          </div>
-          <div className="border-t-2 border-black pt-2">
-            <p className="font-bold text-sm uppercase tracking-widest">Commandant</p>
-          </div>
-        </div>
+        {/* Signature Section */}
+        {(() => {
+          const signatureAuthorities = [...approvalAuthorities]
+            .filter((a: any) => a.is_signature)
+            .sort((a: any, b: any) => (a.sort ?? 0) - (b.sort ?? 0));
+          if (signatureAuthorities.length === 0) return null;
+          const allAuthsSorted = [...approvalAuthorities].sort((a: any, b: any) => (a.sort ?? 0) - (b.sort ?? 0));
+          return (
+            <div className="signature-section max-w-5xl mx-auto mt-10 flex justify-between gap-10 pr-2">
+              {signatureAuthorities.map((auth: any, sigIdx: number) => {
+                const sigPosition: 'first' | 'middle' | 'last' =
+                  sigIdx === 0 ? 'first' : sigIdx === signatureAuthorities.length - 1 ? 'last' : 'middle';
+                const authIdx = allAuthsSorted.findIndex((a: any) => a.id === auth.id);
+                const nextAuth = authIdx >= 0 && authIdx < allAuthsSorted.length - 1 ? allAuthsSorted[authIdx + 1] : null;
+                let rawSigner: any = null;
+                if (nextAuth) {
+                  const nextApproval = moduleApprovals.find((ma: any) => ma.authority_id === nextAuth.id && ma.forwarded_by != null);
+                  rawSigner = nextApproval?.forwarder ?? null;
+                }
+                if (!rawSigner) {
+                  const ownApproval = moduleApprovals.find((ma: any) => ma.authority_id === auth.id && ma.approved_by != null);
+                  rawSigner = ownApproval?.approver ?? null;
+                }
+                const ownRecord = moduleApprovals.find((ma: any) => ma.authority_id === auth.id);
+                const nextRecord = nextAuth ? moduleApprovals.find((ma: any) => ma.authority_id === nextAuth.id) : null;
+                const approvedAt: string | null = ownRecord?.approved_at ?? ownRecord?.updated_at ?? ownRecord?.created_at ?? nextRecord?.created_at ?? null;
+                let designation: string | null = null;
+                if (rawSigner?.roles) {
+                  const primary = rawSigner.roles.find((r: any) => r.pivot?.is_primary);
+                  designation = primary?.name ?? rawSigner.roles[0]?.name ?? null;
+                }
+                const signer = rawSigner ? { ...rawSigner, designation } : null;
+                return <SignatureBox key={auth.id} auth={auth} signer={signer} approvedAt={approvedAt} position={sigPosition} />;
+              })}
+            </div>
+          );
+        })()}
 
         <div className="mt-12 text-center text-[10px] text-gray-500 font-medium italic">
           <p>Generated on: {new Date().toLocaleString("en-GB", { day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" })}</p>
