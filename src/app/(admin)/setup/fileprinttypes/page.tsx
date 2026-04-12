@@ -134,6 +134,7 @@ function FilePrintTypesPageContent() {
     {
       key: "id",
       header: "SL.",
+      headerAlign: "center",
       className: "text-center text-gray-900 w-16",
       render: (type, index) => (pagination.from || 0) + (index + 1),
     },
@@ -150,6 +151,7 @@ function FilePrintTypesPageContent() {
     {
       key: "is_active",
       header: "Status",
+      headerAlign: "center",
       className: "text-center w-32",
       render: (type) => (
         <span

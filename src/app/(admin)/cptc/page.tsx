@@ -76,149 +76,6 @@ const StatusCard = ({ title, subtitle, href, icon, accentColor, bgImage }: Statu
   );
 };
 
-interface NoticeItem {
-  id: number;
-  title: string;
-  body: string;
-  timestamp: string;
-  tag: string;
-  tagColor: string;
-  icon: string;
-  iconBg: string;
-  isNew?: boolean;
-}
-
-const demoNotices: NoticeItem[] = [
-  {
-    id: 1,
-    title: "OLQ Assessment Scheduled",
-    body: "All cadets are required to appear for OLQ evaluation on 26 Feb at 0800 hrs. Dress: Service uniform.",
-    timestamp: "5 mins ago",
-    tag: "Urgent",
-    tagColor: "bg-red-100 text-red-600",
-    icon: "hugeicons:star",
-    iconBg: "from-orange-500 to-red-600",
-    isNew: true,
-  },
-  {
-    id: 2,
-    title: "Consolidated Results Published",
-    body: "Term-II consolidated results for all wings are now available under the Results module.",
-    timestamp: "2 hrs ago",
-    tag: "Results",
-    tagColor: "bg-blue-100 text-blue-600",
-    icon: "hugeicons:award-03",
-    iconBg: "from-blue-600 to-indigo-700",
-    isNew: true,
-  },
-  {
-    id: 3,
-    title: "Analytics Report Generated",
-    body: "The quarterly performance analytics report has been compiled. Review via the Analytics module.",
-    timestamp: "4 hrs ago",
-    tag: "Analytics",
-    tagColor: "bg-violet-100 text-violet-600",
-    icon: "hugeicons:analytics-01",
-    iconBg: "from-violet-600 to-purple-700",
-  },
-  {
-    id: 4,
-    title: "FTW Course Marks Submitted",
-    body: "Flying Training Wing has submitted final course marks for integration into CPTC records.",
-    timestamp: "Yesterday",
-    tag: "FTW",
-    tagColor: "bg-orange-100 text-orange-600",
-    icon: "hugeicons:airplane-01",
-    iconBg: "from-orange-500 to-red-600",
-  },
-  {
-    id: 5,
-    title: "ATW Academic Scores Updated",
-    body: "Academic Wing scores have been updated in the system. Verify entries before the final consolidation.",
-    timestamp: "2 days ago",
-    tag: "ATW",
-    tagColor: "bg-emerald-100 text-emerald-600",
-    icon: "hugeicons:book-open-01",
-    iconBg: "from-emerald-600 to-teal-700",
-  },
-];
-
-const NoticesPanel = () => {
-  const newCount = demoNotices.filter((n) => n.isNew).length;
-
-  return (
-    <div className="relative bg-white rounded-[1.5rem] sm:rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden flex flex-col h-full">
-      {/* Header */}
-      <div className="relative px-4 sm:px-6 pt-4 sm:pt-6 pb-3 sm:pb-4 border-b border-slate-100 overflow-hidden">
-        <div className="absolute inset-0 opacity-20 pointer-events-none">
-          <Image src="/images/bg/corner-1.png" alt="" fill className="object-cover object-right-top" />
-        </div>
-        <div className="relative z-10 flex items-center justify-between">
-          <div className="flex items-center gap-2 sm:gap-3">
-            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl sm:rounded-2xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center shadow-md">
-              <Icon icon="hugeicons:notification-02" className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
-            </div>
-            <div>
-              <h2 className="text-xs sm:text-sm font-black text-slate-900 uppercase tracking-widest leading-none">Notices</h2>
-              <p className="text-[8px] sm:text-[9px] font-bold text-slate-400 uppercase tracking-wider mt-0.5">Official Board</p>
-            </div>
-          </div>
-          {newCount > 0 && (
-            <div className="flex items-center gap-1.5 bg-red-50 border border-red-100 px-2 sm:px-2.5 py-1 rounded-full">
-              <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
-              <span className="text-[9px] sm:text-[10px] font-black text-red-500 uppercase tracking-wider">{newCount} New</span>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Notice List */}
-      <div className="flex-1 overflow-y-auto divide-y divide-slate-50 px-1.5 sm:px-2 py-1.5 sm:py-2">
-        {demoNotices.map((notice) => (
-          <div
-            key={notice.id}
-            className="group relative flex gap-2.5 sm:gap-3 px-3 sm:px-4 py-3 sm:py-4 rounded-xl sm:rounded-2xl hover:bg-slate-50 transition-colors duration-300 cursor-pointer"
-          >
-            {notice.isNew && (
-              <span className="absolute top-3 sm:top-4 right-3 sm:right-4 w-2 h-2 rounded-full bg-blue-500" />
-            )}
-            <div className={`shrink-0 w-8 h-8 sm:w-9 sm:h-9 rounded-lg sm:rounded-xl bg-gradient-to-br ${notice.iconBg} flex items-center justify-center shadow-sm mt-0.5`}>
-              <Icon icon={notice.icon} className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap mb-1">
-                <span className={`text-[8px] sm:text-[9px] font-black uppercase tracking-widest px-1.5 sm:px-2 py-0.5 rounded-full ${notice.tagColor}`}>
-                  {notice.tag}
-                </span>
-                <span className="text-[8px] sm:text-[9px] text-slate-300 font-bold uppercase tracking-wider">{notice.timestamp}</span>
-              </div>
-              <p className="text-[11px] sm:text-xs font-black text-slate-800 leading-snug group-hover:text-blue-700 transition-colors">
-                {notice.title}
-              </p>
-              <p className="text-[9px] sm:text-[10px] text-slate-400 font-medium leading-relaxed mt-0.5 sm:mt-1 line-clamp-2">
-                {notice.body}
-              </p>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Footer */}
-      <div className="px-4 sm:px-6 py-3 sm:py-4 border-t border-slate-100">
-        <Link
-          href="/notices"
-          className="group flex items-center justify-center gap-2 w-full py-2 sm:py-2.5 rounded-xl bg-slate-50 hover:bg-blue-50 border border-slate-100 hover:border-blue-200 transition-all duration-300"
-        >
-          <span className="text-[9px] sm:text-[10px] font-black uppercase tracking-widest text-slate-500 group-hover:text-blue-600 transition-colors">
-            View All Notices
-          </span>
-          <Icon icon="hugeicons:arrow-right-02" className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-slate-400 group-hover:text-blue-500 transition-colors" />
-        </Link>
-      </div>
-    </div>
-  );
-};
-
 export function CPTCDashboardView() {
   const nodes = [
     { title: "ATW", href: "/cptc/atw/", icon: "hugeicons:book-open-01", angle: 270 },
@@ -268,10 +125,15 @@ export function CPTCDashboardView() {
   };
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-4 xl:grid-cols-5 gap-4 sm:gap-6 animate-in fade-in duration-700">
+    <div className="flex flex-col items-center gap-6 animate-in fade-in duration-700">
 
-      {/* ─── Radial Dashboard Column ─────────────────────────────────────────── */}
-      <div className="lg:col-span-3 flex items-center justify-center overflow-hidden relative">
+      {/* ─── Status Cards Row ─────────────────────────────────────────── */}
+      <div className="w-full grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-3xl mx-auto">
+        {statusCards.map((card, index) => <StatusCard key={index} {...card} />)}
+      </div>
+
+      {/* ─── Radial Dashboard ─────────────────────────────────────────── */}
+      <div className="flex items-center justify-center overflow-hidden relative">
 
         {/* Desktop/Tablet Orbit (sm and up) */}
         <div className="hidden sm:flex w-full items-center justify-center py-6">
@@ -355,29 +217,6 @@ export function CPTCDashboardView() {
         </div>
       </div>
 
-      {/* ─── Status Cards Column ──────────────────────────────────────────────── */}
-      {/* On mobile/tablet: horizontal scroll row. On lg+: vertical stack */}
-      <div className="lg:col-span-1 xl:col-span-1">
-        {/* Mobile/Tablet: horizontal scroll */}
-        <div className="flex lg:hidden gap-3 sm:gap-4 overflow-x-auto pb-2 snap-x snap-mandatory scrollbar-none">
-          {statusCards.map((card, index) => (
-            <div key={index} className="snap-start shrink-0 w-[240px] sm:w-[260px]">
-              <StatusCard {...card} />
-            </div>
-          ))}
-        </div>
-        {/* Desktop: vertical stack */}
-        <div className="hidden lg:flex flex-col gap-4">
-          {statusCards.map((card, index) => (
-            <StatusCard key={index} {...card} />
-          ))}
-        </div>
-      </div>
-
-      {/* ─── Notices Panel ───────────────────────────────────────────────────── */}
-      <div className="lg:col-span-1 xl:col-span-1">
-        <NoticesPanel />
-      </div>
     </div>
   );
 }

@@ -78,154 +78,6 @@ const StatusCard = ({ title, subtitle, href, icon, accentColor, bgImage }: Statu
   );
 };
 
-interface NoticeItem {
-  id: number;
-  title: string;
-  body: string;
-  timestamp: string;
-  tag: string;
-  tagColor: string;
-  icon: string;
-  iconBg: string;
-  isNew?: boolean;
-}
-
-const demoNotices: NoticeItem[] = [
-  {
-    id: 1,
-    title: "Annual Flying Exercise Scheduled",
-    body: "All FTW cadets must report to the briefing hall by 0600 hrs on 25 Feb for pre-exercise orientation.",
-    timestamp: "2 mins ago",
-    tag: "Urgent",
-    tagColor: "bg-red-100 text-red-600",
-    icon: "hugeicons:airplane-01",
-    iconBg: "from-orange-500 to-red-600",
-    isNew: true,
-  },
-  {
-    id: 2,
-    title: "Academic Assessment Results",
-    body: "Term-II results have been uploaded to the ATW portal. All trainees are advised to review their scores.",
-    timestamp: "1 hr ago",
-    tag: "Academic",
-    tagColor: "bg-blue-100 text-blue-600",
-    icon: "hugeicons:book-open-01",
-    iconBg: "from-blue-600 to-indigo-700",
-    isNew: true,
-  },
-  {
-    id: 3,
-    title: "Physical Fitness Test — Rescheduled",
-    body: "The CPTC fitness assessment originally on 24 Feb has been moved to 28 Feb due to weather conditions.",
-    timestamp: "3 hrs ago",
-    tag: "CPTC",
-    tagColor: "bg-slate-100 text-slate-600",
-    icon: "hugeicons:chart-bar-line",
-    iconBg: "from-slate-600 to-slate-800",
-  },
-  {
-    id: 4,
-    title: "Central Training Wing Parade",
-    body: "Mandatory full-dress parade for all CTW personnel at the main ground. Attendance is compulsory.",
-    timestamp: "Yesterday",
-    tag: "General",
-    tagColor: "bg-emerald-100 text-emerald-600",
-    icon: "hugeicons:flag-01",
-    iconBg: "from-emerald-600 to-teal-700",
-  },
-  {
-    id: 5,
-    title: "System Maintenance Window",
-    body: "The BAFA portal will undergo scheduled maintenance on 26 Feb from 2200–2400 hrs. Plan accordingly.",
-    timestamp: "2 days ago",
-    tag: "System",
-    tagColor: "bg-violet-100 text-violet-600",
-    icon: "hugeicons:settings-01",
-    iconBg: "from-violet-600 to-purple-700",
-  },
-];
-
-const NoticesPanel = () => {
-  const newCount = demoNotices.filter((n) => n.isNew).length;
-
-  return (
-    <div className="relative bg-white rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden flex flex-col h-full min-h-[700px]">
-      {/* Header */}
-      <div className="relative px-6 pt-6 pb-4 border-b border-slate-100 overflow-hidden">
-        <div className="absolute inset-0 opacity-20 pointer-events-none">
-          <Image src="/images/bg/corner-1.png" alt="" fill className="object-cover object-right-top" />
-        </div>
-        <div className="relative z-10 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center shadow-md">
-              <Icon icon="hugeicons:notification-02" className="w-5 h-5 text-white" />
-            </div>
-            <div>
-              <h2 className="text-sm font-bold uppercase leading-none">Notices</h2>
-              <p className="text-[9px] font-bold uppercase mt-0.5">Official Board</p>
-            </div>
-          </div>
-          {newCount > 0 && (
-            <div className="flex items-center gap-1.5 bg-red-50 border border-red-100 px-2.5 py-1 rounded-full">
-              <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
-              <span className="text-[10px] font-bold text-red-500 uppercase">{newCount} New</span>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Notice List */}
-      <div className="flex-1 overflow-y-auto divide-y divide-slate-50 px-2 py-2">
-        {demoNotices.map((notice) => (
-          <div
-            key={notice.id}
-            className="group relative flex gap-3 px-4 py-4 rounded-2xl hover:bg-slate-50 transition-colors duration-300 cursor-pointer"
-          >
-            {/* New dot */}
-            {notice.isNew && (
-              <span className="absolute top-4 right-4 w-2 h-2 rounded-full bg-blue-500" />
-            )}
-
-            {/* Icon */}
-            <div className={`shrink-0 w-9 h-9 rounded-xl bg-gradient-to-br ${notice.iconBg} flex items-center justify-center shadow-sm mt-0.5`}>
-              <Icon icon={notice.icon} className="w-4 h-4 text-white" />
-            </div>
-
-            {/* Content */}
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 flex-wrap mb-1">
-                <span className={`text-[9px] font-bold uppercase px-2 py-0.5 rounded-full ${notice.tagColor}`}>
-                  {notice.tag}
-                </span>
-                <span className="text-[9px] font-bold uppercase">{notice.timestamp}</span>
-              </div>
-              <p className="text-xs font-bold group-hover:text-blue-700 transition-colors">
-                {notice.title}
-              </p>
-              <p className="text-[10px] font-medium leading-relaxed mt-1 line-clamp-2">
-                {notice.body}
-              </p>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Footer */}
-      <div className="px-6 py-4 border-t border-slate-100">
-        <Link
-          href="/notices"
-          className="group flex items-center justify-center gap-2 w-full py-2.5 rounded-xl bg-slate-50 hover:bg-blue-50 border border-slate-100 hover:border-blue-200 transition-all duration-300"
-        >
-          <span className="text-[10px] font-bold uppercase group-hover:text-blue-600 transition-colors">
-            View All Notices
-          </span>
-          <Icon icon="hugeicons:arrow-right-02" className="w-3.5 h-3.5 text-slate-400 group-hover:text-blue-500 transition-colors" />
-        </Link>
-      </div>
-    </div>
-  );
-};
-
 const MainDashboard = () => {
   const nodes = [
     { title: "ATW", subtitle: "Academic Training Wing", href: "/atw", icon: "hugeicons:book-open-01", accentColor: "from-blue-600 to-indigo-700", angle: 270 },
@@ -271,7 +123,7 @@ const MainDashboard = () => {
   };
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 animate-in fade-in duration-700">
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-in fade-in duration-700">
       {/* Radial Dashboard Column */}
       <div className="lg:col-span-2 min-h-[80vh] flex items-center justify-center overflow-hidden relative">
         <div className="relative w-full h-[700px] hidden md:flex items-center justify-center">
@@ -356,10 +208,6 @@ const MainDashboard = () => {
         ))}
       </div>
 
-      {/* Notices Panel Column */}
-      <div className="relative">
-        <NoticesPanel />
-      </div>
     </div>
   );
 };

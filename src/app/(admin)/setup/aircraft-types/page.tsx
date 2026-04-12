@@ -102,11 +102,12 @@ function AircraftTypesPageContent() {
   );
 
   const columns: Column<AircraftType>[] = [
-    { key: "id", header: "SL.", className: "text-center text-gray-900", render: (type, index) => (pagination.from || 0) + (index + 1) },
+    { key: "id", header: "SL.", headerAlign: "center", className: "text-center text-gray-900", render: (type, index) => (pagination.from || 0) + (index + 1) },
     { key: "title", header: "Type Title", className: "font-medium text-gray-900" },
     {
       key: "status",
       header: "Status",
+      headerAlign: "center",
       className: "text-center",
       render: (type) => (
         <span className={`inline-flex items-center px-2.5 py-1 text-xs font-semibold rounded-full ${type.status === "active" ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}`}>

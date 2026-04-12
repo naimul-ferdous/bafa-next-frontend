@@ -102,7 +102,7 @@ function AircraftPageContent() {
   );
 
   const columns: Column<Aircraft>[] = [
-    { key: "id", header: "SL.", className: "text-center text-gray-900", render: (a, index) => (pagination.from || 0) + (index + 1) },
+    { key: "id", header: "SL.", headerAlign: "center", className: "text-center text-gray-900", render: (a, index) => (pagination.from || 0) + (index + 1) },
     { key: "title", header: "Aircraft Title", className: "font-medium text-gray-900" },
     { key: "type", header: "Type", className: "text-gray-700", render: (a) => a.type?.title || "—" },
     { key: "tail_no", header: "Tail No", className: "text-gray-700" },
@@ -112,6 +112,7 @@ function AircraftPageContent() {
     {
       key: "status",
       header: "Status",
+      headerAlign: "center",
       className: "text-center",
       render: (a) => (
         <span className={`inline-flex items-center px-2.5 py-1 text-xs font-semibold rounded-full ${a.status === "active" ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}`}>

@@ -134,6 +134,7 @@ function UniversitiesPageContent() {
     {
       key: "id",
       header: "SL.",
+      headerAlign: "center",
       className: "text-center text-gray-900",
       render: (_, index) => (pagination.from || 0) + index,
     },
@@ -156,6 +157,7 @@ function UniversitiesPageContent() {
     {
       key: "is_current",
       header: "Current",
+      headerAlign: "center",
       className: "text-center",
       render: (university) => (
         <span className={`inline-flex items-center px-2.5 py-1 text-xs font-semibold rounded-full ${
@@ -168,6 +170,7 @@ function UniversitiesPageContent() {
     {
       key: "is_active",
       header: "Status",
+      headerAlign: "center",
       className: "text-center",
       render: (university) => (
         <span className={`inline-flex items-center px-2.5 py-1 text-xs font-semibold rounded-full ${

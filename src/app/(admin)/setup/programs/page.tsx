@@ -128,13 +128,14 @@ export default function ProgramsPage() {
 
   const columns: Column<SystemProgram>[] = [
     ...(showSelection ? [checkboxColumn] : []),
-    { key: "id", header: "SL.", className: "text-center w-16", render: (_, index) => (pagination.from || 0) + index },
+    { key: "id", header: "SL.", headerAlign: "center", className: "text-center w-16", render: (_, index) => (pagination.from || 0) + index },
     { key: "name", header: "Program Name", className: "font-semibold text-gray-900" },
     { key: "short_name", header: "Short Name", className: "text-gray-600", render: (p) => p.short_name || "—" },
-    { key: "duration_months", header: "Duration (months)", className: "text-gray-700 text-center", render: (p) => (p as any).duration_months || "—" },
+    { key: "duration_months", header: "Duration (months)", headerAlign: "center", className: "text-gray-700 text-center", render: (p) => (p as any).duration_months || "—" },
     {
       key: "is_changeable",
       header: "Changeable",
+      headerAlign: "center",
       className: "text-center",
       render: (p) => p.is_changeable ? (
         <span className="px-2 py-1 rounded-full text-[10px] font-bold bg-indigo-100 text-indigo-700">YES</span>
@@ -145,6 +146,7 @@ export default function ProgramsPage() {
     {
       key: "is_active",
       header: "Status",
+      headerAlign: "center",
       className: "text-center",
       render: (p) => (
         <span className={`px-2 py-1 rounded-full text-[10px] font-bold ${p.is_active ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}`}>

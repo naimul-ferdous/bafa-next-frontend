@@ -114,7 +114,7 @@ function BranchesPageContent() {
   );
 
   const columns: Column<SystemBranch>[] = [
-    { key: "id", header: "SL.", className: "text-center text-gray-900", render: (branch, index) => (pagination.from || 0) + (index) },
+    { key: "id", header: "SL.", headerAlign: "center", className: "text-center text-gray-900", render: (branch, index) => (pagination.from || 0) + (index) },
     { key: "name", header: "Branch Name", className: "font-medium text-gray-900" },
     { key: "code", header: "Code", className: "text-gray-700 font-mono text-sm" },
     { key: "program", header: "Program", className: "text-gray-700", render: (branch) => branch.program?.name || "—" },
@@ -125,6 +125,7 @@ function BranchesPageContent() {
     {
       key: "is_active",
       header: "Status",
+      headerAlign: "center",
       className: "text-center",
       render: (branch) => (
         <span className={`inline-flex items-center px-2.5 py-1 text-xs font-semibold rounded-full ${branch.is_active ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}`}>

@@ -139,12 +139,8 @@ export default function CtwSemesterDetailPage() {
     {
       key: "module",
       header: "Module",
-      render: (row) => (
-        <div>
-          <div className="font-medium text-gray-900">{row.module_name}</div>
-          <div className="text-xs text-gray-500">{row.module_code}</div>
-        </div>
-      ),
+      className: "font-medium text-gray-900",
+      render: (row) => row.module_name,
     },
     {
       key: "cadets",

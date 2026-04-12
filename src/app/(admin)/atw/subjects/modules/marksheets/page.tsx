@@ -159,6 +159,7 @@ export default function AtwMarksheetsPage() {
     {
       key: "id",
       header: "SL.",
+      headerAlign: "center",
       className: "text-center w-16",
       render: (_, index) => (pagination.from || 0) + index
     },
@@ -180,6 +181,7 @@ export default function AtwMarksheetsPage() {
     {
       key: "is_active",
       header: "Status",
+      headerAlign: "center",
       className: "text-center",
       render: (item) => (
         <span className={`px-2 py-1 rounded-full text-[10px] font-bold ${item.is_active ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}`}>
@@ -190,6 +192,7 @@ export default function AtwMarksheetsPage() {
     {
       key: "actions",
       header: "Actions",
+      headerAlign: "center",
       className: "text-center w-24",
       render: (item) => (
         <div className="flex items-center justify-center gap-2" onClick={(e) => e.stopPropagation()}>

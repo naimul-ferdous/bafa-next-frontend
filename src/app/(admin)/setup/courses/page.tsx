@@ -134,6 +134,7 @@ function CoursesPageContent() {
     {
       key: "id",
       header: "SL.",
+      headerAlign: "center",
       className: "text-center text-gray-900",
       render: (course, index) => (pagination.from || 0) + (index),
     },
@@ -160,6 +161,7 @@ function CoursesPageContent() {
     {
       key: "is_active",
       header: "Status",
+      headerAlign: "center",
       className: "text-center",
       render: (course) => (
         <span

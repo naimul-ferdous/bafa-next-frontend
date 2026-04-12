@@ -7,18 +7,6 @@ import { Icon } from "@iconify/react";
 import { useAuth } from "@/context/AuthContext";
 import { ctwInstructorStatsService } from "@/libs/services/ctwInstructorStatsService";
 
-interface NoticeItem {
-  id: number;
-  title: string;
-  body: string;
-  timestamp: string;
-  tag: string;
-  tagColor: string;
-  icon: string;
-  iconBg: string;
-  isNew?: boolean;
-}
-
 interface StatCardProps {
   label: string;
   value: number;
@@ -27,51 +15,6 @@ interface StatCardProps {
   bgImage: string;
   loading?: boolean;
 }
-
-const demoNotices: NoticeItem[] = [
-  {
-    id: 1,
-    title: "OLQ Assessment Scheduled",
-    body: "All cadets are required to appear for OLQ evaluation on 26 Feb at 0800 hrs. Dress: Service uniform.",
-    timestamp: "5 mins ago",
-    tag: "Urgent",
-    tagColor: "bg-red-100 text-red-600",
-    icon: "hugeicons:star",
-    iconBg: "from-orange-500 to-red-600",
-    isNew: true,
-  },
-  {
-    id: 2,
-    title: "Subject Marks Updated",
-    body: "Term-II subject marks for all cadets have been updated. Please verify entries before final consolidation.",
-    timestamp: "1 hr ago",
-    tag: "Subjects",
-    tagColor: "bg-blue-100 text-blue-600",
-    icon: "hugeicons:book-02",
-    iconBg: "from-blue-500 to-indigo-600",
-    isNew: true,
-  },
-  {
-    id: 3,
-    title: "Counseling Records Due",
-    body: "Counseling entries for the current term must be submitted by EOD Friday to the CTW admin.",
-    timestamp: "3 hrs ago",
-    tag: "Counseling",
-    tagColor: "bg-violet-100 text-violet-600",
-    icon: "hugeicons:user-multiple",
-    iconBg: "from-violet-600 to-purple-700",
-  },
-  {
-    id: 4,
-    title: "Pen Picture Submissions Open",
-    body: "Instructors can now submit pen pictures for their assigned cadets via the Pen Picture module.",
-    timestamp: "Yesterday",
-    tag: "Pen Picture",
-    tagColor: "bg-indigo-100 text-indigo-600",
-    icon: "hugeicons:edit-02",
-    iconBg: "from-indigo-500 to-violet-700",
-  },
-];
 
 // ─── Circle Node ──────────────────────────────────────────────────────────────
 const OrbitCircle = ({ title, href, icon }: { title: string; href: string; icon: string }) => (
@@ -133,79 +76,6 @@ const childDiam = 144;
 const H = childTopY + childDiam + 16;
 const childCx = [rootCx - 160, rootCx + 160] as const;
 
-const NoticesPanel = () => {
-  const newCount = demoNotices.filter((n) => n.isNew).length;
-
-  return (
-    <div className="relative bg-white rounded-[1.5rem] sm:rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden flex flex-col h-full">
-      <div className="relative px-4 sm:px-6 pt-4 sm:pt-6 pb-3 sm:pb-4 border-b border-slate-100 overflow-hidden">
-        <div className="absolute inset-0 opacity-20 pointer-events-none">
-          <Image src="/images/bg/corner-1.png" alt="" fill className="object-cover object-right-top" />
-        </div>
-        <div className="relative z-10 flex items-center justify-between">
-          <div className="flex items-center gap-2 sm:gap-3">
-            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl sm:rounded-2xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center shadow-md">
-              <Icon icon="hugeicons:notification-02" className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
-            </div>
-            <div>
-              <h2 className="text-xs sm:text-sm font-black text-slate-900 uppercase tracking-widest leading-none">Notices</h2>
-              <p className="text-[8px] sm:text-[9px] font-bold text-slate-400 uppercase tracking-wider mt-0.5">Official Board</p>
-            </div>
-          </div>
-          {newCount > 0 && (
-            <div className="flex items-center gap-1.5 bg-red-50 border border-red-100 px-2 sm:px-2.5 py-1 rounded-full">
-              <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
-              <span className="text-[9px] sm:text-[10px] font-black text-red-500 uppercase tracking-wider">{newCount} New</span>
-            </div>
-          )}
-        </div>
-      </div>
-
-      <div className="flex-1 overflow-y-auto divide-y divide-slate-50 px-1.5 sm:px-2 py-1.5 sm:py-2">
-        {demoNotices.map((notice) => (
-          <div
-            key={notice.id}
-            className="group relative flex gap-2.5 sm:gap-3 px-3 sm:px-4 py-3 sm:py-4 rounded-xl sm:rounded-2xl hover:bg-slate-50 transition-colors duration-300 cursor-pointer"
-          >
-            {notice.isNew && (
-              <span className="absolute top-3 sm:top-4 right-3 sm:right-4 w-2 h-2 rounded-full bg-blue-500" />
-            )}
-            <div className={`shrink-0 w-8 h-8 sm:w-9 sm:h-9 rounded-lg sm:rounded-xl bg-gradient-to-br ${notice.iconBg} flex items-center justify-center shadow-sm mt-0.5`}>
-              <Icon icon={notice.icon} className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap mb-1">
-                <span className={`text-[8px] sm:text-[9px] font-black uppercase tracking-widest px-1.5 sm:px-2 py-0.5 rounded-full ${notice.tagColor}`}>
-                  {notice.tag}
-                </span>
-                <span className="text-[8px] sm:text-[9px] text-slate-300 font-bold uppercase tracking-wider">{notice.timestamp}</span>
-              </div>
-              <p className="text-[11px] sm:text-xs font-black text-slate-800 leading-snug group-hover:text-blue-700 transition-colors">
-                {notice.title}
-              </p>
-              <p className="text-[9px] sm:text-[10px] text-slate-400 font-medium leading-relaxed mt-0.5 sm:mt-1 line-clamp-2">
-                {notice.body}
-              </p>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      <div className="px-4 sm:px-6 py-3 sm:py-4 border-t border-slate-100">
-        <Link
-          href="/notices"
-          className="group flex items-center justify-center gap-2 w-full py-2 sm:py-2.5 rounded-xl bg-slate-50 hover:bg-blue-50 border border-slate-100 hover:border-blue-200 transition-all duration-300"
-        >
-          <span className="text-[9px] sm:text-[10px] font-black uppercase tracking-widest text-slate-500 group-hover:text-blue-600 transition-colors">
-            View All Notices
-          </span>
-          <Icon icon="hugeicons:arrow-right-02" className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-slate-400 group-hover:text-blue-500 transition-colors" />
-        </Link>
-      </div>
-    </div>
-  );
-};
-
 // ─── Page ─────────────────────────────────────────────────────────────────────
 export default function CtwAssessmentPenpictureGradesPage() {
   const { user, userIsInstructor } = useAuth();
@@ -231,12 +101,18 @@ export default function CtwAssessmentPenpictureGradesPage() {
   }, [isInstructor, instructorId]);
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-4 xl:grid-cols-5 gap-4 sm:gap-6 animate-in fade-in duration-700">
-      <div className="lg:col-span-3 flex justify-center items-center mx-auto px-3 sm:px-4 md:px-6 lg:px-0 animate-in fade-in duration-700">
-        <div className="flex items-center justify-center overflow-hidden relative">
+    <div className="flex flex-col items-center gap-6 animate-in fade-in duration-700">
+      {/* Stat Cards Row */}
+      {isInstructor && (
+        <div className="w-full grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-3xl mx-auto">
+          <StatCard label="Total Subjects" value={stats.subjects} icon="solar:book-2-broken" accentColor="from-blue-600 to-indigo-700" bgImage="corner-1.png" loading={statsLoading} />
+          <StatCard label="Total Cadets" value={stats.cadets} icon="hugeicons:user-group" accentColor="from-violet-600 to-purple-700" bgImage="corner-2.png" loading={statsLoading} />
+          <StatCard label="Results Inputted" value={stats.results} icon="hugeicons:notebook" accentColor="from-emerald-500 to-teal-700" bgImage="corner-1.png" loading={statsLoading} />
+        </div>
+      )}
 
-          {/* Desktop / Tablet — Binary Tree */}
-          <div className="hidden sm:flex w-full items-center justify-center py-8">
+      {/* Desktop / Tablet — Binary Tree */}
+      <div className="hidden sm:flex w-full items-center justify-center py-8">
             <div
               className="relative sm:scale-[0.68] md:scale-[0.82] lg:scale-[0.92] xl:scale-100 transition-transform origin-top"
               style={{ width: `${W}px`, height: `${H}px` }}
@@ -284,72 +160,32 @@ export default function CtwAssessmentPenpictureGradesPage() {
             </div>
           </div>
 
-          {/* Mobile Grid */}
-          <div className="sm:hidden w-full space-y-5 py-4">
-            <div className="text-center relative py-8 rounded-2xl overflow-hidden">
-              <div className="absolute inset-0 -z-10">
-                <Image src="/images/bg/corner-1.png" alt="" fill className="object-cover opacity-20" />
-              </div>
-              <h1 className="text-4xl font-black text-slate-900 leading-tight">PEN PICTURE</h1>
-              <div className="h-1.5 w-16 bg-blue-600 rounded-full mt-2 mx-auto" />
-              <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mt-2">CTW Grades Management</p>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              {nodes.map((node, i) => (
-                <Link
-                  key={i}
-                  href={node.href}
-                  className="relative flex flex-col items-center p-5 bg-white rounded-2xl border border-slate-200 gap-2 overflow-hidden shadow-sm hover:shadow-md hover:border-blue-300 transition-all duration-300"
-                >
-                  <div className="absolute inset-0 -z-10">
-                    <Image src="/images/bg/corner-1.png" alt="" fill className="object-cover opacity-10" />
-                  </div>
-                  <div className="w-9 h-9 rounded-xl bg-white shadow-sm border border-slate-100 flex items-center justify-center">
-                    <Icon icon={node.icon} className="w-5 h-5 text-blue-600" />
-                  </div>
-                  <span className="text-[9px] font-black uppercase text-slate-800 tracking-wider leading-none text-center">{node.title}</span>
-                </Link>
-              ))}
-            </div>
+      {/* Mobile Grid */}
+      <div className="sm:hidden w-full space-y-5 py-4 px-3">
+        <div className="text-center relative py-8 rounded-2xl overflow-hidden">
+          <div className="absolute inset-0 -z-10">
+            <Image src="/images/bg/corner-1.png" alt="" fill className="object-cover opacity-20" />
           </div>
-
+          <h1 className="text-4xl font-black text-slate-900 leading-tight">PEN PICTURE</h1>
+          <div className="h-1.5 w-16 bg-blue-600 rounded-full mt-2 mx-auto" />
+          <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mt-2">CTW Grades Management</p>
         </div>
-      </div>
-      <div className="lg:col-span-1 xl:col-span-2">
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            {isInstructor && (
-              <div className="hidden lg:flex flex-col gap-4">
-                <StatCard
-                  label="Total Subjects"
-                  value={stats.subjects}
-                  icon="solar:book-2-broken"
-                  accentColor="from-blue-600 to-indigo-700"
-                  bgImage="corner-1.png"
-                  loading={statsLoading}
-                />
-                <StatCard
-                  label="Total Cadets"
-                  value={stats.cadets}
-                  icon="hugeicons:user-group"
-                  accentColor="from-violet-600 to-purple-700"
-                  bgImage="corner-2.png"
-                  loading={statsLoading}
-                />
-                <StatCard
-                  label="Results Inputted"
-                  value={stats.results}
-                  icon="hugeicons:notebook"
-                  accentColor="from-emerald-500 to-teal-700"
-                  bgImage="corner-1.png"
-                  loading={statsLoading}
-                />
+        <div className="grid grid-cols-2 gap-3">
+          {nodes.map((node, i) => (
+            <Link
+              key={i}
+              href={node.href}
+              className="relative flex flex-col items-center p-5 bg-white rounded-2xl border border-slate-200 gap-2 overflow-hidden shadow-sm hover:shadow-md hover:border-blue-300 transition-all duration-300"
+            >
+              <div className="absolute inset-0 -z-10">
+                <Image src="/images/bg/corner-1.png" alt="" fill className="object-cover opacity-10" />
               </div>
-            )}
-          </div>
-          <div>
-            <NoticesPanel />
-          </div>
+              <div className="w-9 h-9 rounded-xl bg-white shadow-sm border border-slate-100 flex items-center justify-center">
+                <Icon icon={node.icon} className="w-5 h-5 text-blue-600" />
+              </div>
+              <span className="text-[9px] font-black uppercase text-slate-800 tracking-wider leading-none text-center">{node.title}</span>
+            </Link>
+          ))}
         </div>
       </div>
     </div>

@@ -87,13 +87,13 @@ function ExamsPageContent() {
   );
 
   const columns: Column<SystemExam>[] = [
-    { key: "id", header: "SL.", className: "text-center text-gray-900", render: (exam, index) => (pagination.from || 0) + (index) },
+    { key: "id", header: "SL.", headerAlign: "center", className: "text-center text-gray-900", render: (exam, index) => (pagination.from || 0) + (index) },
     { key: "name", header: "Exam Type Name", className: "font-medium text-gray-900" },
     { key: "code", header: "Code", className: "text-gray-700 font-mono text-sm" },
     { key: "description", header: "Description", className: "text-gray-700", render: (exam) => (
       <span className="line-clamp-2">{exam.description || "—"}</span>
     )},
-    { key: "is_active", header: "Status", className: "text-center", render: (exam) => (
+    { key: "is_active", header: "Status", headerAlign: "center", className: "text-center", render: (exam) => (
       <span className={`inline-flex items-center px-2.5 py-1 text-xs font-semibold rounded-full ${exam.is_active ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}`}>
         {exam.is_active ? "Active" : "Inactive"}
       </span>

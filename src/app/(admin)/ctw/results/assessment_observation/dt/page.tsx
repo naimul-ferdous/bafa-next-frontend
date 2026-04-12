@@ -183,22 +183,14 @@ export default function CtwDtAssessmentResultsPage() {
     {
       key: "course",
       header: "Course",
-      render: (result) => (
-        <div>
-          <div className="font-medium text-gray-900">{result.course?.name || "N/A"}</div>
-          <div className="text-xs text-gray-500">{result.course?.code || ""}</div>
-        </div>
-      ),
+      className: "font-medium text-gray-900",
+      render: (result) => result.course?.name || "N/A",
     },
     {
       key: "semester",
       header: "Semester",
-      render: (result) => (
-        <div>
-          <div className="font-medium text-gray-900">{result.semester?.name || "N/A"}</div>
-          <div className="text-xs text-gray-500">{result.semester?.code || ""}</div>
-        </div>
-      ),
+      className: "font-medium text-gray-900",
+      render: (result) => result.semester?.name || "N/A",
     },
     {
       key: "exam_type",
@@ -244,32 +236,20 @@ export default function CtwDtAssessmentResultsPage() {
     {
       key: "course",
       header: "Course",
-      render: (row) => (
-        <div>
-          <div className="font-medium text-gray-900">{row.course_details?.name || "N/A"}</div>
-          <div className="text-xs text-gray-500">{row.course_details?.code || ""}</div>
-        </div>
-      ),
+      className: "font-medium text-gray-900",
+      render: (row) => row.course_details?.name || "N/A",
     },
     {
       key: "semester",
       header: "Semester",
-      render: (row) => (
-        <div>
-          <div className="font-medium text-gray-900">{row.semester_details?.name || "N/A"}</div>
-          <div className="text-xs text-gray-500">{row.semester_details?.code || ""}</div>
-        </div>
-      ),
+      className: "font-medium text-gray-900",
+      render: (row) => row.semester_details?.name || "N/A",
     },
     {
       key: "module",
       header: "Module",
-      render: (row) => (
-        <div>
-          <div className="font-medium text-gray-900">{row.module?.name || "N/A"}</div>
-          <div className="text-xs text-gray-500">{row.module?.code || ""}</div>
-        </div>
-      ),
+      className: "font-medium text-gray-900",
+      render: (row) => row.module?.name || "N/A",
     },
     {
       key: "exam_type",

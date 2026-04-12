@@ -96,10 +96,10 @@ function WarningTypesPageContent() {
   };
 
   const columns: Column<SystemWarningType>[] = [
-    { key: "id", header: "SL.", className: "text-center text-gray-900", render: (warningType, index) => (pagination.from || 0) + (index + 1) },
+    { key: "id", header: "SL.", headerAlign: "center", className: "text-center text-gray-900", render: (warningType, index) => (pagination.from || 0) + (index + 1) },
     { key: "name", header: "Warning Type Name", className: "font-medium text-gray-900" },
     { key: "code", header: "Code", className: "text-gray-700 font-mono text-sm" },
-    { key: "reduced_mark", header: "Reduced Mark", className: "text-center", render: (warningType) => (
+    { key: "reduced_mark", header: "Reduced Mark", headerAlign: "center", className: "text-center", render: (warningType) => (
       <span className={`inline-flex items-center px-2.5 py-1 text-xs font-semibold rounded-full ${getReducedMarkColor(Number(warningType.reduced_mark))}`}>
         -{Number(warningType.reduced_mark).toFixed(1)}
       </span>
@@ -108,7 +108,7 @@ function WarningTypesPageContent() {
     { key: "description", header: "Description", className: "text-gray-700", render: (warningType) => (
       <span className="line-clamp-2">{warningType.description || "—"}</span>
     )},
-    { key: "is_active", header: "Status", className: "text-center", render: (warningType) => (
+    { key: "is_active", header: "Status", headerAlign: "center", className: "text-center", render: (warningType) => (
       <span className={`inline-flex items-center px-2.5 py-1 text-xs font-semibold rounded-full ${warningType.is_active ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}`}>
         {warningType.is_active ? "Active" : "Inactive"}
       </span>

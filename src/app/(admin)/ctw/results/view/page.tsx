@@ -125,22 +125,14 @@ export default function CtwResultsViewPage() {
     {
       key: "course",
       header: "Course",
-      render: (row) => (
-        <div>
-          <div className="font-medium text-gray-900">{row.course_name}</div>
-          <div className="text-xs text-gray-500">{row.course_code}</div>
-        </div>
-      ),
+      className: "font-medium text-gray-900",
+      render: (row) => row.course_name,
     },
     {
       key: "semester",
       header: "Semester",
-      render: (row) => (
-        <div>
-          <div className="font-medium text-gray-900">{row.semester_name}</div>
-          <div className="text-xs text-gray-500">{row.semester_code}</div>
-        </div>
-      ),
+      className: "font-medium text-gray-900",
+      render: (row) => row.semester_name,
     },
     {
       key: "modules",

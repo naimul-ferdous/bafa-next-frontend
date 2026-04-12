@@ -91,14 +91,14 @@ function SemestersPageContent() {
   );
 
   const columns: Column<SystemSemester>[] = [
-    { key: "id", header: "SL.", className: "text-center text-gray-900", render: (semester, index) => (pagination.from || 0) + (index) },
+    { key: "id", header: "SL.", headerAlign: "center", className: "text-center text-gray-900", render: (semester, index) => (pagination.from || 0) + (index) },
     { key: "name", header: "Semester Name", className: "font-medium text-gray-900", render: (semester) => (
       <>{semester.name}{semester.is_current && <span className="ml-2 px-2 py-0.5 text-xs rounded-full bg-purple-100 text-purple-700">Current</span>}</>
     )},
     { key: "short_name", header: "Short Name", className: "text-gray-700 font-mono text-sm" },
     { key: "start_date", header: "Start Date", className: "text-gray-700", render: (semester) => new Date(semester.start_date).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) },
     { key: "end_date", header: "End Date", className: "text-gray-700", render: (semester) => new Date(semester.end_date).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) },
-    { key: "is_active", header: "Status", className: "text-center", render: (semester) => (
+    { key: "is_active", header: "Status", headerAlign: "center", className: "text-center", render: (semester) => (
       <span className={`inline-flex items-center px-2.5 py-1 text-xs font-semibold rounded-full ${semester.is_active ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}`}>
         {semester.is_active ? "Active" : "Inactive"}
       </span>

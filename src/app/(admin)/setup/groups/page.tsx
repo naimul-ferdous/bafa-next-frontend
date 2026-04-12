@@ -114,11 +114,11 @@ function GroupsPageContent() {
   );
 
   const columns: Column<SystemGroup>[] = [
-    { key: "id", header: "SL.", className: "text-center text-gray-900", render: (group, index) => (pagination.from || 0) + (index) },
+    { key: "id", header: "SL.", headerAlign: "center", className: "text-center text-gray-900", render: (group, index) => (pagination.from || 0) + (index) },
     { key: "name", header: "Group Name", className: "font-medium text-gray-900" },
     { key: "code", header: "Code", className: "text-gray-700 font-mono text-sm" },
-    { key: "capacity", header: "Capacity", className: "text-gray-700 text-center", render: (group) => group.capacity || "—" },
-    { key: "current_strength", header: "Current Strength", className: "text-gray-700 text-center", render: (group) => group.current_strength || "—" },
+    { key: "capacity", header: "Capacity", headerAlign: "center", className: "text-gray-700 text-center", render: (group) => group.capacity || "—" },
+    { key: "current_strength", header: "Current Strength", headerAlign: "center", className: "text-gray-700 text-center", render: (group) => group.current_strength || "—" },
     {
       key: "formation_date",
       header: "Formation Date",
@@ -128,6 +128,7 @@ function GroupsPageContent() {
     {
       key: "is_active",
       header: "Status",
+      headerAlign: "center",
       className: "text-center",
       render: (group) => (
         <span className={`inline-flex items-center px-2.5 py-1 text-xs font-semibold rounded-full ${group.is_active ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}`}>

@@ -10,18 +10,6 @@ import { atwUserAssignService } from "@/libs/services/atwUserAssignService";
 import { Modal } from "@/components/ui/modal";
 import FullLogo from "@/components/ui/fulllogo";
 
-interface NoticeItem {
-  id: number;
-  title: string;
-  body: string;
-  timestamp: string;
-  tag: string;
-  tagColor: string;
-  icon: string;
-  iconBg: string;
-  isNew?: boolean;
-}
-
 interface StatCardProps {
   label: string;
   value: number;
@@ -30,51 +18,6 @@ interface StatCardProps {
   bgImage: string;
   loading?: boolean;
 }
-
-const demoNotices: NoticeItem[] = [
-  {
-    id: 1,
-    title: "OLQ Assessment Scheduled",
-    body: "All cadets are required to appear for OLQ evaluation on 26 Feb at 0800 hrs. Dress: Service uniform.",
-    timestamp: "5 mins ago",
-    tag: "Urgent",
-    tagColor: "bg-red-100 text-red-600",
-    icon: "hugeicons:star",
-    iconBg: "from-orange-500 to-red-600",
-    isNew: true,
-  },
-  {
-    id: 2,
-    title: "Subject Marks Updated",
-    body: "Term-II subject marks for all cadets have been updated. Please verify entries before final consolidation.",
-    timestamp: "1 hr ago",
-    tag: "Subjects",
-    tagColor: "bg-blue-100 text-blue-600",
-    icon: "hugeicons:book-02",
-    iconBg: "from-blue-500 to-indigo-600",
-    isNew: true,
-  },
-  {
-    id: 3,
-    title: "Counseling Records Due",
-    body: "Counseling entries for the current term must be submitted by EOD Friday to the ATW admin.",
-    timestamp: "3 hrs ago",
-    tag: "Counseling",
-    tagColor: "bg-violet-100 text-violet-600",
-    icon: "hugeicons:user-multiple",
-    iconBg: "from-violet-600 to-purple-700",
-  },
-  {
-    id: 4,
-    title: "Pen Picture Submissions Open",
-    body: "Instructors can now submit pen pictures for their assigned cadets via the Pen Picture module.",
-    timestamp: "Yesterday",
-    tag: "Pen Picture",
-    tagColor: "bg-indigo-100 text-indigo-600",
-    icon: "hugeicons:edit-02",
-    iconBg: "from-indigo-500 to-violet-700",
-  },
-];
 
 // ─── Circle Node ──────────────────────────────────────────────────────────────
 const OrbitCircle = ({ title, href, icon, onClick }: { title: string; href?: string; icon: string; onClick?: (e: React.MouseEvent) => void }) => {
@@ -208,163 +151,131 @@ export default function AtwAssessmentOlqResultsPage() {
 
   return (
     <>
-      <div className="grid grid-cols-1 lg:grid-cols-4 xl:grid-cols-5 gap-4 sm:gap-6 animate-in fade-in duration-700">
-        <div className="lg:col-span-3 flex justify-center items-center mx-auto px-3 sm:px-4 md:px-6 lg:px-0 animate-in fade-in duration-700">
-          <div className="flex items-center justify-center overflow-hidden relative">
+      <div className="flex flex-col items-center gap-6 animate-in fade-in duration-700">
+        {/* Stat Cards Row */}
+        {isInstructor && (
+          <div className="w-full grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-3xl mx-auto">
+            <StatCard
+              label="Total Subjects"
+              value={stats.subjects}
+              icon="solar:book-2-broken"
+              accentColor="from-blue-600 to-indigo-700"
+              bgImage="corner-1.png"
+              loading={statsLoading}
+            />
+            <StatCard
+              label="Total Cadets"
+              value={stats.cadets}
+              icon="hugeicons:user-group"
+              accentColor="from-violet-600 to-purple-700"
+              bgImage="corner-2.png"
+              loading={statsLoading}
+            />
+            <StatCard
+              label="Results Inputted"
+              value={stats.results}
+              icon="hugeicons:notebook"
+              accentColor="from-emerald-500 to-teal-700"
+              bgImage="corner-1.png"
+              loading={statsLoading}
+            />
+          </div>
+        )}
 
-            {/* Desktop / Tablet — Binary Tree */}
-            <div className="hidden sm:flex w-full items-center justify-center py-8">
+        {/* Desktop / Tablet — Binary Tree */}
+        <div className="hidden sm:flex w-full items-center justify-center py-8">
+          <div
+            className="relative sm:scale-[0.68] md:scale-[0.82] lg:scale-[0.92] xl:scale-100 transition-transform origin-top"
+            style={{ width: `${W}px`, height: `${H}px` }}
+          >
+            <svg
+              className="absolute inset-0 w-full h-full pointer-events-none"
+              viewBox={`0 0 ${W} ${H}`}
+            >
+              <line x1={rootCx} y1={rootDiam} x2={rootCx} y2={branchY} stroke="#94a3b8" strokeWidth="2" strokeDasharray="6 5" />
+              <line x1={childCx[0]} y1={branchY} x2={childCx[1]} y2={branchY} stroke="#94a3b8" strokeWidth="2" strokeDasharray="6 5" />
+              <line x1={childCx[0]} y1={branchY} x2={childCx[0]} y2={childTopY} stroke="#94a3b8" strokeWidth="2" strokeDasharray="6 5" />
+              <line x1={childCx[1]} y1={branchY} x2={childCx[1]} y2={childTopY} stroke="#94a3b8" strokeWidth="2" strokeDasharray="6 5" />
+              <circle cx={rootCx} cy={branchY} r="5" fill="#64748b" />
+              <circle cx={childCx[0]} cy={branchY} r="4" fill="#94a3b8" />
+              <circle cx={childCx[1]} cy={branchY} r="4" fill="#94a3b8" />
+              <circle cx={childCx[0]} cy={childTopY} r="3" fill="#cbd5e1" />
+              <circle cx={childCx[1]} cy={childTopY} r="3" fill="#cbd5e1" />
+            </svg>
+
+            {/* Root Hub */}
+            <div
+              className="absolute"
+              style={{ left: `${rootCx}px`, top: "0", transform: "translateX(-50%)" }}
+            >
+              <div className="relative w-44 h-44 rounded-full bg-white border-2 border-slate-900 shadow-[0_0_60px_rgba(0,0,0,0.12)] flex items-center justify-center group hover:scale-105 transition-transform duration-500 overflow-hidden">
+                <div className="absolute inset-0">
+                  <Image src="/images/bg/corner-2.png" alt="" fill className="object-cover object-right-top" priority />
+                </div>
+                <div className="relative z-10 flex flex-col items-center px-6 py-3">
+                  <p className="font-black text-slate-500 uppercase tracking-widest mt-2 text-center leading-tight">
+                    OLQ <br /> Result Management
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Child Nodes */}
+            {dynamicNodes.map((node, i) => (
               <div
-                className="relative sm:scale-[0.68] md:scale-[0.82] lg:scale-[0.92] xl:scale-100 transition-transform origin-top"
-                style={{ width: `${W}px`, height: `${H}px` }}
+                key={i}
+                className="absolute"
+                style={{ left: `${childCx[i]}px`, top: `${childTopY}px`, transform: "translateX(-50%)" }}
               >
-                {/* SVG tree connectors */}
-                <svg
-                  className="absolute inset-0 w-full h-full pointer-events-none"
-                  viewBox={`0 0 ${W} ${H}`}
-                >
-                  {/* Vertical stem: root bottom → branch */}
-                  <line
-                    x1={rootCx} y1={rootDiam}
-                    x2={rootCx} y2={branchY}
-                    stroke="#94a3b8" strokeWidth="2" strokeDasharray="6 5"
-                  />
-                  {/* Horizontal branch bar */}
-                  <line
-                    x1={childCx[0]} y1={branchY}
-                    x2={childCx[1]} y2={branchY}
-                    stroke="#94a3b8" strokeWidth="2" strokeDasharray="6 5"
-                  />
-                  {/* Drop to left child */}
-                  <line
-                    x1={childCx[0]} y1={branchY}
-                    x2={childCx[0]} y2={childTopY}
-                    stroke="#94a3b8" strokeWidth="2" strokeDasharray="6 5"
-                  />
-                  {/* Drop to right child */}
-                  <line
-                    x1={childCx[1]} y1={branchY}
-                    x2={childCx[1]} y2={childTopY}
-                    stroke="#94a3b8" strokeWidth="2" strokeDasharray="6 5"
-                  />
-                  {/* Junction dots */}
-                  <circle cx={rootCx} cy={branchY} r="5" fill="#64748b" />
-                  <circle cx={childCx[0]} cy={branchY} r="4" fill="#94a3b8" />
-                  <circle cx={childCx[1]} cy={branchY} r="4" fill="#94a3b8" />
-                  {/* Child top dots */}
-                  <circle cx={childCx[0]} cy={childTopY} r="3" fill="#cbd5e1" />
-                  <circle cx={childCx[1]} cy={childTopY} r="3" fill="#cbd5e1" />
-                </svg>
-
-                {/* Root Hub — top center */}
-                <div
-                  className="absolute"
-                  style={{ left: `${rootCx}px`, top: "0", transform: "translateX(-50%)" }}
-                >
-                  <div className="relative w-44 h-44 rounded-full bg-white border-2 border-slate-900 shadow-[0_0_60px_rgba(0,0,0,0.12)] flex items-center justify-center group hover:scale-105 transition-transform duration-500 overflow-hidden">
-                    <div className="absolute inset-0">
-                      <Image src="/images/bg/corner-2.png" alt="" fill className="object-cover object-right-top" priority />
-                    </div>
-                    <div className="relative z-10 flex flex-col items-center px-6 py-3">
-                      <p className="font-black text-slate-500 uppercase tracking-widest mt-2 text-center leading-tight">
-                        OLQ <br /> Result Management
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Child Nodes */}
-                {dynamicNodes.map((node, i) => (
-                  <div
-                    key={i}
-                    className="absolute"
-                    style={{ left: `${childCx[i]}px`, top: `${childTopY}px`, transform: "translateX(-50%)" }}
-                  >
-                    <OrbitCircle {...node} />
-                  </div>
-                ))}
+                <OrbitCircle {...node} />
               </div>
-            </div>
-
-            {/* Mobile Grid */}
-            <div className="sm:hidden w-full space-y-5 py-4">
-              <div className="text-center relative py-8 rounded-2xl overflow-hidden">
-                <div className="absolute inset-0 -z-10">
-                  <Image src="/images/bg/corner-1.png" alt="" fill className="object-cover opacity-20" />
-                </div>
-                <h1 className="text-5xl font-black text-slate-900">OLQ</h1>
-                <div className="h-1.5 w-16 bg-blue-600 rounded-full mt-2 mx-auto" />
-                <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mt-2">ATW Result Management</p>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                {dynamicNodes.map((node, i) => (
-                  <div key={i}>
-                    {node.onClick ? (
-                      <button
-                        type="button"
-                        onClick={node.onClick}
-                        className="w-full relative flex flex-col items-center p-5 bg-white rounded-2xl border border-slate-200 gap-2 overflow-hidden shadow-sm hover:shadow-md hover:border-blue-300 transition-all duration-300"
-                      >
-                        <div className="absolute inset-0 -z-10">
-                          <Image src="/images/bg/corner-1.png" alt="" fill className="object-cover opacity-10" />
-                        </div>
-                        <div className="w-9 h-9 rounded-xl bg-white shadow-sm border border-slate-100 flex items-center justify-center">
-                          <Icon icon={node.icon} className="w-5 h-5 text-blue-600" />
-                        </div>
-                        <span className="text-[9px] font-black uppercase text-slate-800 tracking-wider leading-none text-center">{node.title}</span>
-                      </button>
-                    ) : (
-                      <Link
-                        href={node.href || "#"}
-                        className="relative flex flex-col items-center p-5 bg-white rounded-2xl border border-slate-200 gap-2 overflow-hidden shadow-sm hover:shadow-md hover:border-blue-300 transition-all duration-300"
-                      >
-                        <div className="absolute inset-0 -z-10">
-                          <Image src="/images/bg/corner-1.png" alt="" fill className="object-cover opacity-10" />
-                        </div>
-                        <div className="w-9 h-9 rounded-xl bg-white shadow-sm border border-slate-100 flex items-center justify-center">
-                          <Icon icon={node.icon} className="w-5 h-5 text-blue-600" />
-                        </div>
-                        <span className="text-[9px] font-black uppercase text-slate-800 tracking-wider leading-none text-center">{node.title}</span>
-                      </Link>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
+            ))}
           </div>
         </div>
-        <div className="lg:col-span-1 xl:col-span-2">
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              {isInstructor && (
-                <div className="hidden lg:flex flex-col gap-4">
-                  <StatCard
-                    label="Total Subjects"
-                    value={stats.subjects}
-                    icon="solar:book-2-broken"
-                    accentColor="from-blue-600 to-indigo-700"
-                    bgImage="corner-1.png"
-                    loading={statsLoading}
-                  />
-                  <StatCard
-                    label="Total Cadets"
-                    value={stats.cadets}
-                    icon="hugeicons:user-group"
-                    accentColor="from-violet-600 to-purple-700"
-                    bgImage="corner-2.png"
-                    loading={statsLoading}
-                  />
-                  <StatCard
-                    label="Results Inputted"
-                    value={stats.results}
-                    icon="hugeicons:notebook"
-                    accentColor="from-emerald-500 to-teal-700"
-                    bgImage="corner-1.png"
-                    loading={statsLoading}
-                  />
-                </div>
-              )}
+
+        {/* Mobile Grid */}
+        <div className="sm:hidden w-full space-y-5 py-4 px-3">
+          <div className="text-center relative py-8 rounded-2xl overflow-hidden">
+            <div className="absolute inset-0 -z-10">
+              <Image src="/images/bg/corner-1.png" alt="" fill className="object-cover opacity-20" />
             </div>
+            <h1 className="text-5xl font-black text-slate-900">OLQ</h1>
+            <div className="h-1.5 w-16 bg-blue-600 rounded-full mt-2 mx-auto" />
+            <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mt-2">ATW Result Management</p>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            {dynamicNodes.map((node, i) => (
+              <div key={i}>
+                {node.onClick ? (
+                  <button
+                    type="button"
+                    onClick={node.onClick}
+                    className="w-full relative flex flex-col items-center p-5 bg-white rounded-2xl border border-slate-200 gap-2 overflow-hidden shadow-sm hover:shadow-md hover:border-blue-300 transition-all duration-300"
+                  >
+                    <div className="absolute inset-0 -z-10">
+                      <Image src="/images/bg/corner-1.png" alt="" fill className="object-cover opacity-10" />
+                    </div>
+                    <div className="w-9 h-9 rounded-xl bg-white shadow-sm border border-slate-100 flex items-center justify-center">
+                      <Icon icon={node.icon} className="w-5 h-5 text-blue-600" />
+                    </div>
+                    <span className="text-[9px] font-black uppercase text-slate-800 tracking-wider leading-none text-center">{node.title}</span>
+                  </button>
+                ) : (
+                  <Link
+                    href={node.href || "#"}
+                    className="relative flex flex-col items-center p-5 bg-white rounded-2xl border border-slate-200 gap-2 overflow-hidden shadow-sm hover:shadow-md hover:border-blue-300 transition-all duration-300"
+                  >
+                    <div className="absolute inset-0 -z-10">
+                      <Image src="/images/bg/corner-1.png" alt="" fill className="object-cover opacity-10" />
+                    </div>
+                    <div className="w-9 h-9 rounded-xl bg-white shadow-sm border border-slate-100 flex items-center justify-center">
+                      <Icon icon={node.icon} className="w-5 h-5 text-blue-600" />
+                    </div>
+                    <span className="text-[9px] font-black uppercase text-slate-800 tracking-wider leading-none text-center">{node.title}</span>
+                  </Link>
+                )}
+              </div>
+            ))}
           </div>
         </div>
       </div>
