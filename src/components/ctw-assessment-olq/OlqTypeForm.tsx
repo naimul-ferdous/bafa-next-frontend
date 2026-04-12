@@ -4,8 +4,8 @@
 import React, { useState, useEffect } from "react";
 import { Icon } from "@iconify/react";
 import type { CtwAssessmentOlqType, CtwAssessmentOlqTypeCreateData } from "@/libs/types/ctwAssessmentOlq";
-import type { SystemSemester, SystemCourse } from "@/libs/types/system";
-import { commonService } from "@/libs/services/commonService";
+import semesterService from "@/libs/services/semesterService";
+import { SystemSemester } from "@/libs/types/system";
 
 interface OlqTypeFormProps {
   initialData?: CtwAssessmentOlqType | null;
@@ -19,12 +19,11 @@ interface EstimatedMarkInput {
   id?: number;
   event_name: string;
   event_code: string;
-  estimated_mark: number;
+  estimated_mark: number | string;
   remarks: string;
 }
 
 export interface OlqTypeFormData {
-  course_id: number | "";
   type_name: string;
   type_code: string;
   is_multiplier: boolean;
@@ -36,7 +35,6 @@ export interface OlqTypeFormData {
 
 export default function OlqTypeForm({ initialData, onSubmit, onCancel, loading, isEdit = false }: OlqTypeFormProps) {
   const [formData, setFormData] = useState<OlqTypeFormData>({
-    course_id: "",
     type_name: "",
     type_code: "",
     is_multiplier: false,
@@ -47,20 +45,16 @@ export default function OlqTypeForm({ initialData, onSubmit, onCancel, loading, 
   });
   const [errors, setErrors] = useState<Partial<Record<keyof OlqTypeFormData, string>>>({});
   const [semesters, setSemesters] = useState<SystemSemester[]>([]);
-  const [courses, setCourses] = useState<SystemCourse[]>([]);
   const [loadingMetadata, setLoadingMetadata] = useState(true);
 
   useEffect(() => {
     const loadMetadata = async () => {
       try {
         setLoadingMetadata(true);
-        const options = await commonService.getResultOptions();
-        if (options) {
-          setSemesters(options.semesters || []);
-          setCourses(options.courses || []);
-        }
+        const res = await semesterService.getAllSemesters({ per_page: 100 });
+        setSemesters(res.data);
       } catch (error) {
-        console.error("Failed to load form metadata:", error);
+        console.error("Failed to load semesters:", error);
       } finally {
         setLoadingMetadata(false);
       }
@@ -75,7 +69,6 @@ export default function OlqTypeForm({ initialData, onSubmit, onCancel, loading, 
         : [];
 
       setFormData({
-        course_id: initialData.course_id || "",
         type_name: initialData.type_name,
         type_code: initialData.type_code,
         is_multiplier: initialData.is_multiplier || false,
@@ -88,17 +81,13 @@ export default function OlqTypeForm({ initialData, onSubmit, onCancel, loading, 
           estimated_mark: parseFloat(String(m.estimated_mark)),
           remarks: m.remarks || "",
         })) || [],
-        semesters: initialData.semesters?.map(s => s.semester_id) || [],
+        semesters: initialData.semesters?.map((s: any) => s.semester_id) || [],
       });
     }
   }, [initialData]);
 
   const validateForm = (): boolean => {
     const newErrors: Partial<Record<keyof OlqTypeFormData, string>> = {};
-
-    if (!formData.course_id) {
-      newErrors.course_id = "Course is required";
-    }
 
     if (!formData.type_name.trim()) {
       newErrors.type_name = "Type name is required";
@@ -121,7 +110,6 @@ export default function OlqTypeForm({ initialData, onSubmit, onCancel, loading, 
 
     try {
       const submitData: CtwAssessmentOlqTypeCreateData = {
-        course_id: formData.course_id as number,
         type_name: formData.type_name,
         type_code: formData.type_code,
         is_multiplier: formData.is_multiplier,
@@ -130,9 +118,9 @@ export default function OlqTypeForm({ initialData, onSubmit, onCancel, loading, 
         estimated_marks: formData.estimated_marks.map((m, index) => ({
           event_name: m.event_name,
           event_code: m.event_code,
-          estimated_mark: m.estimated_mark,
+          estimated_mark: typeof m.estimated_mark === "number" ? m.estimated_mark : (parseFloat(m.estimated_mark as string) || 0),
           remarks: m.remarks || undefined,
-          order: index + 1, // Maintain order from the form
+          order: index + 1,
         })),
         semesters: formData.semesters,
       };
@@ -154,7 +142,7 @@ export default function OlqTypeForm({ initialData, onSubmit, onCancel, loading, 
   const addEstimatedMark = () => {
     setFormData(prev => ({
       ...prev,
-      estimated_marks: [...prev.estimated_marks, { event_name: "", event_code: "", estimated_mark: 0, remarks: "" }],
+      estimated_marks: [...prev.estimated_marks, { event_name: "", event_code: "", estimated_mark: '', remarks: "" }],
     }));
   };
 
@@ -200,32 +188,7 @@ export default function OlqTypeForm({ initialData, onSubmit, onCancel, loading, 
           <Icon icon="hugeicons:document-01" className="w-5 h-5 text-blue-500" />
           Basic Information
         </h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {/* Course */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Course <span className="text-red-500">*</span>
-            </label>
-            <select
-              value={formData.course_id}
-              onChange={(e) => handleChange("course_id", e.target.value ? parseInt(e.target.value) : "")}
-              className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white ${
-                errors.course_id ? "border-red-500" : "border-gray-300"
-              }`}
-              disabled={loadingMetadata}
-            >
-              <option value="">Select a course</option>
-              {courses.map((course) => (
-                <option key={course.id} value={course.id}>
-                  {course.name} ({course.code})
-                </option>
-              ))}
-            </select>
-            {errors.course_id && (
-              <p className="mt-1 text-sm text-red-500">{errors.course_id}</p>
-            )}
-          </div>
-
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Type Name */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -313,7 +276,7 @@ export default function OlqTypeForm({ initialData, onSubmit, onCancel, loading, 
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
             <Icon icon="hugeicons:chart-line-data-01" className="w-5 h-5 text-green-500" />
-            Estimated Marks
+            Estimated Marks (Events)
           </h3>
           <button
             type="button"
@@ -321,13 +284,13 @@ export default function OlqTypeForm({ initialData, onSubmit, onCancel, loading, 
             className="px-4 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2"
           >
             <Icon icon="hugeicons:add-circle" className="w-4 h-4" />
-            Add Mark
+            Add Event
           </button>
         </div>
 
         {formData.estimated_marks.length === 0 ? (
           <div className="text-center py-8 text-gray-500">
-            {`No estimated marks added. Click "Add Mark" to add one.`}
+            {`No events added. Click "Add Event" to add one.`}
           </div>
         ) : (
           <div className="space-y-2">
@@ -381,10 +344,31 @@ export default function OlqTypeForm({ initialData, onSubmit, onCancel, loading, 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Estimated Mark</label>
                     <input
-                      type="number"
-                      step="0.01"
+                      type="text"
+                      inputMode="decimal"
+                      pattern="[0-9]*\.?[0-9]*"
                       value={mark.estimated_mark}
-                      onChange={(e) => updateEstimatedMark(index, "estimated_mark", parseFloat(e.target.value) || 0)}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val === "") {
+                          updateEstimatedMark(index, "estimated_mark", "");
+                          return;
+                        }
+                        if (/^\d*\.?\d*$/.test(val)) {
+                          updateEstimatedMark(index, "estimated_mark", val);
+                        }
+                      }}
+                      onBlur={(e) => {
+                        const val = e.target.value;
+                        if (val !== "") {
+                          const parsed = parseFloat(val);
+                          if (!isNaN(parsed)) {
+                            updateEstimatedMark(index, "estimated_mark", parsed);
+                          } else {
+                            updateEstimatedMark(index, "estimated_mark", "");
+                          }
+                        }
+                      }}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
                       placeholder="0.00"
                     />
@@ -462,7 +446,7 @@ export default function OlqTypeForm({ initialData, onSubmit, onCancel, loading, 
             />
             <div>
               <div className="font-medium text-gray-900">Active:</div>
-              <div className="text-sm text-gray-500">This OLQ type will be available for use throughout the system.</div>
+              <div className="text-sm text-gray-500">This OLQ type will be available for assignment.</div>
             </div>
           </label>
           <label className="flex items-start gap-3 cursor-pointer">
@@ -475,7 +459,7 @@ export default function OlqTypeForm({ initialData, onSubmit, onCancel, loading, 
             />
             <div>
               <div className="font-medium text-gray-900">Inactive:</div>
-              <div className="text-sm text-gray-500">This OLQ type will be hidden from general use.</div>
+              <div className="text-sm text-gray-500">This OLQ type will be hidden.</div>
             </div>
           </label>
         </div>

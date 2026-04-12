@@ -8,6 +8,7 @@ import { instructorAssignWingService } from "@/libs/services/instructorAssignWin
 import { wingService } from "@/libs/services/wingService";
 import { subWingService } from "@/libs/services/subWingService";
 import type { InstructorBiodata, Wing, SubWing, InstructorAssignWing } from "@/libs/types/user";
+import { useAuth } from "@/context/AuthContext";
 
 interface InstructorAssignWingModalProps {
   isOpen: boolean;
@@ -22,6 +23,14 @@ export default function InstructorAssignWingModal({
   instructor,
   onSuccess,
 }: InstructorAssignWingModalProps) {
+  const { user: authUser } = useAuth();
+
+  // Logged-in user's flying wing when they have no sub-wing assigned
+  const authUserFlyingWing = (
+    authUser?.roleAssignments?.find(ra => ra.is_active && ra.wing?.is_flying && !ra.sub_wing_id) ||
+    authUser?.role_assignments?.find(ra => (ra as { is_active?: boolean }).is_active && ra.wing?.is_flying && !(ra as { sub_wing_id?: number | null }).sub_wing_id)
+  )?.wing ?? null;
+
   const [wings, setWings] = useState<Wing[]>([]);
   const [subWings, setSubWings] = useState<SubWing[]>([]);
   const [existingAssignments, setExistingAssignments] = useState<InstructorAssignWing[]>([]);
@@ -38,7 +47,17 @@ export default function InstructorAssignWingModal({
     if (isOpen && instructor) {
       loadData();
     }
+    if (!isOpen) {
+      setSelectedWingId(authUserFlyingWing ? authUserFlyingWing.id : "");
+    }
   }, [isOpen, instructor]);
+
+  // Pre-select the logged-in user's flying wing when wings are loaded
+  useEffect(() => {
+    if (authUserFlyingWing) {
+      setSelectedWingId(authUserFlyingWing.id);
+    }
+  }, [authUserFlyingWing?.id]);
 
   // Load subwings when wing changes
   useEffect(() => {
@@ -220,16 +239,29 @@ export default function InstructorAssignWingModal({
                   <select
                     value={selectedWingId}
                     onChange={(e) => setSelectedWingId(e.target.value ? Number(e.target.value) : "")}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className={`w-full px-3 py-2 border rounded-lg text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                      authUserFlyingWing
+                        ? "bg-gray-100 border-gray-200 cursor-not-allowed opacity-75"
+                        : "bg-white border-gray-200"
+                    }`}
+                    disabled={!!authUserFlyingWing}
                     required
                   >
                     <option value="">Select Wing</option>
-                    {wings.map((wing) => (
-                      <option key={wing.id} value={wing.id}>
-                        {wing.name} ({wing.code})
-                      </option>
-                    ))}
+                    {wings.map((wing) => {
+                      const alreadyAssigned = existingAssignments.some(a => a.wing_id === wing.id);
+                      return (
+                        <option key={wing.id} value={wing.id} disabled={alreadyAssigned}>
+                          {wing.name} ({wing.code}){alreadyAssigned ? " — already assigned" : ""}
+                        </option>
+                      );
+                    })}
                   </select>
+                  {authUserFlyingWing && (
+                    <p className="mt-1 text-xs text-blue-600">
+                      Wing locked to your assigned wing: <span className="font-semibold">{authUserFlyingWing.name}</span>
+                    </p>
+                  )}
                 </div>
 
                 {/* SubWing Selection - only show when wing has sub-wings */}

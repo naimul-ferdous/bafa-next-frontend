@@ -8,14 +8,14 @@ import { getToken } from '@/libs/auth/auth-token';
 import type {
   Ftw11sqnAssessmentCounselingType,
   Ftw11sqnAssessmentCounselingEvent,
-} from '@/libs/types/system';
+  Ftw11sqnAssessmentCounselingFtw11sqnAssessmentCounselingTypeCreateData,
+} from '@/libs/types/ftw11sqnAssessmentCounseling';
 
 interface TypeQueryParams {
   page?: number;
   per_page?: number;
   search?: string;
   semester_id?: number;
-  course_id?: number;
 }
 
 interface TypePaginatedResponse {
@@ -66,20 +66,6 @@ interface SingleEventApiResponse {
   data: Ftw11sqnAssessmentCounselingEvent;
 }
 
-interface TypeCreateData {
-  course_id: number;
-  type_name: string;
-  type_code: string;
-  is_active?: boolean;
-  events?: {
-    event_name: string;
-    event_code: string;
-    event_type: string;
-    order?: number;
-  }[];
-  semesters?: number[];
-}
-
 export const ftw11sqnAssessmentCounselingTypeService = {
   /**
    * Get all counseling types with pagination
@@ -92,7 +78,6 @@ export const ftw11sqnAssessmentCounselingTypeService = {
       if (params?.per_page) query.append('per_page', params.per_page.toString());
       if (params?.search) query.append('search', params.search);
       if (params?.semester_id) query.append('semester_id', params.semester_id.toString());
-      if (params?.course_id) query.append('course_id', params.course_id.toString());
 
       const endpoint = `/ftw-11sqn-assessment-counseling-types${query.toString() ? `?${query.toString()}` : ''}`;
       const token = getToken();
@@ -134,7 +119,7 @@ export const ftw11sqnAssessmentCounselingTypeService = {
   /**
    * Create new counseling type
    */
-  async createType(data: TypeCreateData): Promise<Ftw11sqnAssessmentCounselingType | null> {
+  async createType(data: Ftw11sqnAssessmentCounselingTypeCreateData): Promise<Ftw11sqnAssessmentCounselingType | null> {
     try {
       const token = getToken();
       if (!token) throw new Error('Authentication token not found. Please login again.');
@@ -152,7 +137,7 @@ export const ftw11sqnAssessmentCounselingTypeService = {
   /**
    * Update counseling type
    */
-  async updateType(id: number, data: Partial<TypeCreateData>): Promise<Ftw11sqnAssessmentCounselingType | null> {
+  async updateType(id: number, data: Partial<Ftw11sqnAssessmentCounselingTypeCreateData>): Promise<Ftw11sqnAssessmentCounselingType | null> {
     try {
       const token = getToken();
       if (!token) throw new Error('Authentication token not found. Please login again.');

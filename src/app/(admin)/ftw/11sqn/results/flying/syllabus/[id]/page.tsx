@@ -10,6 +10,16 @@ import { ExerciseModalProvider, useExerciseModal } from "@/context/ExerciseModal
 import ExerciseFormModal from "@/components/ftw-11sqn-flying/ExerciseFormModal";
 import ConfirmationModal from "@/components/ui/modal/ConfirmationModal";
 
+const formatHoursToHHMM = (hours: number | string | null): string => {
+    if (hours === null || hours === undefined) return "—";
+    const numHours = typeof hours === "string" ? parseFloat(hours) : hours;
+    if (isNaN(numHours) || numHours === 0) return "—";
+    const totalMinutes = Math.round(numHours * 60);
+    const h = Math.floor(totalMinutes / 60);
+    const m = totalMinutes % 60;
+    return `${h}:${m.toString().padStart(2, "0")}`;
+};
+
 interface AggregatedExercise extends Ftw11sqnFlyingSyllabusExercise {
   phase_type_name?: string;
   syllabus_type_id: number;
@@ -212,82 +222,14 @@ function ViewFlyingSyllabusContent() {
           <h1 className="text-center text-xl font-bold text-gray-900 uppercase tracking-wider">
             Bangladesh Air Force Academy
           </h1>
-          <p className="text-center font-medium text-gray-900 uppercase tracking-wider pb-2">
-            Flying Syllabus Details - {syllabus.phase_full_name}
-          </p>
-        </div>
-
-        {/* Basic Information Section */}
-        <div className="mb-6">
-          <h2 className="text-lg font-bold text-gray-900 mb-4 pb-1 border-b border-dashed border-gray-400">
-            Basic Information
-          </h2>
-          <div className="grid grid-cols-2 gap-x-12 gap-y-3">
-            <div className="flex">
-              <span className="w-48 text-gray-900 font-medium">Phase Full Name</span>
-              <span className="mr-4">:</span>
-              <span className="text-gray-900 flex-1">{syllabus.phase_full_name}</span>
-            </div>
-            <div className="flex">
-              <span className="w-48 text-gray-900 font-medium">Phase Short Name</span>
-              <span className="mr-4">:</span>
-              <span className="text-gray-900 flex-1">{syllabus.phase_shortname}</span>
-            </div>
-            <div className="flex">
-              <span className="w-48 text-gray-900 font-medium">Phase Symbol</span>
-              <span className="mr-4">:</span>
-              <span className="text-gray-900 flex-1">{syllabus.phase_symbol || "—"}</span>
-            </div>
-            <div className="flex">
-              <span className="w-48 text-gray-900 font-medium">Flying Type</span>
-              <span className="mr-4">:</span>
-              <span className="text-gray-900 flex-1">{syllabus.flying_type?.type_name || "—"}</span>
-            </div>
-            <div className="flex">
-              <span className="w-48 text-gray-900 font-medium">Sort Order</span>
-              <span className="mr-4">:</span>
-              <span className="text-gray-900 flex-1 font-mono">{syllabus.phase_sort}</span>
-            </div>
-            <div className="flex">
-              <span className="w-48 text-gray-900 font-medium">Status</span>
-              <span className="mr-4">:</span>
-              <span className="text-gray-900 flex-1">
-                <span className={`inline-flex items-center px-2.5 py-0.5 text-xs font-semibold rounded-full ${
-                  syllabus.is_active ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"
-                }`}>
-                  {syllabus.is_active ? "Active" : "Inactive"}
-                </span>
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {/* Phase Summary Section */}
-        <div className="mb-6">
-          <h2 className="text-lg font-bold text-gray-900 mb-4 pb-1 border-b border-dashed border-gray-400">
-            Phase Summary
-          </h2>
-          <div className="grid grid-cols-2 gap-x-12 gap-y-3">
-            <div className="flex">
-              <span className="w-48 text-gray-900 font-medium">Total Sorties</span>
-              <span className="mr-4">:</span>
-              <span className="text-gray-900 flex-1 font-bold text-blue-600">{aggregated.sorties}</span>
-            </div>
-            <div className="flex">
-              <span className="w-48 text-gray-900 font-medium">Total Hours</span>
-              <span className="mr-4">:</span>
-              <span className="text-gray-900 flex-1 font-bold text-green-600">{aggregated.hours.toFixed(2)} hrs</span>
-            </div>
+          <p className="text-center font-medium text-gray-900 uppercase tracking-wider">Flying Syllabus Details - {syllabus.phase_full_name}</p>
+          <p className="text-center font-medium text-gray-900 uppercase tracking-wider pb-2">T:{formatHoursToHHMM(aggregated.hours)}
             {aggregated.types.map(type => (
-              <div key={type.id} className="flex col-span-2">
-                <span className="w-48 text-gray-900 font-medium">{type.phase_type?.type_name}</span>
-                <span className="mr-4">:</span>
-                <span className="text-gray-900 flex-1">
-                  {type.sorties} Sorties, {type.hours} Hours
+                <span key={type.id} className="text-gray-900 flex-1">
+                  {type?.phase_type?.type_name ?? type?.phase_type?.type_code}: {formatHoursToHHMM(type.hours)}
                 </span>
-              </div>
             ))}
-          </div>
+            </p>
         </div>
 
         {/* Exercises List Section */}
@@ -310,59 +252,67 @@ function ViewFlyingSyllabusContent() {
           <table className="w-full border-collapse border border-gray-900">
             <thead>
               <tr>
-                <th className="border border-gray-900 px-4 py-2 text-center text-gray-900 font-semibold w-12">SL.</th>
-                <th className="border border-gray-900 px-4 py-2 text-left text-gray-900 font-semibold">Short Name</th>
-                <th className="border border-gray-900 px-4 py-2 text-left text-gray-900 font-semibold">Exercise Name</th>
-                <th className="border border-gray-900 px-4 py-2 text-left text-gray-900 font-semibold">Phase Type</th>
-                <th className="border border-gray-900 px-4 py-2 text-center text-gray-900 font-semibold">Time (Hrs)</th>
-                <th className="border border-gray-900 px-4 py-2 text-center text-gray-900 font-semibold w-24">Status</th>
-                <th className="border border-gray-900 px-4 py-2 text-center text-gray-900 font-semibold w-24 no-print">Actions</th>
+                <th className="border border-gray-900 px-3 py-2 text-center text-gray-900 font-semibold w-10">SL</th>
+                <th className="border border-gray-900 px-3 py-2 text-left text-gray-900 font-semibold">Exercise</th>
+                <th className="border border-gray-900 px-3 py-2 text-center text-gray-900 font-semibold w-20">Symbol</th>
+                <th className="border border-gray-900 px-3 py-2 text-left text-gray-900 font-semibold">Content</th>
+                <th className="border border-gray-900 px-3 py-2 text-center text-gray-900 font-semibold w-20">Dual</th>
+                <th className="border border-gray-900 px-3 py-2 text-center text-gray-900 font-semibold w-20">Solo</th>
+                <th className="border border-gray-900 px-3 py-2 text-center text-gray-900 font-semibold w-24">Prog Total</th>
+                <th className="border border-gray-900 px-3 py-2 text-left text-gray-900 font-semibold">Remark</th>
+                <th className="border border-gray-900 px-3 py-2 text-center text-gray-900 font-semibold w-20 no-print">Actions</th>
               </tr>
             </thead>
             <tbody>
               {aggregated.exercises.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="border border-gray-900 px-4 py-8 text-center text-gray-500 italic">
+                  <td colSpan={9} className="border border-gray-900 px-4 py-8 text-center text-gray-500 italic">
                     No exercises found for this syllabus.
                   </td>
                 </tr>
               ) : (
-                aggregated.exercises.map((exercise, index) => (
-                  <tr key={exercise.id} className="hover:bg-gray-50 group cursor-pointer" onClick={() => handleEditExercise(exercise)}>
-                    <td className="border border-gray-900 px-4 py-2 text-center text-gray-900">{index + 1}</td>
-                    <td className="border border-gray-900 px-4 py-2 font-bold text-blue-700">{exercise.exercise_shortname}</td>
-                    <td className="border border-gray-900 px-4 py-2 text-gray-900">{exercise.exercise_name}</td>
-                    <td className="border border-gray-900 px-4 py-2 text-gray-600">{exercise.phase_type_name || "—"}</td>
-                    <td className="border border-gray-900 px-4 py-2 text-center">
-                      <span className="font-mono font-bold">{exercise.take_time_hours}</span>
-                    </td>
-                    <td className="border border-gray-900 px-4 py-2 text-center">
-                      <span className={`inline-flex items-center px-2 py-0.5 text-[10px] font-bold rounded-full ${
-                        exercise.is_active ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"
-                      }`}>
-                        {exercise.is_active ? "Active" : "Inactive"}
-                      </span>
-                    </td>
-                    <td className="border border-gray-900 px-4 py-2 text-center no-print" onClick={(e) => e.stopPropagation()}>
+                (() => {
+                  let runningTotal = 0;
+                  return aggregated.exercises.map((exercise, index) => {
+                  const isDual = exercise.phase_type_name?.toLowerCase().includes("dual");
+                  const isSolo = exercise.phase_type_name?.toLowerCase().includes("solo");
+                  const hours = parseFloat(String(exercise.take_time_hours || 0));
+                  const dualHours = isDual ? hours : 0;
+                  const soloHours = isSolo ? hours : 0;
+                  runningTotal += dualHours + soloHours;
+
+                  return (
+                    <tr key={exercise.id} className="hover:bg-gray-50 cursor-pointer" onClick={() => handleEditExercise(exercise)}>
+                      <td className="border border-gray-900 px-3 py-2 text-center text-gray-900">{index + 1}</td>
+                      <td className="border border-gray-900 px-3 py-2 text-gray-900">{exercise.exercise_name}</td>
+                      <td className="border border-gray-900 px-3 py-2 text-center font-bold text-blue-700">{exercise.exercise_shortname}</td>
+                      <td className="border border-gray-900 px-3 py-2 text-gray-700 text-sm">{exercise.exercise_content || "—"}</td>
+                      <td className="border border-gray-900 px-3 py-2 text-center font-mono">{formatHoursToHHMM(dualHours)}</td>
+                      <td className="border border-gray-900 px-3 py-2 text-center font-mono">{formatHoursToHHMM(soloHours)}</td>
+                      <td className="border border-gray-900 px-3 py-2 text-center font-mono font-bold text-green-700">{formatHoursToHHMM(runningTotal)}</td>
+                      <td className="border border-gray-900 px-3 py-2 text-gray-600 text-sm">{exercise.remarks || "—"}</td>
+                      <td className="border border-gray-900 px-3 py-2 text-center no-print" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-center gap-1">
-                            <button
-                                onClick={() => handleEditExercise(exercise)}
-                                className="p-1 text-yellow-600 hover:bg-yellow-50 rounded transition-colors"
-                                title="Edit"
-                            >
-                                <Icon icon="hugeicons:pencil-edit-01" className="w-4 h-4" />
-                            </button>
-                            <button
-                                onClick={() => handleToggleExerciseStatus(exercise)}
-                                className={`p-1 rounded transition-colors ${exercise.is_active ? 'text-red-600 hover:bg-red-50' : 'text-green-600 hover:bg-green-50'}`}
-                                title={exercise.is_active ? "Deactivate" : "Activate"}
-                            >
-                                <Icon icon={exercise.is_active ? "hugeicons:unavailable" : "hugeicons:checkmark-circle-02"} className="w-4 h-4" />
-                            </button>
+                          <button
+                            onClick={() => handleEditExercise(exercise)}
+                            className="p-1 text-yellow-600 hover:bg-yellow-50 rounded transition-colors"
+                            title="Edit"
+                          >
+                            <Icon icon="hugeicons:pencil-edit-01" className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => handleToggleExerciseStatus(exercise)}
+                            className={`p-1 rounded transition-colors ${exercise.is_active ? 'text-red-600 hover:bg-red-50' : 'text-green-600 hover:bg-green-50'}`}
+                            title={exercise.is_active ? "Deactivate" : "Activate"}
+                          >
+                            <Icon icon={exercise.is_active ? "hugeicons:unavailable" : "hugeicons:checkmark-circle-02"} className="w-4 h-4" />
+                          </button>
                         </div>
-                    </td>
-                  </tr>
-                ))
+                      </td>
+                    </tr>
+                  );
+                });
+                })()
               )}
             </tbody>
           </table>

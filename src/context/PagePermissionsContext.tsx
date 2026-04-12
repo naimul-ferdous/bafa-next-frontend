@@ -48,6 +48,7 @@ export function PagePermissionsProvider({ children }: { children: React.ReactNod
     const menuPermissions = menu?.permissions ?? [];
 
     // Build set of slugs the user actually holds (from all roles)
+    // Note: backend already filters roles to only primary + merged roles
     const userSlugs = new Set<string>();
     (user?.roles ?? []).forEach((role: any) => {
       (role.permissions ?? []).forEach((p: any) => userSlugs.add(p.slug));

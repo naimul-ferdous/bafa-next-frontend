@@ -120,7 +120,7 @@ function FlyingTypesPageContent() {
 
     // Flying Type Columns
     const flyingTypeColumns: Column<Ftw11sqnFlyingType>[] = [
-        { key: "id", header: "SL.", headerAlign: "center", className: "text-center text-gray-900", render: (_, index) => (flyingTypePagination.from || 0) + (index + 1) },
+        { key: "id", header: "SL.", headerAlign: "center", className: "text-center text-gray-900", render: (_, index) => index + 1 },
         { key: "type_name", header: "Type Name", className: "font-medium text-gray-900" },
         { key: "type_code", header: "Code", className: "text-gray-700 font-mono text-sm" },
         {
@@ -144,7 +144,7 @@ function FlyingTypesPageContent() {
 
     // Phase Type Columns
     const phaseTypeColumns: Column<Ftw11sqnFlyingPhaseType>[] = [
-        { key: "id", header: "SL.", headerAlign: "center", className: "text-center text-gray-900", render: (_, index) => (phaseTypePagination.from || 0) + (index + 1) },
+        { key: "id", header: "SL.", headerAlign: "center", className: "text-center text-gray-900", render: (_, index) => index + 1 },
         { key: "type_name", header: "Type Name", className: "font-medium text-gray-900" },
         { key: "type_code", header: "Code", className: "text-gray-700 font-mono text-sm" },
         {

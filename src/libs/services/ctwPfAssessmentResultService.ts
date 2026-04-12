@@ -112,4 +112,23 @@ export const ctwPfAssessmentResultService = {
       return null;
     }
   },
+
+  async getCadetResults(ctwResultsModuleId: number, cadetId: number, params?: { course_id?: number; semester_id?: number; per_page?: number }): Promise<any[]> {
+    try {
+      const query = new URLSearchParams();
+      query.append('ctw_results_module_id', ctwResultsModuleId.toString());
+      query.append('cadet_id', cadetId.toString());
+      query.append('per_page', (params?.per_page ?? 500).toString());
+      if (params?.course_id) query.append('course_id', params.course_id.toString());
+      if (params?.semester_id) query.append('semester_id', params.semester_id.toString());
+
+      const endpoint = `/ctw-results/cadet?${query.toString()}`;
+      const token = getToken();
+      const result = await apiClient.get<any>(endpoint, token);
+      return result?.data || [];
+    } catch (error) {
+      console.error('Failed to fetch cadet results:', error);
+      return [];
+    }
+  },
 };

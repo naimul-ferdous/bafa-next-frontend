@@ -9,7 +9,6 @@ import { ApprovalProcessModalProvider, useApprovalProcessModal } from "@/context
 import ApprovalProcessFormModal from "@/components/approval/ApprovalProcessFormModal";
 import ConfirmationModal from "@/components/ui/modal/ConfirmationModal";
 import type { ApprovalProcess } from "@/libs/types/approval";
-import Sqn12ApprovalProcessFormModal from "@/components/approval/Sqn12ApprovalProcessFormModal";
 
 function ApprovalProcessPageContent() {
   const { openModal } = useApprovalProcessModal();
@@ -274,7 +273,7 @@ function ApprovalProcessPageContent() {
         </div>
         <h1 className="text-xl font-bold text-gray-900 uppercase">Bangladesh Air Force Academy</h1>
         <h2 className="text-md font-semibold text-gray-700 mt-2 uppercase">
-          FTW 12sqn Flying Examination - Approval Process Management
+          FTW 12SQN Flying Examination - Approval Process Management
         </h2>
         <p className="text-sm text-gray-500 mt-1">Configure the approval hierarchy levels</p>
       </div>
@@ -367,7 +366,7 @@ function ApprovalProcessPageContent() {
       </div>
 
       {/* Form Modal */}
-      <Sqn12ApprovalProcessFormModal />
+      <ApprovalProcessFormModal />
 
       {/* Delete Confirmation Modal */}
       <ConfirmationModal

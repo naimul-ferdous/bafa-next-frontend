@@ -4,7 +4,8 @@
 import React, { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { ctwSwordDrillResultService } from "@/libs/services/ctwSwordDrillResultService";
-import { ctwResultsModuleService } from "@/libs/services/ctwResultsModuleService";
+import { ctwCommonService } from "@/libs/services/ctwCommonService";
+import { useAuth } from "@/libs/hooks/useAuth";
 import FullLogo from "@/components/ui/fulllogo";
 import SwordDrillResultForm from "@/components/ctw-sword-drill/SwordDrillResultForm";
 import { Icon } from "@iconify/react";
@@ -15,6 +16,7 @@ const SWORD_DRILL_MODULE_CODE = "sword_drill";
 export default function EditSwordDrillResultPage() {
   const router = useRouter();
   const params = useParams();
+  const { user } = useAuth();
   const resultId = params?.id as string;
 
   const [loading, setLoading] = useState(false);
@@ -26,26 +28,26 @@ export default function EditSwordDrillResultPage() {
   const [moduleLoading, setModuleLoading] = useState(true);
 
   useEffect(() => {
+    if (!user?.id) return;
     const fetchModuleId = async () => {
       try {
         setModuleLoading(true);
-        const modulesRes = await ctwResultsModuleService.getAllModules({ per_page: 100 });
-        const swordDrillModule = modulesRes.data.find((m: any) => m.code === SWORD_DRILL_MODULE_CODE);
-        if (swordDrillModule) {
-          setSwordDrillModuleId(swordDrillModule.id);
+        const options = await ctwCommonService.getSwordDrillFormOptions(user?.id || 0);
+        if (options?.module) {
+          setSwordDrillModuleId(options.module.id);
         } else {
-          console.error(`Module with code ${SWORD_DRILL_MODULE_CODE} not found.`);
-          setError(`Module with code ${SWORD_DRILL_MODULE_CODE} not found.`);
+          setSwordDrillModuleId(null);
+          setError("Module not found.");
         }
       } catch (err) {
-        console.error("Failed to fetch module ID:", err);
+        setSwordDrillModuleId(null);
         setError("Failed to fetch module ID.");
       } finally {
         setModuleLoading(false);
       }
     };
-    fetchModuleId();
-  }, []);
+    if (user?.id) fetchModuleId();
+  }, [user?.id]);
 
   useEffect(() => {
     const loadResult = async () => {

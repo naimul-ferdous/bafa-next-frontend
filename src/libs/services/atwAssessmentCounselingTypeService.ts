@@ -17,7 +17,6 @@ interface TypeQueryParams {
   per_page?: number;
   search?: string;
   semester_id?: number;
-  course_id?: number;
 }
 
 interface TypePaginatedResponse {
@@ -92,7 +91,6 @@ export const atwAssessmentCounselingTypeService = {
       if (params?.per_page) query.append('per_page', params.per_page.toString());
       if (params?.search) query.append('search', params.search);
       if (params?.semester_id) query.append('semester_id', params.semester_id.toString());
-      if (params?.course_id) query.append('course_id', params.course_id.toString());
 
       const endpoint = `/atw-assessment-counseling-types${query.toString() ? `?${query.toString()}` : ''}`;
       const token = getToken();

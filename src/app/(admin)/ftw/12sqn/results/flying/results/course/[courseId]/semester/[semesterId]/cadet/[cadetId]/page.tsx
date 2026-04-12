@@ -166,10 +166,18 @@ export default function FlyingExamination12SqnCadetView() {
                 phaseMap.get(phaseId)!.exercises.push(mark);
             });
 
-            // Sort phases by phase_sort
+            // Sort phases by syllabus id (ascending)
             const sortedPhases = Array.from(phaseMap.values()).sort(
-                (a, b) => (a.phase_details.phase_sort || 0) - (b.phase_details.phase_sort || 0)
+                (a, b) => a.phase_details.id - b.phase_details.id
             );
+
+            // Sort exercises within each phase by exercise id (ascending)
+            sortedPhases.forEach((phase) => {
+                phase.exercises.sort((a, b) => 
+                    (a.exercise?.id || a.ftw_12sqn_flying_syllabus_exercise_id || 0) - 
+                    (b.exercise?.id || b.ftw_12sqn_flying_syllabus_exercise_id || 0)
+                );
+            });
 
             const cadetViewData: CadetViewData = {
                 cadet_details: {
@@ -386,14 +394,14 @@ export default function FlyingExamination12SqnCadetView() {
     const { rowspans, shouldRenderPhase, phaseAverages, totalAverage } = calculatePhaseRowspans(sortedPhases);
 
     return (
-        <div className="bg-white p-6 rounded-lg border border-gray-200 space-y-6">
+        <div className="bg-white p-4 rounded-lg border border-gray-200 space-y-6">
             <div className="relative text-center mb-8">
                 <div className="flex justify-center mb-4"><FullLogo /></div>
                 <h1 className="text-xl font-bold text-gray-900 uppercase">Bangladesh Air Force Academy</h1>
                 <h2 className="text-md font-semibold text-gray-700 mt-2 uppercase">FTW 12SQN Flying Examination Results</h2>
 
                 {/* Back Button */}
-                <div className="absolute top-3 left-3 flex">
+                <div className="absolute top-0 left-0 flex">
                     <button
                         onClick={handleBack}
                         className="flex items-center space-x-2 px-4 py-2 bg-transparent hover:bg-gray-100 border border-gray-200 text-black rounded-md transition-colors"
@@ -405,7 +413,7 @@ export default function FlyingExamination12SqnCadetView() {
                 </div>
 
                 {/* Action Buttons */}
-                <div className="absolute top-3 right-3 flex gap-2 print:hidden">
+                <div className="absolute top-0 right-0 flex gap-2 print:hidden">
                     {/* Approve Button */}
                     {currentApprovalProcess && canApprove && (
                         <button

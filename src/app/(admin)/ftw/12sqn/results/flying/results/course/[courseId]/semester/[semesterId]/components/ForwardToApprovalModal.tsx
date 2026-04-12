@@ -9,6 +9,7 @@ import { ftw12sqnFlyingExamApprovalProcessService } from "@/libs/services/ftw12s
 import { useAuth } from "@/libs/hooks/useAuth";
 import type { ApprovalStatus, ApprovalProcess, ApprovalSummary } from "@/libs/types/approval";
 
+// Extended user type for approval workflow
 interface UserWithRole {
   id: number;
   name?: string;
@@ -87,8 +88,8 @@ const ForwardToApprovalModal = ({
           currentProcess.id
         );
 
-        if (result) {
-          setApprovalSummary(result);
+        if (result?.data) {
+          setApprovalSummary(result.data);
         }
       }
     } catch (error) {
@@ -100,6 +101,7 @@ const ForwardToApprovalModal = ({
 
   if (!open || !semesterData) return null;
 
+  // Use workflow flags to determine behavior
   const isFinalLevel = approvalProcess?.is_final === true;
   const noNeedForward = approvalProcess?.no_need_forward === true;
   const hasNextLevel = !isFinalLevel && !noNeedForward && nextLevelProcess !== null && nextLevelProcess !== undefined;
@@ -114,11 +116,11 @@ const ForwardToApprovalModal = ({
   };
 
   const handleConfirmForward = async () => {
-    if (approvalSummary && !approvalSummary.can_forward && !noNeedForward) {
+    if (approvalSummary && !approvalSummary.can_forward) {
       if (approvalSummary.has_rejected) {
-        alert(`Cannot forward: ${approvalSummary.rejected_count} cadet(s) rejected.`);
+        alert(`Cannot forward: ${approvalSummary.rejected_count} cadet(s) rejected. Please review and resolve rejections before forwarding.`);
       } else if (approvalSummary.pending_count > 0) {
-        alert(`Cannot forward: ${approvalSummary.pending_count} cadet(s) pending approval.`);
+        alert(`Cannot forward: ${approvalSummary.pending_count} cadet(s) pending approval. Please approve all cadets before forwarding.`);
       } else {
         alert("Cannot forward: Not all cadets have been approved.");
       }
@@ -132,12 +134,14 @@ const ForwardToApprovalModal = ({
       const totalCadets = semesterData.cadet_mission_examinations?.length || semesterData.cadets?.length || 0;
 
       if (noNeedForward) {
+        // Role only approves without forwarding (e.g., Instructor)
         nextProgressId = approvalProcess?.id;
         remarkText = `Approved by ${currentRoleName} with ${totalCadets} cadets (no forwarding required)`;
       } else if (hasNextLevel && nextLevelProcess) {
         nextProgressId = nextLevelProcess.id;
         remarkText = `Forwarded to ${nextRoleName} with ${totalCadets} cadets`;
       } else {
+        // Final level
         nextProgressId = approvalProcess?.id;
         remarkText = `Final approval completed with ${totalCadets} cadets`;
       }
@@ -148,7 +152,7 @@ const ForwardToApprovalModal = ({
         exam_type: "Flying Mission Examination - 12 Squadron",
         progress_id: nextProgressId,
         send_progress_id: approvalProcess?.id,
-        next_progress_id: hasNextLevel ? nextLevelProcess?.id : undefined,
+        next_progress_id: hasNextLevel ? nextLevelProcess.id : undefined,
         status: "active" as const,
         approval_status: "approved" as const,
         remark: remarkText,
@@ -235,20 +239,20 @@ const ForwardToApprovalModal = ({
           {!approvalSummaryLoading && approvalSummary && (
             <div
               className={`mb-6 border rounded-lg p-4 ${
-                approvalSummary.can_forward || noNeedForward ? "bg-green-50 border-green-200" : "bg-red-50 border-red-200"
+                approvalSummary.can_forward ? "bg-green-50 border-green-200" : "bg-red-50 border-red-200"
               }`}
             >
               <div className="flex items-start gap-3">
                 <Icon
-                  icon={approvalSummary.can_forward || noNeedForward ? "solar:check-circle-bold" : "solar:danger-triangle-bold"}
+                  icon={approvalSummary.can_forward ? "solar:check-circle-bold" : "solar:danger-triangle-bold"}
                   className={`w-6 h-6 mt-0.5 flex-shrink-0 ${
-                    approvalSummary.can_forward || noNeedForward ? "text-green-600" : "text-red-600"
+                    approvalSummary.can_forward ? "text-green-600" : "text-red-600"
                   }`}
                 />
                 <div className="flex-1">
                   <h4
                     className={`font-semibold mb-2 ${
-                      approvalSummary.can_forward || noNeedForward ? "text-green-800" : "text-red-800"
+                      approvalSummary.can_forward ? "text-green-800" : "text-red-800"
                     }`}
                   >
                     Cadet Approval Status
@@ -271,15 +275,15 @@ const ForwardToApprovalModal = ({
                       <div className="text-lg font-bold text-yellow-600">{approvalSummary.pending_count}</div>
                     </div>
                   </div>
-                  {!approvalSummary.can_forward && !noNeedForward && (
+                  {!approvalSummary.can_forward && (
                     <p className="text-sm text-red-700">
                       {approvalSummary.has_rejected
-                        ? `Cannot forward: ${approvalSummary.rejected_count} cadet(s) have been rejected.`
-                        : `Cannot forward: ${approvalSummary.pending_count} cadet(s) are still pending approval.`}
+                        ? `Cannot forward: ${approvalSummary.rejected_count} cadet(s) have been rejected. Please review and resolve rejections.`
+                        : `Cannot forward: ${approvalSummary.pending_count} cadet(s) are still pending approval. Please approve all cadets before forwarding.`}
                     </p>
                   )}
-                  {(approvalSummary.can_forward || noNeedForward) && (
-                    <p className="text-sm text-green-700">All cadets have been approved. You can proceed.</p>
+                  {approvalSummary.can_forward && (
+                    <p className="text-sm text-green-700">All cadets have been approved. You can proceed to forward.</p>
                   )}
                 </div>
               </div>
@@ -321,10 +325,26 @@ const ForwardToApprovalModal = ({
                   </tr>
                   <tr className="hover:bg-gray-50">
                     <td className="px-4 py-3 whitespace-nowrap border border-black">
+                      <div className="text-sm font-semibold text-black">Course ID</div>
+                    </td>
+                    <td className="px-4 py-3 border border-black">
+                      <div className="text-sm text-black">{semesterData.course_details?.id || "N/A"}</div>
+                    </td>
+                  </tr>
+                  <tr className="hover:bg-gray-50">
+                    <td className="px-4 py-3 whitespace-nowrap border border-black">
                       <div className="text-sm font-semibold text-black">Semester Name</div>
                     </td>
                     <td className="px-4 py-3 border border-black">
                       <div className="text-sm text-black">{semesterData.semester_details?.name || "N/A"}</div>
+                    </td>
+                  </tr>
+                  <tr className="hover:bg-gray-50">
+                    <td className="px-4 py-3 whitespace-nowrap border border-black">
+                      <div className="text-sm font-semibold text-black">Semester ID</div>
+                    </td>
+                    <td className="px-4 py-3 border border-black">
+                      <div className="text-sm text-black">{semesterId}</div>
                     </td>
                   </tr>
                   <tr className="hover:bg-gray-50">
@@ -414,17 +434,17 @@ const ForwardToApprovalModal = ({
                 {noNeedForward ? (
                   <p>
                     By approving this examination data, you are recording approval at the <strong>{currentRoleName}</strong>{" "}
-                    level. This role does not require forwarding to the next level.
+                    level. This role does not require forwarding to the next level. A new approval record will be created.
                   </p>
                 ) : hasNextLevel ? (
                   <p>
                     By forwarding this examination data, you are submitting it from <strong>{currentRoleName}</strong>{" "}
-                    to <strong>{nextRoleName}</strong> for review and approval.
+                    to <strong>{nextRoleName}</strong> for review and approval. A new approval record will be created.
                   </p>
                 ) : (
                   <p>
                     By approving this examination data, you are marking it as <strong>FINAL APPROVED</strong>. This is
-                    the last level of approval.
+                    the last level of approval. No further forwarding will be required after this action.
                   </p>
                 )}
               </div>

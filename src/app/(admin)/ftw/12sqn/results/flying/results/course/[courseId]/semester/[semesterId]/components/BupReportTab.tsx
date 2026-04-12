@@ -49,10 +49,16 @@ interface UserProfile {
 }
 
 interface BupReportTabProps {
+  reportData?: {
+    is_6th_semester: boolean;
+    ground_phases: any[];
+    flying_exam_phases: any[];
+    bup: any[];
+  } | null;
   semesterData: SemesterData;
   semesterId: number;
   courseId: number;
-  groundData?: any; // Ground examination data
+  groundData?: any;
   selectedCadets?: number[];
   onSelectCadet?: (cadetId: number) => void;
   onSelectAll?: (selected: boolean) => void;
@@ -62,10 +68,9 @@ interface BupReportTabProps {
 }
 
 const BupReportTab: React.FC<BupReportTabProps> = ({
-  semesterData,
+  reportData,
   semesterId,
   courseId,
-  groundData,
   selectedCadets = [],
   onSelectCadet,
   onSelectAll,
@@ -74,14 +79,24 @@ const BupReportTab: React.FC<BupReportTabProps> = ({
   profile,
 }) => {
   const router = useRouter();
-  const [activeSubTab, setActiveSubTab] = useState<'bup5th' | 'bup600'>('bup5th');
+
+  // Extract BUP data from reportData
+  const bupData = reportData?.bup || [];
+  const groundPhases = reportData?.ground_phases || [];
+  const flyingExamPhases = reportData?.flying_exam_phases || [];
+  const is6thSemester = reportData?.is_6th_semester || false;
+
+  // Calculate total max marks for BUP
+  const groundTotalWeight = groundPhases.reduce((sum: number, phase: any) => sum + (phase.max_mark || 0), 0);
+  const flyingExamTotalWeight = flyingExamPhases.reduce((sum: number, phase: any) => sum + (phase.max_mark || 0), 0);
+  const bupTotalWeight = groundTotalWeight + flyingExamTotalWeight + 140; // 140 for daily avg
 
   // Check if a cadet is selected
   const isCadetSelected = (cadetId: number) => selectedCadets.includes(cadetId);
 
   // Check if all cadets are selected
-  const areAllCadetsSelected = semesterData.cadets.length > 0 &&
-    semesterData.cadets.every(c => selectedCadets.includes(c.cadet_details.id));
+  const areAllCadetsSelected = bupData.length > 0 &&
+    bupData.every(c => selectedCadets.includes(c.cadet_id));
 
   // Check if cadet can be approved
   const canApprove = (cadetId: number) => {
@@ -167,245 +182,121 @@ const BupReportTab: React.FC<BupReportTabProps> = ({
     return { grade: "F", color: "text-red-600" };
   };
 
-  // Get MTD mark (from ground data)
-  const getMtdMark = (cadetId: number) => {
-    if (!groundData?.cadets) return 0;
-    const cadetGround = groundData.cadets.find((c: any) => c.cadet_details?.id === cadetId);
-    if (!cadetGround) return 0;
+  // Initial state based on semester
+  const initialTab = is6thSemester ? 'bup600' : 'bup5th';
+  const [activeSubTab, setActiveSubTab] = useState<'bup5th' | 'bup600'>(initialTab);
 
-    const mtdMark = cadetGround.marks?.find((m: any) =>
-      m.phase?.ground_shortname?.includes("MTD") ||
-      m.phase?.ground_fullname?.includes("MTD")
-    );
-    return mtdMark ? parseFloat(mtdMark.exam_mark || "0") * 0.7 : 0; // Scale to 70
-  };
+  // BUP 5th/6th - Detailed View with all exam columns
+  const renderBup5thTable = () => {
+    if (bupData.length === 0) {
+      return (
+        <div className="bg-white p-8 text-center text-gray-500">
+          No BUP data available
+        </div>
+      );
+    }
 
-  // Get Quiz Test mark (from ground data)
-  const getQuizTestMark = (cadetId: number) => {
-    if (!groundData?.cadets) return 0;
-    const cadetGround = groundData.cadets.find((c: any) => c.cadet_details?.id === cadetId);
-    if (!cadetGround) return 0;
-
-    const quizMark = cadetGround.marks?.find((m: any) =>
-      m.test?.ground_test_name?.includes("Quiz") ||
-      m.phase?.ground_fullname?.includes("Quiz")
-    );
-    return quizMark ? parseFloat(quizMark.exam_mark || "0") * 0.7 : 0; // Scale to 70
-  };
-
-  // Get Sessional mark (from ground data)
-  const getSessionalMark = (cadetId: number) => {
-    if (!groundData?.cadets) return 0;
-    const cadetGround = groundData.cadets.find((c: any) => c.cadet_details?.id === cadetId);
-    if (!cadetGround) return 0;
-
-    const sessionalMark = cadetGround.marks?.find((m: any) =>
-      m.test?.ground_test_name?.includes("Sessional") ||
-      m.phase?.ground_fullname?.includes("Sessional")
-    );
-    return sessionalMark ? parseFloat(sessionalMark.exam_mark || "0") : 0; // Already out of 100
-  };
-
-  // Get Daily Average from flying marks
-  const getDailyAvg = (marks: Ftw12sqnFlyingExaminationMark[]) => {
-    const dailyMarks = marks.filter(
-      (mark) =>
-        !mark.syllabus?.phase_shortname?.includes("SOLO") &&
-        !mark.syllabus?.phase_full_name?.includes("SOLO Ck") &&
-        mark.syllabus?.phase_shortname !== "MTT" &&
-        !mark.syllabus?.phase_full_name?.includes("Mid Term Test") &&
-        mark.achieved_mark &&
-        parseFloat(mark.achieved_mark) > 0
-    );
-
-    if (dailyMarks.length === 0) return 0;
-
-    const phaseGroups: { [key: string]: number[] } = {};
-    dailyMarks.forEach((mark) => {
-      const phaseKey = mark.syllabus?.phase_shortname || mark.syllabus?.id?.toString() || "unknown";
-      if (!phaseGroups[phaseKey]) {
-        phaseGroups[phaseKey] = [];
-      }
-      phaseGroups[phaseKey].push(parseFloat(mark.achieved_mark || "0"));
+    // Create position map
+    const sorted = [...bupData].sort((a, b) => b.total - a.total);
+    const positionMap: { [key: number]: number } = {};
+    sorted.forEach((item, pos) => {
+      positionMap[item.cadet_id] = pos + 1;
     });
 
-    const phaseAverages = Object.values(phaseGroups).map(
-      (marks) => marks.reduce((sum, m) => sum + m, 0) / marks.length
-    );
-
-    if (phaseAverages.length === 0) return 0;
-    const avgOfAvg = phaseAverages.reduce((sum, avg) => sum + avg, 0) / phaseAverages.length;
-    return avgOfAvg * 1.3; // Scale to 130
-  };
-
-  // Get Solo Check mark
-  const getSoloCheckMark = (marks: Ftw12sqnFlyingExaminationMark[]) => {
-    const soloCheckMark = marks.find(
-      (mark) =>
-        mark.syllabus?.phase_shortname?.includes("SOLO") ||
-        mark.syllabus?.phase_full_name?.includes("SOLO Ck")
-    );
-    return soloCheckMark ? parseFloat(soloCheckMark.achieved_mark || "0") : 0;
-  };
-
-  // Get MTT mark
-  const getMttMark = (marks: Ftw12sqnFlyingExaminationMark[]) => {
-    const mttMark = marks.find(
-      (mark) =>
-        mark.syllabus?.phase_shortname === "MTT" ||
-        mark.syllabus?.phase_full_name?.includes("Mid Term Test")
-    );
-    return mttMark ? parseFloat(mttMark.achieved_mark || "0") * 1.3 : 0; // Scale to 130
-  };
-
-  // Calculate totals for each cadet (BUP 600)
-  const cadetsWithTotals = semesterData.cadets.map((cadetData, index) => {
-    const cadetId = cadetData.cadet_details.id;
-
-    // Ground marks
-    const mtdMark = getMtdMark(cadetId);
-    const quizTestMark = getQuizTestMark(cadetId);
-    const sessionalMark = getSessionalMark(cadetId);
-
-    // Flying marks
-    const dailyAvg = getDailyAvg(cadetData.marks);
-    const soloCheckMark = getSoloCheckMark(cadetData.marks);
-    const mttMark = getMttMark(cadetData.marks);
-
-    // Total out of 600
-    const totalValue = mtdMark + quizTestMark + sessionalMark + dailyAvg + soloCheckMark + mttMark;
-    const inPercentage = (totalValue / 600) * 100;
-
-    return {
-      cadetData,
-      index,
-      mtdMark,
-      quizTestMark,
-      sessionalMark,
-      dailyAvg,
-      soloCheckMark,
-      mttMark,
-      totalValue,
-      inPercentage
-    };
-  });
-
-  // Sort by total value for positions
-  const sortedCadets = [...cadetsWithTotals].sort((a, b) => b.totalValue - a.totalValue);
-  const positionMap: { [key: number]: number } = {};
-  sortedCadets.forEach((item, pos) => {
-    positionMap[item.index] = pos + 1;
-  });
-
-  // BUP 5th - Detailed View
-  const renderBup5thTable = () => (
-    <div className="bg-white overflow-hidden">
-      <div className="overflow-x-auto">
-        <table className="min-w-full">
-          <thead>
-            <tr>
-              <th rowSpan={2} className="px-2 py-3 text-center text-xs font-medium text-black uppercase tracking-wider border border-black print:hidden">
-                <input
-                  type="checkbox"
-                  checked={areAllCadetsSelected}
-                  onChange={(e) => onSelectAll?.(e.target.checked)}
-                  className="w-4 h-4 cursor-pointer"
-                  onClick={(e) => e.stopPropagation()}
-                />
-              </th>
-              <th rowSpan={2} className="px-4 py-3 text-center text-xs font-medium text-black uppercase tracking-wider border border-black">
-                SL.
-              </th>
-              <th rowSpan={2} className="px-4 py-3 text-center text-xs font-medium text-black uppercase tracking-wider border border-black">
-                BD/NO
-              </th>
-              <th rowSpan={2} className="px-4 py-3 text-center text-xs font-medium text-black uppercase tracking-wider border border-black">
-                Rank
-              </th>
-              <th rowSpan={2} className="px-4 py-3 text-center text-xs font-medium text-black uppercase tracking-wider border border-black">
-                Name
-              </th>
-              <th className="px-4 py-3 text-center text-xs font-medium text-black uppercase tracking-wider border border-black">
-                MTD
-              </th>
-              <th className="px-4 py-3 text-center text-xs font-medium text-black uppercase tracking-wider border border-black">
-                Quiz Test
-              </th>
-              <th className="px-4 py-3 text-center text-xs font-medium text-black uppercase tracking-wider border border-black">
-                Sessional
-              </th>
-              <th className="px-4 py-3 text-center text-xs font-medium text-black uppercase tracking-wider border border-black">
-                Daily Avg.
-              </th>
-              <th className="px-4 py-3 text-center text-xs font-medium text-black uppercase tracking-wider border border-black">
-                Solo CK
-              </th>
-              <th className="px-4 py-3 text-center text-xs font-medium text-black uppercase tracking-wider border border-black">
-                MTT
-              </th>
-              <th className="px-4 py-3 text-center text-xs font-medium text-black uppercase tracking-wider border border-black">
-                Total
-              </th>
-              <th rowSpan={2} className="px-4 py-3 text-center text-xs font-medium text-black uppercase tracking-wider border border-black">
-                In %
-              </th>
-              <th rowSpan={2} className="px-4 py-3 text-center text-xs font-medium text-black uppercase tracking-wider border border-black">
-                Grade
-              </th>
-              <th rowSpan={2} className="px-4 py-3 text-center text-xs font-medium text-black uppercase tracking-wider border border-black">
-                Position
-              </th>
-              <th rowSpan={2} className="px-4 py-3 text-center text-xs font-medium text-black uppercase tracking-wider border border-black print:hidden">
-                Approval Status
-              </th>
-            </tr>
-            <tr>
-              <th className="px-4 py-2 text-center text-xs font-medium text-black uppercase tracking-wider border border-black">
-                70
-              </th>
-              <th className="px-4 py-2 text-center text-xs font-medium text-black uppercase tracking-wider border border-black">
-                70
-              </th>
-              <th className="px-4 py-2 text-center text-xs font-medium text-black uppercase tracking-wider border border-black">
-                100
-              </th>
-              <th className="px-4 py-2 text-center text-xs font-medium text-black uppercase tracking-wider border border-black">
-                130
-              </th>
-              <th className="px-4 py-2 text-center text-xs font-medium text-black uppercase tracking-wider border border-black">
-                100
-              </th>
-              <th className="px-4 py-2 text-center text-xs font-medium text-black uppercase tracking-wider border border-black">
-                130
-              </th>
-              <th className="px-4 py-2 text-center text-xs font-medium text-black uppercase tracking-wider border border-black">
-                600
-              </th>
-            </tr>
-          </thead>
-          <tbody className="bg-white">
-            {cadetsWithTotals.map(
-              ({ cadetData, index, mtdMark, quizTestMark, sessionalMark, dailyAvg, soloCheckMark, mttMark, totalValue, inPercentage }) => {
-                const position = positionMap[index];
-                const gradeInfo = getGrade(inPercentage);
+    return (
+      <div className="bg-white overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="min-w-full">
+            <thead>
+              <tr>
+                <th rowSpan={2} className="px-2 py-3 text-center text-xs font-medium text-black uppercase tracking-wider border border-black print:hidden">
+                  <input
+                    type="checkbox"
+                    checked={areAllCadetsSelected}
+                    onChange={(e) => onSelectAll?.(e.target.checked)}
+                    className="w-4 h-4 cursor-pointer"
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                </th>
+                <th rowSpan={2} className="px-4 py-3 text-center text-xs font-medium text-black uppercase tracking-wider border border-black">
+                  SL.
+                </th>
+                <th rowSpan={2} className="px-4 py-3 text-center text-xs font-medium text-black uppercase tracking-wider border border-black">
+                  BD/NO
+                </th>
+                <th rowSpan={2} className="px-4 py-3 text-center text-xs font-medium text-black uppercase tracking-wider border border-black">
+                  Rank
+                </th>
+                <th rowSpan={2} className="px-4 py-3 text-center text-xs font-medium text-black uppercase tracking-wider border border-black">
+                  Name
+                </th>
+                {/* Dynamic Ground Phase Headers */}
+                {groundPhases.map((phase: any) => (
+                  <th key={`ground-${phase.key}`} className="px-4 py-3 text-center text-xs font-medium text-black uppercase tracking-wider border border-black">
+                    {phase.key}
+                  </th>
+                ))}
+                {/* Dynamic Flying Exam Phase Headers */}
+                {flyingExamPhases.map((phase: any) => (
+                  <th key={`flying-${phase.key}`} className="px-4 py-3 text-center text-xs font-medium text-black uppercase tracking-wider border border-black">
+                    {phase.key}
+                  </th>
+                ))}
+                <th className="px-4 py-3 text-center text-xs font-medium text-black uppercase tracking-wider border border-black">
+                  Daily Avg
+                </th>
+                <th rowSpan={2} className="px-4 py-3 text-center text-xs font-medium text-black uppercase tracking-wider border border-black">
+                  Total
+                </th>
+                <th rowSpan={2} className="px-4 py-3 text-center text-xs font-medium text-black uppercase tracking-wider border border-black">
+                  %
+                </th>
+                <th rowSpan={2} className="px-4 py-3 text-center text-xs font-medium text-black uppercase tracking-wider border border-black">
+                  Grade
+                </th>
+                <th rowSpan={2} className="px-4 py-3 text-center text-xs font-medium text-black uppercase tracking-wider border border-black">
+                  Position
+                </th>
+              </tr>
+              <tr>
+                {/* Dynamic Ground Phase Weights */}
+                {groundPhases.map((phase: any) => (
+                  <th key={`ground-weight-${phase.key}`} className="px-4 py-2 text-center text-xs font-medium text-black uppercase tracking-wider border border-black">
+                    {(Number(phase.weight) * 100).toFixed(0) || 0}
+                  </th>
+                ))}
+                {/* Dynamic Flying Exam Phase Weights */}
+                {flyingExamPhases.map((phase: any) => (
+                  <th key={`flying-weight-${phase.key}`} className="px-4 py-2 text-center text-xs font-medium text-black uppercase tracking-wider border border-black">
+                    {(Number(phase.weight) * 100).toFixed(0) || 0}
+                  </th>
+                ))}
+                <th className="px-4 py-2 text-center text-xs font-medium text-black uppercase tracking-wider border border-black">
+                  140
+                </th>
+              </tr>
+            </thead>
+            <tbody className="bg-white">
+              {bupData.map((cadet: any, index: number) => {
+                const position = positionMap[cadet.cadet_id] || index + 1;
+                const gradeInfo = getGrade(cadet.in_percentage || 0);
 
                 return (
                   <tr
-                    key={cadetData.cadet_details.id}
+                    key={cadet.cadet_id}
                     className="hover:bg-gray-100 transition-colors cursor-pointer"
                     onClick={() =>
                       router.push(
-                        `/ftw/12sqn/results/flying/results/course/${courseId}/semester/${semesterId}/cadet/${cadetData.cadet_details.id}`
+                        `/ftw/12sqn/results/flying/results/course/${courseId}/semester/${semesterId}/cadet/${cadet.cadet_id}`
                       )
                     }
                   >
                     <td className="px-2 py-3 text-center text-black border border-black text-sm print:hidden">
                       <input
                         type="checkbox"
-                        checked={isCadetSelected(cadetData.cadet_details.id)}
-                        onChange={() => onSelectCadet?.(cadetData.cadet_details.id)}
-                        disabled={isApprovedByMe(cadetData.cadet_details.id) || !canApprove(cadetData.cadet_details.id)}
-                        className="w-4 h-4 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                        checked={selectedCadets.includes(cadet.cadet_id)}
+                        onChange={() => onSelectCadet?.(cadet.cadet_id)}
+                        className="w-4 h-4 cursor-pointer"
                         onClick={(e) => e.stopPropagation()}
                       />
                     </td>
@@ -413,41 +304,36 @@ const BupReportTab: React.FC<BupReportTabProps> = ({
                       {index + 1}
                     </td>
                     <td className="px-4 py-3 text-center text-black border border-black text-sm">
-                      {cadetData.cadet_details.bdno}
+                      {cadet.bd_no || ''}
                     </td>
                     <td className="px-4 py-3 text-center text-black border border-black text-sm">
-                      {cadetData.cadet_details.rank?.name || "Officer Cadet"}
+                      {cadet.rank || "Officer Cadet"}
                     </td>
                     <td className="px-4 py-3 text-left text-black border border-black text-sm">
-                      {cadetData.cadet_details.name}
+                      {cadet.name}
                     </td>
+                    {/* Dynamic Ground Phase Values */}
+                    {groundPhases.map((phase: any) => (
+                      <td key={`ground-${phase.key}`} className="px-4 py-3 text-center text-black border border-black text-sm">
+                        {(cadet[phase.key] || 0).toFixed(2)}
+                      </td>
+                    ))}
+                    {/* Dynamic Flying Exam Phase Values */}
+                    {flyingExamPhases.map((phase: any) => (
+                      <td key={`flying-${phase.key}`} className="px-4 py-3 text-center text-black border border-black text-sm">
+                        {(cadet[phase.key] || 0).toFixed(2)}
+                      </td>
+                    ))}
                     <td className="px-4 py-3 text-center text-black border border-black text-sm">
-                      {mtdMark.toFixed(2)}
-                    </td>
-                    <td className="px-4 py-3 text-center text-black border border-black text-sm">
-                      {quizTestMark.toFixed(2)}
-                    </td>
-                    <td className="px-4 py-3 text-center text-black border border-black text-sm">
-                      {sessionalMark.toFixed(2)}
-                    </td>
-                    <td className="px-4 py-3 text-center border border-black text-sm">
-                      <span className={`${dailyAvg >= 104 ? "text-green-600" : dailyAvg >= 78 ? "text-yellow-600" : "text-red-600"}`}>
-                        {dailyAvg.toFixed(2)}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-center text-black border border-black text-sm">
-                      {soloCheckMark.toFixed(2)}
-                    </td>
-                    <td className="px-4 py-3 text-center text-black border border-black text-sm">
-                      {mttMark.toFixed(2)}
+                      {(cadet.daily_avg || 0).toFixed(2)}
                     </td>
                     <td className="px-4 py-3 text-center border border-black text-sm font-bold">
-                      <span className={`${totalValue >= 480 ? "text-green-600" : totalValue >= 360 ? "text-yellow-600" : "text-red-600"}`}>
-                        {totalValue.toFixed(2)}
+                      <span className={`${cadet.total >= 560 ? "text-green-600" : cadet.total >= 420 ? "text-yellow-600" : "text-red-600"}`}>
+                        {(cadet.total || 0).toFixed(2)}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-center text-black border border-black text-sm">
-                      {inPercentage.toFixed(1)}%
+                      {(cadet.in_percentage || 0).toFixed(1)}%
                     </td>
                     <td className="px-4 py-3 text-center border border-black text-sm">
                       <span className={`font-bold ${gradeInfo.color}`}>{gradeInfo.grade}</span>
@@ -455,108 +341,133 @@ const BupReportTab: React.FC<BupReportTabProps> = ({
                     <td className="px-4 py-3 text-center text-black border border-black text-sm font-bold">
                       {position}
                     </td>
-                    <td className="px-4 py-3 text-left text-black border border-black text-sm print:hidden">
-                      {renderApprovalStatus(cadetData.cadet_details.id)}
-                    </td>
                   </tr>
                 );
-              }
-            )}
-          </tbody>
-        </table>
+              })}
+            </tbody>
+          </table>
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
 
-  // BUP 600 - Summary View
-  const renderBup600Table = () => (
-    <div className="bg-white overflow-hidden">
-      <div className="overflow-x-auto">
-        <table className="min-w-full">
-          <thead>
-            <tr>
-              <th rowSpan={2} className="px-6 py-3 text-center text-xs font-medium text-black uppercase tracking-wider border border-black">
-                SL.
-              </th>
-              <th rowSpan={2} className="px-6 py-3 text-center text-xs font-medium text-black uppercase tracking-wider border border-black">
-                BD/NO
-              </th>
-              <th rowSpan={2} className="px-6 py-3 text-center text-xs font-medium text-black uppercase tracking-wider border border-black">
-                Rank
-              </th>
-              <th rowSpan={2} className="px-6 py-3 text-center text-xs font-medium text-black uppercase tracking-wider border border-black">
-                Name
-              </th>
-              <th className="px-6 py-3 text-center text-xs font-medium text-black uppercase tracking-wider border border-black">
-                Total
-              </th>
-              <th rowSpan={2} className="px-6 py-3 text-center text-xs font-medium text-black uppercase tracking-wider border border-black">
-                %
-              </th>
-              <th rowSpan={2} className="px-6 py-3 text-center text-xs font-medium text-black uppercase tracking-wider border border-black">
-                Grade
-              </th>
-              <th rowSpan={2} className="px-6 py-3 text-center text-xs font-medium text-black uppercase tracking-wider border border-black">
-                Position
-              </th>
-            </tr>
-            <tr>
-              <th className="px-6 py-2 text-center text-xs font-medium text-black uppercase tracking-wider border border-black">
-                600
-              </th>
-            </tr>
-          </thead>
-          <tbody className="bg-white">
-            {cadetsWithTotals.map(
-              ({ cadetData, index, totalValue, inPercentage }) => {
-                const position = positionMap[index];
-                const gradeInfo = getGrade(inPercentage);
+  // BUP 600/700 - Summary View (only cadet details + total + position)
+  const renderBup600Table = () => {
+    if (bupData.length === 0) {
+      return (
+        <div className="bg-white p-8 text-center text-gray-500">
+          No BUP data available
+        </div>
+      );
+    }
+
+    // Create position map
+    const sorted = [...bupData].sort((a, b) => b.total - a.total);
+    const positionMap: { [key: number]: number } = {};
+    sorted.forEach((item, pos) => {
+      positionMap[item.cadet_id] = pos + 1;
+    });
+
+    return (
+      <div className="bg-white overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="min-w-full">
+            <thead>
+              <tr>
+                <th rowSpan={2} className="px-2 py-3 text-center text-xs font-medium text-black uppercase tracking-wider border border-black print:hidden">
+                  <input
+                    type="checkbox"
+                    checked={areAllCadetsSelected}
+                    onChange={(e) => onSelectAll?.(e.target.checked)}
+                    className="w-4 h-4 cursor-pointer"
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                </th>
+                <th rowSpan={2} className="px-4 py-3 text-center text-xs font-medium text-black uppercase tracking-wider border border-black">
+                  SL.
+                </th>
+                <th rowSpan={2} className="px-4 py-3 text-center text-xs font-medium text-black uppercase tracking-wider border border-black">
+                  BD/NO
+                </th>
+                <th rowSpan={2} className="px-4 py-3 text-center text-xs font-medium text-black uppercase tracking-wider border border-black">
+                  Rank
+                </th>
+                <th rowSpan={2} className="px-4 py-3 text-center text-xs font-medium text-black uppercase tracking-wider border border-black">
+                  Name
+                </th>
+                <th rowSpan={2} className="px-4 py-3 text-center text-xs font-medium text-black uppercase tracking-wider border border-black">
+                  Total
+                </th>
+                <th rowSpan={2} className="px-4 py-3 text-center text-xs font-medium text-black uppercase tracking-wider border border-black">
+                  %
+                </th>
+                <th rowSpan={2} className="px-4 py-3 text-center text-xs font-medium text-black uppercase tracking-wider border border-black">
+                  Grade
+                </th>
+                <th rowSpan={2} className="px-4 py-3 text-center text-xs font-medium text-black uppercase tracking-wider border border-black">
+                  Position
+                </th>
+              </tr>
+            </thead>
+            <tbody className="bg-white">
+              {bupData.map((cadet: any, index: number) => {
+                const position = positionMap[cadet.cadet_id] || index + 1;
+                const gradeInfo = getGrade(cadet.in_percentage || 0);
 
                 return (
                   <tr
-                    key={cadetData.cadet_details.id}
+                    key={cadet.cadet_id}
                     className="hover:bg-gray-100 transition-colors cursor-pointer"
                     onClick={() =>
                       router.push(
-                        `/ftw/12sqn/results/flying/results/course/${courseId}/semester/${semesterId}/cadet/${cadetData.cadet_details.id}`
+                        `/ftw/12sqn/results/flying/results/course/${courseId}/semester/${semesterId}/cadet/${cadet.cadet_id}`
                       )
                     }
                   >
-                    <td className="px-6 py-3 text-center text-black border border-black text-sm">
+                    <td className="px-2 py-3 text-center text-black border border-black text-sm print:hidden">
+                      <input
+                        type="checkbox"
+                        checked={selectedCadets.includes(cadet.cadet_id)}
+                        onChange={() => onSelectCadet?.(cadet.cadet_id)}
+                        className="w-4 h-4 cursor-pointer"
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                    </td>
+                    <td className="px-4 py-3 text-center text-black border border-black text-sm">
                       {index + 1}
                     </td>
-                    <td className="px-6 py-3 text-center text-black border border-black text-sm">
-                      {cadetData.cadet_details.bdno}
+                    <td className="px-4 py-3 text-center text-black border border-black text-sm">
+                      {cadet.bd_no || ''}
                     </td>
-                    <td className="px-6 py-3 text-center text-black border border-black text-sm">
-                      {cadetData.cadet_details.rank?.name || "Officer Cadet"}
+                    <td className="px-4 py-3 text-center text-black border border-black text-sm">
+                      {cadet.rank || "Officer Cadet"}
                     </td>
-                    <td className="px-6 py-3 text-left text-black border border-black text-sm">
-                      {cadetData.cadet_details.name}
+                    <td className="px-4 py-3 text-left text-black border border-black text-sm">
+                      {cadet.name}
                     </td>
-                    <td className="px-6 py-3 text-center border border-black text-sm font-bold">
-                      <span className={`${totalValue >= 480 ? "text-green-600" : totalValue >= 360 ? "text-yellow-600" : "text-red-600"}`}>
-                        {totalValue.toFixed(2)}
+                    <td className="px-4 py-3 text-center border border-black text-sm font-bold">
+                      <span className={`${cadet.total >= 560 ? "text-green-600" : cadet.total >= 420 ? "text-yellow-600" : "text-red-600"}`}>
+                        {(cadet.total || 0).toFixed(2)}
                       </span>
                     </td>
-                    <td className="px-6 py-3 text-center text-black border border-black text-sm">
-                      {inPercentage.toFixed(1)}%
+                    <td className="px-4 py-3 text-center text-black border border-black text-sm">
+                      {(cadet.in_percentage || 0).toFixed(1)}%
                     </td>
-                    <td className="px-6 py-3 text-center border border-black text-sm">
+                    <td className="px-4 py-3 text-center border border-black text-sm">
                       <span className={`font-bold ${gradeInfo.color}`}>{gradeInfo.grade}</span>
                     </td>
-                    <td className="px-6 py-3 text-center text-black border border-black text-sm font-bold">
+                    <td className="px-4 py-3 text-center text-black border border-black text-sm font-bold">
                       {position}
                     </td>
                   </tr>
                 );
-              }
-            )}
-          </tbody>
-        </table>
+              })}
+            </tbody>
+          </table>
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   return (
     <div>
@@ -571,7 +482,7 @@ const BupReportTab: React.FC<BupReportTabProps> = ({
                 : 'bg-transparent text-black hover:bg-gray-200'
             }`}
           >
-            BUP 5th
+            {is6thSemester ? "BUP 6th" : "BUP 5th"}
           </button>
           <button
             onClick={() => setActiveSubTab('bup600')}
@@ -581,7 +492,7 @@ const BupReportTab: React.FC<BupReportTabProps> = ({
                 : 'bg-transparent text-black hover:bg-gray-200'
             }`}
           >
-            BUP 600
+            {is6thSemester ? "BUP 700" : "BUP 600"}
           </button>
         </nav>
       </div>

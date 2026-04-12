@@ -40,8 +40,10 @@ export default function CreateGroundSyllabusPage() {
           Back to List
         </button>
       </div>
-      <div className="text-center mb-10">
-        <div className="flex justify-center mb-4"><FullLogo /></div>
+      <div className="mb-8">
+        <div className="flex justify-center mb-4">
+          <FullLogo />
+        </div>
         <h1 className="text-center text-xl font-bold text-gray-900 uppercase tracking-wider">Bangladesh Air Force Academy</h1>
         <p className="text-center font-medium text-gray-900 uppercase tracking-wider">Create New Ground Syllabus</p>
         <p className="text-center font-medium text-gray-900 uppercase tracking-wider pb-2">FTW 12 SQN</p>

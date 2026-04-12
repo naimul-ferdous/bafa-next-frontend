@@ -1,34 +1,45 @@
 /**
- * FTW 11SQN Assessment OLQ Types
- * Type definitions for FTW 11SQN Assessment OLQ entities
+ * ATW Assessment OLQ Types
+ * Type definitions for ATW Assessment OLQ entities
  */
 
 import type { User } from './user';
 import type {
   SystemCourse,
   SystemSemester,
-  SystemProgram,
-  SystemBranch,
-  SystemGroup,
   SystemExam
 } from './system';
+import { Ftw11SqnOlqCadetApproval } from './ftw11sqnOlqCadetApproval';
+import { Ftw11SqnOlqSemesterApproval } from './ftw11sqnOlqSemesterApproval';
 
 // OLQ Type Estimated Mark
-export interface Ftw11sqnAssessmentOlqTypeEstimatedMark {
+export interface Ftw11SqnAssessmentOlqTypeEstimatedMark {
   id: number;
   ftw_11sqn_assessment_olq_type_id: number;
   event_name: string;
   event_code: string;
   estimated_mark: number | string;
+  order: number;
   remarks?: string;
-  order?: number;
   is_active: boolean;
   created_at?: string;
   updated_at?: string;
 }
 
-// OLQ Type Semester
-export interface Ftw11sqnAssessmentOlqTypeSemester {
+// OLQ Type Assignment (New Course-based structure)
+export interface Ftw11SqnAssessmentOlqTypeAssignment {
+  id: number;
+  ftw_11sqn_assessment_olq_type_id: number;
+  course_id: number;
+  is_active: boolean;
+  created_at?: string;
+  updated_at?: string;
+  course?: SystemCourse;
+  olq_type?: Ftw11SqnAssessmentOlqType;
+}
+
+// Legacy Semester Mapping (Restored for compatibility)
+export interface Ftw11SqnAssessmentOlqTypeSemester {
   id: number;
   ftw_11sqn_assessment_olq_type_id: number;
   semester_id: number;
@@ -39,9 +50,8 @@ export interface Ftw11sqnAssessmentOlqTypeSemester {
 }
 
 // OLQ Type
-export interface Ftw11sqnAssessmentOlqType {
+export interface Ftw11SqnAssessmentOlqType {
   id: number;
-  course_id?: number;
   type_name: string;
   type_code: string;
   is_multiplier: boolean;
@@ -50,9 +60,9 @@ export interface Ftw11sqnAssessmentOlqType {
   created_by?: number;
   created_at?: string;
   updated_at?: string;
-  course?: SystemCourse;
-  estimated_marks?: Ftw11sqnAssessmentOlqTypeEstimatedMark[];
-  semesters?: Ftw11sqnAssessmentOlqTypeSemester[];
+  estimated_marks?: Ftw11SqnAssessmentOlqTypeEstimatedMark[];
+  assignments?: Ftw11SqnAssessmentOlqTypeAssignment[];
+  semesters?: Ftw11SqnAssessmentOlqTypeAssignment[] | Ftw11SqnAssessmentOlqTypeSemester[];
   creator?: {
     id: number;
     name: string;
@@ -61,7 +71,7 @@ export interface Ftw11sqnAssessmentOlqType {
 }
 
 // OLQ Result Mark
-export interface Ftw11sqnAssessmentOlqResultMark {
+export interface Ftw11SqnAssessmentOlqResultMark {
   id: number;
   ftw_11sqn_assessment_olq_result_cadet_id: number;
   ftw_11sqn_assessment_olq_type_estimated_mark_id: number;
@@ -70,11 +80,11 @@ export interface Ftw11sqnAssessmentOlqResultMark {
   created_by?: number;
   created_at?: string;
   updated_at?: string;
-  estimated_mark?: Ftw11sqnAssessmentOlqTypeEstimatedMark;
+  estimated_mark?: Ftw11SqnAssessmentOlqTypeEstimatedMark;
 }
 
 // OLQ Result Cadet
-export interface Ftw11sqnAssessmentOlqResultCadet {
+export interface Ftw11SqnAssessmentOlqResultCadet {
   id: number;
   ftw_11sqn_assessment_olq_result_id: number;
   cadet_id: number;
@@ -110,17 +120,14 @@ export interface Ftw11sqnAssessmentOlqResultCadet {
       };
     }[];
   };
-  marks?: Ftw11sqnAssessmentOlqResultMark[];
+  marks?: Ftw11SqnAssessmentOlqResultMark[];
 }
 
 // OLQ Result
-export interface Ftw11sqnAssessmentOlqResult {
+export interface Ftw11SqnAssessmentOlqResult {
   id: number;
   course_id: number;
   semester_id: number;
-  program_id: number;
-  branch_id: number;
-  group_id?: number;
   exam_type_id?: number;
   ftw_11sqn_assessment_olq_type_id: number;
   remarks?: string;
@@ -130,18 +137,21 @@ export interface Ftw11sqnAssessmentOlqResult {
   updated_at?: string;
   course?: SystemCourse;
   semester?: SystemSemester;
-  program?: SystemProgram;
-  branch?: SystemBranch;
-  group?: SystemGroup;
   exam_type?: SystemExam;
-  olq_type?: Ftw11sqnAssessmentOlqType;
+  olq_type?: Ftw11SqnAssessmentOlqType;
   creator?: User;
-  result_cadets?: Ftw11sqnAssessmentOlqResultCadet[];
+  result_cadets?: Ftw11SqnAssessmentOlqResultCadet[];
+  grouped_cadets?: {
+    name: string;
+    is_flying_group?: boolean;
+    cadets: Ftw11SqnAssessmentOlqResultCadet[];
+  }[];
+  cadet_approvals?: Ftw11SqnOlqCadetApproval[];
+  semester_approvals?: Ftw11SqnOlqSemesterApproval[];
 }
 
 // Create/Update Data Types
-export interface Ftw11sqnAssessmentOlqTypeCreateData {
-  course_id: number;
+export interface Ftw11SqnAssessmentOlqTypeCreateData {
   type_name: string;
   type_code: string;
   is_multiplier?: boolean;
@@ -151,35 +161,32 @@ export interface Ftw11sqnAssessmentOlqTypeCreateData {
     event_name: string;
     event_code: string;
     estimated_mark: number;
-    remarks?: string;
     order?: number;
+    remarks?: string;
   }[];
   semesters?: number[];
 }
 
-export interface Ftw11sqnAssessmentOlqResultCreateData {
+export interface Ftw11SqnAssessmentOlqResultCreateData {
   course_id: number;
   semester_id: number;
-  program_id: number;
-  branch_id: number;
-  group_id?: number;
   exam_type_id?: number;
   ftw_11sqn_assessment_olq_type_id: number;
   remarks?: string;
   is_active?: boolean;
-  cadets?: Ftw11sqnAssessmentOlqResultCadetCreateData[];
+  cadets?: Ftw11SqnAssessmentOlqResultCadetCreateData[];
 }
 
-export interface Ftw11sqnAssessmentOlqResultCadetCreateData {
+export interface Ftw11SqnAssessmentOlqResultCadetCreateData {
   cadet_id: number;
   bd_no: string;
   is_present?: boolean;
   absent_reason?: string;
   is_active?: boolean;
-  marks?: Ftw11sqnAssessmentOlqResultMarkCreateData[];
+  marks?: Ftw11SqnAssessmentOlqResultMarkCreateData[];
 }
 
-export interface Ftw11sqnAssessmentOlqResultMarkCreateData {
+export interface Ftw11SqnAssessmentOlqResultMarkCreateData {
   ftw_11sqn_assessment_olq_type_estimated_mark_id: number;
   achieved_mark: number;
   is_active?: boolean;

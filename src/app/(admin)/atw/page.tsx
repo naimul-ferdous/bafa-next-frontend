@@ -36,10 +36,12 @@ interface StatCardProps {
   subtitle?: string;
   description?: string;
   bgImage: string;
+  href?: string;
 }
 
-const StatCard = ({ icon, iconBg, title, value, trend, trendUp, bgImage, isModule = false, description, subtitle }: StatCardProps) => (
-  <div className={`group relative bg-white rounded-[1.5rem] sm:rounded-[2rem] shadow-sm p-5 sm:p-6 flex flex-col justify-between transition-all duration-500 hover:shadow-2xl hover:shadow-slate-200/60 hover:-translate-y-1 overflow-hidden ${isModule ? 'min-h-[140px] sm:min-h-[140px]' : 'min-h-[150px] sm:min-h-[170px]'}`}>
+const StatCard = ({ icon, iconBg, title, value, trend, trendUp, bgImage, isModule = false, description, subtitle, href }: StatCardProps) => {
+  const inner = (
+  <div className={`group relative bg-white rounded-[1.5rem] sm:rounded-[2rem] shadow-sm p-5 sm:p-6 flex flex-col justify-between transition-all duration-500 hover:shadow-2xl hover:shadow-slate-200/60 hover:-translate-y-1 overflow-hidden ${href ? 'cursor-pointer' : ''} ${isModule ? 'min-h-[140px] sm:min-h-[140px]' : 'min-h-[150px] sm:min-h-[170px]'}`}>
     <div className="absolute inset-y-0 right-0 w-1/2 pointer-events-none transition-transform duration-700 group-hover:scale-110">
       <Image src={`/images/bg/${bgImage}`} alt="" fill className="object-cover object-right" priority />
       <div className="absolute inset-0 bg-gradient-to-r from-white via-white/20 to-transparent" />
@@ -68,15 +70,20 @@ const StatCard = ({ icon, iconBg, title, value, trend, trendUp, bgImage, isModul
           {Math.abs(trend).toFixed(1)}%
         </span>
         <span className="text-slate-400 font-medium">From the Last month:</span>
+        {href && <span className="ml-auto text-blue-400 font-semibold flex items-center gap-0.5">View <Icon icon="hugeicons:arrow-right-01" className="w-3 h-3" /></span>}
       </div>
     ) : (
-      <Link href={''} className="relative z-10 flex items-center gap-2 text-xs mt-3">
-        <span className="text-slate-400 font-medium">Enter Module</span>
-      </Link>
+      <div className="relative z-10 flex items-center gap-2 text-xs mt-3">
+        <span className="text-blue-500 font-semibold flex items-center gap-1">
+          Enter Module <Icon icon="hugeicons:arrow-right-01" className="w-3 h-3" />
+        </span>
+      </div>
     )}
 
   </div>
-);
+  );
+  return href ? <Link href={href} className="block">{inner}</Link> : inner;
+};
 
 // ─── Bar Chart — Assessment Insights ─────────────────────────────────────────
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -730,8 +737,8 @@ export function ATWDashboardView() {
             </div>
           ) : (
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-              <StatCard icon="hugeicons:book-02" iconBg="from-blue-500 to-indigo-600" bgImage="corner-1.png" title="Total Subjects" value={(authorityStatus?.total_subjects ?? 0).toLocaleString()} trend={4.9} trendUp />
-              <StatCard icon="hugeicons:user-multiple" iconBg="from-violet-500 to-purple-700" bgImage="corner-2.png" title="Total Cadets" value={(authorityStatus?.total_cadets ?? 0).toLocaleString()} trend={2.7} trendUp />
+              <StatCard icon="hugeicons:book-02" iconBg="from-blue-500 to-indigo-600" bgImage="corner-1.png" title="Total Subjects" value={(authorityStatus?.total_subjects ?? 0).toLocaleString()} trend={4.9} trendUp href="/atw/subjects" />
+              <StatCard icon="hugeicons:user-multiple" iconBg="from-violet-500 to-purple-700" bgImage="corner-2.png" title="Total Cadets" value={(authorityStatus?.total_cadets ?? 0).toLocaleString()} trend={2.7} trendUp href="/users/cadets" />
               <StatCard
                 icon="hugeicons:layers-01"
                 iconBg="from-indigo-500 to-violet-600"
@@ -740,19 +747,21 @@ export function ATWDashboardView() {
                 value={(authorityStatus?.total_running_courses ?? 0).toLocaleString()}
                 trend={3.4}
                 trendUp
+                href="/atw/course"
               />
-              <StatCard 
-                icon="hugeicons:chart-bar-line" 
-                iconBg="from-emerald-500 to-teal-600" 
-                bgImage="corner-5.png" 
-                title={authorityStatus?.my_authority ? "Approved Subjects" : "Inputted Subjects"} 
+              <StatCard
+                icon="hugeicons:chart-bar-line"
+                iconBg="from-emerald-500 to-teal-600"
+                bgImage="corner-5.png"
+                title={authorityStatus?.my_authority ? "Approved Subjects" : "Inputted Subjects"}
                 value={
                   authorityStatus?.my_authority
                     ? `${authorityStatus?.summary.approved ?? 0}/${authorityStatus?.total_subjects ?? 0}`
                     : `${authorityStatus ? authorityStatus.total_subjects - authorityStatus.summary.not_entered : 0}/${authorityStatus?.total_subjects ?? 0}`
                 }
-                trend={1.8} 
-                trendUp 
+                trend={1.8}
+                trendUp
+                href="/atw/results/view"
               />
             </div>
           )}
@@ -1035,17 +1044,17 @@ export function ATWDashboardView() {
             </div>
           ) : userIsInstructor ? (
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-              <StatCard icon="hugeicons:book-02" iconBg="from-blue-500 to-indigo-600" bgImage="corner-1.png" title="Total Subjects" value={instructorStats?.total_subjects ?? 0} trend={4.9} trendUp />
-              <StatCard icon="hugeicons:layers-01" iconBg="from-indigo-500 to-violet-600" bgImage="corner-2.png" title="Courses" value={instructorStats?.total_courses ?? 0} trend={2.7} trendUp />
-              <StatCard icon="hugeicons:user-multiple" iconBg="from-violet-500 to-purple-700" bgImage="corner-4.png" title="Total Cadets" value={instructorStats?.total_cadets ?? 0} trend={3.4} trendUp />
-              <StatCard icon="hugeicons:chart-bar-line" iconBg="from-emerald-500 to-teal-600" bgImage="corner-5.png" title="Results" value={`${instructorStats?.total_results ?? 0}/${instructorStats?.total_subjects ?? 0}`} trend={1.8} trendUp />
+              <StatCard icon="hugeicons:book-02" iconBg="from-blue-500 to-indigo-600" bgImage="corner-1.png" title="Total Subjects" value={instructorStats?.total_subjects ?? 0} trend={4.9} trendUp href="/atw/subjects" />
+              <StatCard icon="hugeicons:layers-01" iconBg="from-indigo-500 to-violet-600" bgImage="corner-2.png" title="Courses" value={instructorStats?.total_courses ?? 0} trend={2.7} trendUp href="/atw/course" />
+              <StatCard icon="hugeicons:user-multiple" iconBg="from-violet-500 to-purple-700" bgImage="corner-4.png" title="Total Cadets" value={instructorStats?.total_cadets ?? 0} trend={3.4} trendUp href="/users/cadets" />
+              <StatCard icon="hugeicons:chart-bar-line" iconBg="from-emerald-500 to-teal-600" bgImage="corner-5.png" title="Results" value={`${instructorStats?.total_results ?? 0}/${instructorStats?.total_subjects ?? 0}`} trend={1.8} trendUp href="/atw/results/view" />
             </div>
           ) : (
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-              <StatCard icon="hugeicons:layers-01" iconBg="from-indigo-500 to-violet-600" bgImage="corner-2.png" title="Courses" value={adminStats?.courses ?? 0} trend={2.7} trendUp />
-              <StatCard icon="hugeicons:book-02" iconBg="from-blue-500 to-indigo-600" bgImage="corner-1.png" title="Subjects" value={adminStats?.assigned_subjects ?? 0} trend={4.9} trendUp />
-              <StatCard icon="hugeicons:user-multiple" iconBg="from-violet-500 to-purple-700" bgImage="corner-4.png" title="Cadets" value={adminStats?.cadets_in_results ?? 0} trend={3.4} trendUp />
-              <StatCard icon="hugeicons:chart-bar-line" iconBg="from-emerald-500 to-teal-600" bgImage="corner-5.png" title="Results" value={adminStats?.results ?? 0} trend={1.8} trendUp />
+              <StatCard icon="hugeicons:layers-01" iconBg="from-indigo-500 to-violet-600" bgImage="corner-2.png" title="Courses" value={adminStats?.courses ?? 0} trend={2.7} trendUp href="/atw/course" />
+              <StatCard icon="hugeicons:book-02" iconBg="from-blue-500 to-indigo-600" bgImage="corner-1.png" title="Subjects" value={adminStats?.assigned_subjects ?? 0} trend={4.9} trendUp href="/atw/subjects" />
+              <StatCard icon="hugeicons:user-multiple" iconBg="from-violet-500 to-purple-700" bgImage="corner-4.png" title="Cadets" value={adminStats?.cadets_in_results ?? 0} trend={3.4} trendUp href="/users/cadets" />
+              <StatCard icon="hugeicons:chart-bar-line" iconBg="from-emerald-500 to-teal-600" bgImage="corner-5.png" title="Results" value={adminStats?.results ?? 0} trend={1.8} trendUp href="/atw/results/view" />
             </div>
           )}
 

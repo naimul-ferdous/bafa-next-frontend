@@ -2,532 +2,314 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import Input from "@/components/form/input/InputField";
-import Label from "@/components/form/Label";
-import { commonService } from "@/libs/services/commonService";
-import { ctwAssessmentPenpictureGradeService } from "@/libs/services/ctwAssessmentPenpictureGradeService";
 import { Icon } from "@iconify/react";
-import type {
-  SystemCourse,
-  SystemSemester,
-  SystemProgram,
-  SystemBranch,
-} from "@/libs/types/system";
-import type { User, CadetProfile } from "@/libs/types/user";
-import type { 
-  CtwAssessmentPenpictureResult, 
-  CtwAssessmentPenpictureGrade 
-} from "@/libs/types/ctw";
+import { useAuth } from "@/libs/hooks/useAuth";
+import { commonService } from "@/libs/services/commonService";
+import { cadetService } from "@/libs/services/cadetService";
+import { ctwAssessmentPenpictureResultService } from "@/libs/services/ctwAssessmentPenpictureResultService";
+import type { SystemCourse, SystemSemester, SystemProgram, SystemBranch } from "@/libs/types/system";
 
 interface ResultFormProps {
-  initialData?: CtwAssessmentPenpictureResult | null;
+  initialData?: any | null;
   onSubmit: (data: any) => Promise<void>;
   onCancel: () => void;
   loading: boolean;
   isEdit?: boolean;
 }
 
-interface StrengthItem {
-  id?: number;
-  strength: string;
-  is_active: boolean;
-}
-
-interface WeaknessItem {
-  id?: number;
-  weakness: string;
-  is_active: boolean;
-}
-
 export default function ResultForm({ initialData, onSubmit, onCancel, loading, isEdit = false }: ResultFormProps) {
-  const [formData, setFormData] = useState({
-    course_id: 0,
-    semester_id: 0,
-    program_id: 0,
-    branch_id: 0,
-    instructor_id: 0,
-    cadet_id: 0,
-    ctw_assessment_penpicture_grade_id: 0,
-    pen_picture: "",
-    course_performance: "",
-  });
+  const { user } = useAuth();
+  const [courseId, setCourseId]     = useState(0);
+  const [semesterId, setSemesterId] = useState(0);
+  const [programId, setProgramId]   = useState(0);
+  const [branchId, setBranchId]     = useState(0);
+  const [error, setError]           = useState("");
 
-  const [strengths, setStrengths] = useState<StrengthItem[]>([
-    { strength: "", is_active: true }
-  ]);
-
-  const [weaknesses, setWeaknesses] = useState<WeaknessItem[]>([
-    { weakness: "", is_active: true }
-  ]);
-
-  const [error, setError] = useState("");
-
-  // Dropdown data
-  const [courses, setCourses] = useState<SystemCourse[]>([]);
+  const [courses, setCourses]     = useState<SystemCourse[]>([]);
   const [semesters, setSemesters] = useState<SystemSemester[]>([]);
-  const [programs, setPrograms] = useState<SystemProgram[]>([]);
-  const [branches, setBranches] = useState<SystemBranch[]>([]);
-  const [cadets, setCadets] = useState<CadetProfile[]>([]);
-  const [instructors, setInstructors] = useState<User[]>([]);
-  const [grades, setGrades] = useState<CtwAssessmentPenpictureGrade[]>([]);
-  const [filteredGrades, setFilteredGrades] = useState<CtwAssessmentPenpictureGrade[]>([]);
-  const [loadingDropdowns, setLoadingDropdowns] = useState(true);
+  const [programs, setPrograms]   = useState<SystemProgram[]>([]);
+  const [branches, setBranches]   = useState<SystemBranch[]>([]);
+  const [cadets, setCadets]       = useState<any[]>([]);
 
-  // Load dropdown data
+  const [performances, setPerformances] = useState<Record<number, string>>({});
+  // cadet_id -> existing result id (if already stored)
+  const [existingIds, setExistingIds] = useState<Record<number, number>>({});
+
+  const [loadingMeta, setLoadingMeta]           = useState(true);
+  const [loadingSemesters, setLoadingSemesters] = useState(false);
+  const [loadingCadets, setLoadingCadets]       = useState(false);
+
+  // Load courses, programs, branches once
   useEffect(() => {
-    const loadDropdownData = async () => {
-      try {
-        setLoadingDropdowns(true);
-        const [options, gradesRes] = await Promise.all([
-          commonService.getResultOptions(),
-          ctwAssessmentPenpictureGradeService.getActiveGrades({
-            course_id: formData.course_id || undefined,
-            semester_id: formData.semester_id || undefined
-          }),
-        ]);
-
-        if (options) {
-          setCourses(options.courses || []);
-          setSemesters(options.semesters || []);
-          setPrograms(options.programs || []);
-          setBranches(options.branches || []);
-          setCadets(options.cadets || []);
-          setInstructors(options.instructors || []);
-        }
-        setGrades(gradesRes);
-        setFilteredGrades(gradesRes);
-      } catch (err) {
-        console.error("Failed to load dropdown data:", err);
-        setError("Failed to load required data. Please refresh the page.");
-      } finally {
-        setLoadingDropdowns(false);
-      }
-    };
-
-    loadDropdownData();
+    commonService.getResultOptions()
+      .then((opts) => {
+        setCourses(opts?.courses?.filter((c: any) => c.is_active) || []);
+        setPrograms(opts?.programs?.filter((p: any) => p.is_active) || []);
+        setBranches(opts?.branches?.filter((b: any) => b.is_active) || []);
+      })
+      .finally(() => setLoadingMeta(false));
   }, []);
 
-  // Fetch and filter grades based on selected course and semester
+  // Load semesters when course changes
   useEffect(() => {
-    const fetchFilteredGrades = async () => {
-      if (formData.course_id && formData.semester_id) {
-        try {
-          const gradesRes = await ctwAssessmentPenpictureGradeService.getActiveGrades({
-            course_id: formData.course_id,
-            semester_id: formData.semester_id
-          });
-          setFilteredGrades(gradesRes);
-          
-          // Reset selected grade if it's not in the filtered list
-          if (formData.ctw_assessment_penpicture_grade_id && !gradesRes.find(g => g.id === formData.ctw_assessment_penpicture_grade_id)) {
-            setFormData(prev => ({ ...prev, ctw_assessment_penpicture_grade_id: 0 }));
-          }
-        } catch (err) {
-          console.error("Failed to fetch filtered grades:", err);
-        }
-      } else {
-        setFilteredGrades([]);
-      }
-    };
+    if (!courseId) { setSemesters([]); setSemesterId(0); return; }
+    setLoadingSemesters(true);
+    commonService.getSemestersByCourse(courseId)
+      .then((data) => {
+        setSemesters(data);
+        if (!isEdit && data.length > 0) setSemesterId(data[0].id);
+      })
+      .finally(() => setLoadingSemesters(false));
+  }, [courseId, isEdit]);
 
-    fetchFilteredGrades();
-  }, [formData.course_id, formData.semester_id]);
-
-  // Populate form with initial data
+  // Load cadets + existing results when course + semester + program selected
   useEffect(() => {
-    if (initialData) {
-      setFormData({
-        course_id: initialData.course_id,
-        semester_id: initialData.semester_id,
-        program_id: initialData.program_id,
-        branch_id: initialData.branch_id || 0,
-        instructor_id: initialData.instructor_id,
-        cadet_id: initialData.cadet_id,
-        ctw_assessment_penpicture_grade_id: initialData.ctw_assessment_penpicture_grade_id,
-        pen_picture: initialData.pen_picture || "",
-        course_performance: initialData.course_performance || "",
-      });
+    if (!courseId || !semesterId || !programId) { setCadets([]); setExistingIds({}); return; }
+    setLoadingCadets(true);
+    Promise.all([
+      cadetService.getAllCadets({
+        per_page: 500,
+        course_id: courseId,
+        semester_id: semesterId,
+        program_id: programId,
+        branch_id: branchId || undefined,
+      }),
+      ctwAssessmentPenpictureResultService.getAllResults({
+        per_page: 500,
+        course_id: courseId,
+      }),
+    ]).then(([cadetRes, resultRes]) => {
+      const active = cadetRes.data.filter((c: any) => c.is_active);
+      setCadets(active);
 
-      // Load strengths if available
-      if (initialData.strengths && initialData.strengths.length > 0) {
-        setStrengths(initialData.strengths.map(s => ({
-          id: s.id,
-          strength: s.strength,
-          is_active: s.is_active,
-        })));
+      if (!isEdit) {
+        // Build map of existing stored performances keyed by cadet_id
+        const perfMap: Record<number, string> = {};
+        const idMap: Record<number, number>   = {};
+        (resultRes.data || []).forEach((r: any) => {
+          perfMap[r.cadet_id] = r.course_performance || "";
+          idMap[r.cadet_id]   = r.id;
+        });
+        // Initialize all cadets; pre-fill existing ones
+        active.forEach((c: any) => {
+          if (!(c.id in perfMap)) perfMap[c.id] = "";
+        });
+        setPerformances(perfMap);
+        setExistingIds(idMap);
       }
+    }).finally(() => setLoadingCadets(false));
+  }, [courseId, semesterId, programId, branchId, isEdit]);
 
-      // Load weaknesses if available
-      if (initialData.weaknesses && initialData.weaknesses.length > 0) {
-        setWeaknesses(initialData.weaknesses.map(w => ({
-          id: w.id,
-          weakness: w.weakness,
-          is_active: w.is_active,
-        })));
-      }
-    }
+  // Populate edit mode
+  useEffect(() => {
+    if (!initialData) return;
+    setCourseId(initialData.course_id || 0);
+    setSemesterId(initialData.semester_id || 0);
+    setProgramId(initialData.program_id || 0);
+    setBranchId(initialData.branch_id || 0);
+    setPerformances({ [initialData.cadet_id]: initialData.course_performance || "" });
   }, [initialData]);
-
-  const handleChange = (field: string, value: any) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
-  };
-
-  const handleStrengthChange = (index: number, field: keyof StrengthItem, value: any) => {
-    setStrengths(prev => {
-      const updated = [...prev];
-      updated[index] = { ...updated[index], [field]: value };
-      return updated;
-    });
-  };
-
-  const addStrength = () => {
-    setStrengths(prev => [...prev, { strength: "", is_active: true }]);
-  };
-
-  const removeStrength = (index: number) => {
-    if (strengths.length > 1) {
-      setStrengths(prev => prev.filter((_, i) => i !== index));
-    }
-  };
-
-  const handleWeaknessChange = (index: number, field: keyof WeaknessItem, value: any) => {
-    setWeaknesses(prev => {
-      const updated = [...prev];
-      updated[index] = { ...updated[index], [field]: value };
-      return updated;
-    });
-  };
-
-  const addWeakness = () => {
-    setWeaknesses(prev => [...prev, { weakness: "", is_active: true }]);
-  };
-
-  const removeWeakness = (index: number) => {
-    if (weaknesses.length > 1) {
-      setWeaknesses(prev => prev.filter((_, i) => i !== index));
-    }
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+    if (!courseId)   { setError("Please select a course."); return; }
+    if (!semesterId) { setError("Please select a semester."); return; }
+    if (!programId)  { setError("Please select a program."); return; }
 
-    // Validation
-    if (!formData.course_id) {
-      setError("Please select a course");
-      return;
-    }
-    if (!formData.semester_id) {
-      setError("Please select a semester");
-      return;
-    }
-    if (!formData.program_id) {
-      setError("Please select a program");
-      return;
-    }
-    if (!formData.instructor_id) {
-      setError("Please select an instructor");
-      return;
-    }
-    if (!formData.cadet_id) {
-      setError("Please select a cadet");
-      return;
-    }
-    if (!formData.ctw_assessment_penpicture_grade_id) {
-      setError("Please select a grade");
+    if (isEdit) {
+      await onSubmit({
+        course_id:          courseId,
+        semester_id:        semesterId,
+        program_id:         programId,
+        branch_id:          branchId || undefined,
+        cadet_id:           initialData.cadet_id,
+        instructor_id:      user?.id,
+        course_performance: performances[initialData.cadet_id] || "",
+      });
       return;
     }
 
-    try {
-      const submitData = {
-        ...formData,
-        branch_id: formData.branch_id || undefined,
-        strengths: strengths.filter(s => s.strength.trim() !== ""),
-        weaknesses: weaknesses.filter(w => w.weakness.trim() !== ""),
-      };
-      await onSubmit(submitData);
-    } catch (err: any) {
-      setError(err.message || `Failed to ${isEdit ? 'update' : 'create'} result`);
-    }
+    if (cadets.length === 0) { setError("No cadets found for the selected filters."); return; }
+
+    const batch = cadets.map((c) => ({
+      course_id:          courseId,
+      semester_id:        semesterId,
+      program_id:         programId,
+      branch_id:          branchId || undefined,
+      cadet_id:           c.id,
+      instructor_id:      user?.id,
+      course_performance: performances[c.id] || "",
+    }));
+
+    await onSubmit(batch);
   };
 
-  if (loadingDropdowns) {
+  if (loadingMeta) {
     return (
-      <div className="text-center py-12">
-        <Icon icon="hugeicons:loading-03" className="w-10 h-10 animate-spin mx-auto mb-4 text-blue-500" />
-        <p className="text-gray-600">Loading form data...</p>
+      <div className="w-full flex items-center justify-center py-20">
+        <Icon icon="hugeicons:fan-01" className="w-10 h-10 animate-spin text-blue-500" />
       </div>
     );
   }
 
   return (
-    <form onSubmit={handleSubmit}>
+    <form onSubmit={handleSubmit} className="space-y-6">
       {error && (
-        <div className="p-4 mb-6 bg-red-50 border border-red-200 rounded-lg text-red-600 flex items-center gap-2">
-          <Icon icon="hugeicons:alert-circle" className="w-5 h-5" />
+        <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm flex items-center gap-2">
+          <Icon icon="hugeicons:alert-circle" className="w-4 h-4 shrink-0" />
           {error}
         </div>
       )}
 
-      <div className="space-y-6">
-        {/* Basic Information */}
-        <div className="border border-gray-200 rounded-lg p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-            <Icon icon="hugeicons:file-01" className="w-5 h-5 text-blue-500" />
-            Basic Information
-          </h3>
+      {/* Filter dropdowns */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Course <span className="text-red-500">*</span>
+          </label>
+          <select
+            value={courseId}
+            onChange={(e) => { setCourseId(parseInt(e.target.value)); setSemesterId(0); setProgramId(0); setCadets([]); }}
+            disabled={isEdit}
+            className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 focus:outline-none disabled:bg-gray-50 disabled:cursor-not-allowed"
+          >
+            <option value={0}>Select Course</option>
+            {courses.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div>
-              <Label>Course <span className="text-red-500">*</span></Label>
-              <select
-                value={formData.course_id}
-                onChange={(e) => handleChange("course_id", parseInt(e.target.value))}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500"
-                required
-              >
-                <option value={0}>Select Course</option>
-                {courses.map(course => (
-                  <option key={course.id} value={course.id}>{course.name} ({course.code})</option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <Label>Semester <span className="text-red-500">*</span></Label>
-              <select
-                value={formData.semester_id}
-                onChange={(e) => handleChange("semester_id", parseInt(e.target.value))}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500"
-                required
-              >
-                <option value={0}>Select Semester</option>
-                {semesters.map(semester => (
-                  <option key={semester.id} value={semester.id}>{semester.name} ({semester.code})</option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <Label>Program <span className="text-red-500">*</span></Label>
-              <select
-                value={formData.program_id}
-                onChange={(e) => handleChange("program_id", parseInt(e.target.value))}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500"
-                required
-              >
-                <option value={0}>Select Program</option>
-                {programs.map(program => (
-                  <option key={program.id} value={program.id}>{program.name} ({program.code})</option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <Label>Branch</Label>
-              <select
-                value={formData.branch_id}
-                onChange={(e) => handleChange("branch_id", parseInt(e.target.value))}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500"
-              >
-                <option value={0}>Select Branch (Optional)</option>
-                {branches.map(branch => (
-                  <option key={branch.id} value={branch.id}>{branch.name} ({branch.code})</option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <Label>Instructor <span className="text-red-500">*</span></Label>
-              <select
-                value={formData.instructor_id}
-                onChange={(e) => handleChange("instructor_id", parseInt(e.target.value))}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500"
-                required
-              >
-                <option value={0}>Select Instructor</option>
-                {instructors.map(instructor => (
-                  <option key={instructor.id} value={instructor.id}>
-                    {instructor.name} ({instructor.service_number})
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <Label>Cadet <span className="text-red-500">*</span></Label>
-              <select
-                value={formData.cadet_id}
-                onChange={(e) => handleChange("cadet_id", parseInt(e.target.value))}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500"
-                required
-              >
-                <option value={0}>Select Cadet</option>
-                {cadets.map(cadet => (
-                  <option key={cadet.id} value={cadet.id}>
-                    {cadet.name} ({cadet.cadet_number})
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <Label>Grade <span className="text-red-500">*</span></Label>
-              <select
-                value={formData.ctw_assessment_penpicture_grade_id}
-                onChange={(e) => handleChange("ctw_assessment_penpicture_grade_id", parseInt(e.target.value))}
-                className={`w-full px-4 py-2 border rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 ${
-                  !formData.course_id || !formData.semester_id ? "opacity-50 cursor-not-allowed" : ""
-                }`}
-                disabled={!formData.course_id || !formData.semester_id}
-                required
-              >
-                <option value={0}>
-                  {!formData.course_id || !formData.semester_id 
-                    ? "Select Course & Semester first" 
-                    : filteredGrades.length === 0 ? "No grades available for this selection" : "Select Grade"}
-                </option>
-                {filteredGrades.map(grade => (
-                  <option key={grade.id} value={grade.id}>
-                    {grade.grade_name} ({grade.grade_code})
-                  </option>
-                ))}
-              </select>
-            </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Semester <span className="text-red-500">*</span>
+          </label>
+          <div className="relative">
+            <select
+              value={semesterId}
+              onChange={(e) => { setSemesterId(parseInt(e.target.value)); setCadets([]); }}
+              disabled={isEdit || !courseId || loadingSemesters}
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 focus:outline-none disabled:bg-gray-50 disabled:cursor-not-allowed"
+            >
+              <option value={0}>{loadingSemesters ? "Loading..." : !courseId ? "Select course first" : "Select Semester"}</option>
+              {semesters.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+            {loadingSemesters && <Icon icon="hugeicons:fan-01" className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 animate-spin text-gray-400 pointer-events-none" />}
           </div>
         </div>
 
-        {/* Pen Picture & Course Performance */}
-        <div className="border border-gray-200 rounded-lg p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-            <Icon icon="hugeicons:note-01" className="w-5 h-5 text-blue-500" />
-            Assessment Details
-          </h3>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <Label>Pen Picture</Label>
-              <textarea
-                value={formData.pen_picture}
-                onChange={(e) => handleChange("pen_picture", e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 min-h-[120px]"
-                placeholder="Enter pen picture description..."
-              />
-            </div>
-
-            <div>
-              <Label>Course Performance</Label>
-              <textarea
-                value={formData.course_performance}
-                onChange={(e) => handleChange("course_performance", e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 min-h-[120px]"
-                placeholder="Enter course performance notes..."
-              />
-            </div>
-          </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Program <span className="text-red-500">*</span>
+          </label>
+          <select
+            value={programId}
+            onChange={(e) => { setProgramId(parseInt(e.target.value)); setCadets([]); }}
+            disabled={isEdit}
+            className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 focus:outline-none disabled:bg-gray-50 disabled:cursor-not-allowed"
+          >
+            <option value={0}>Select Program</option>
+            {programs.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* Strengths */}
-          <div className="border border-gray-200 rounded-lg p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-                <Icon icon="hugeicons:thumbs-up" className="w-5 h-5 text-green-500" />
-                Strengths
-              </h3>
-              <button
-                type="button"
-                onClick={addStrength}
-                className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 flex items-center gap-2"
-              >
-                <Icon icon="hugeicons:add-circle" className="w-4 h-4" />
-                Add Strength
-              </button>
-            </div>
-
-            <div className="space-y-3">
-              {strengths.map((strength, index) => (
-                <div key={index} className="flex items-start gap-3">
-                  <div className="flex-1">
-                    <Input
-                      value={strength.strength}
-                      onChange={(e) => handleStrengthChange(index, "strength", e.target.value)}
-                      placeholder="Enter strength..."
-                    />
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => removeStrength(index)}
-                    disabled={strengths.length === 1}
-                    className="p-2 text-red-600 hover:bg-red-50 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
-                    title="Remove"
-                  >
-                    <Icon icon="hugeicons:delete-02" className="w-5 h-5" />
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Weaknesses */}
-          <div className="border border-gray-200 rounded-lg p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-                <Icon icon="hugeicons:alert-02" className="w-5 h-5 text-orange-500" />
-                Weaknesses
-              </h3>
-              <button
-                type="button"
-                onClick={addWeakness}
-                className="px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 flex items-center gap-2"
-              >
-                <Icon icon="hugeicons:add-circle" className="w-4 h-4" />
-                Add Weakness
-              </button>
-            </div>
-
-            <div className="space-y-3">
-              {weaknesses.map((weakness, index) => (
-                <div key={index} className="flex items-start gap-3">
-                  <div className="flex-1">
-                    <Input
-                      value={weakness.weakness}
-                      onChange={(e) => handleWeaknessChange(index, "weakness", e.target.value)}
-                      placeholder="Enter weakness..."
-                    />
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => removeWeakness(index)}
-                    disabled={weaknesses.length === 1}
-                    className="p-2 text-red-600 hover:bg-red-50 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
-                    title="Remove"
-                  >
-                    <Icon icon="hugeicons:delete-02" className="w-5 h-5" />
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Branch</label>
+          <select
+            value={branchId}
+            onChange={(e) => { setBranchId(parseInt(e.target.value)); setCadets([]); }}
+            disabled={isEdit}
+            className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 focus:outline-none disabled:bg-gray-50 disabled:cursor-not-allowed"
+          >
+            <option value={0}>All Branches</option>
+            {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+          </select>
         </div>
       </div>
 
-      <div className="flex items-center justify-end gap-3 mt-8 pt-6 border-t border-gray-200">
-        <button
-          type="button"
-          onClick={onCancel}
-          className="px-6 py-2 border border-gray-300 text-black rounded-xl hover:bg-gray-50"
-          disabled={loading}
-        >
+      {/* Cadet list with course_performance textareas */}
+      {loadingCadets ? (
+        <div className="flex items-center justify-center py-12 border border-dashed border-gray-200 rounded-xl">
+          <Icon icon="hugeicons:fan-01" className="w-8 h-8 animate-spin text-blue-500" />
+        </div>
+      ) : isEdit && initialData ? (
+        // Edit mode — single cadet
+        <div className="border border-gray-200 rounded-xl overflow-hidden">
+          <div className="bg-gray-50 px-4 py-3 border-b border-gray-200">
+            <span className="font-semibold text-gray-700 text-sm">Cadet</span>
+          </div>
+          <div className="p-4 flex items-start gap-4">
+            <div className="w-48 shrink-0">
+              <div className="font-medium text-gray-900">{initialData.cadet?.name || "—"}</div>
+              <div className="text-xs text-gray-500 font-mono">{initialData.cadet?.cadet_number || ""}</div>
+            </div>
+            <textarea
+              value={performances[initialData.cadet_id] || ""}
+              onChange={(e) => setPerformances({ [initialData.cadet_id]: e.target.value })}
+              placeholder="Enter course performance..."
+              rows={4}
+              className="flex-1 px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none resize-none text-sm text-gray-900"
+            />
+          </div>
+        </div>
+      ) : courseId && semesterId && programId ? (
+        cadets.length === 0 ? (
+          <div className="text-center py-12 border border-dashed border-gray-200 rounded-xl text-gray-400 text-sm">
+            <Icon icon="hugeicons:user-group" className="w-10 h-10 mx-auto mb-2" />
+            No cadets found for the selected filters.
+          </div>
+        ) : (
+          <div className="border border-gray-200 rounded-xl overflow-hidden">
+            <div className="bg-gray-50 px-4 py-3 border-b border-gray-200 flex items-center justify-between">
+              <span className="font-semibold text-gray-700 text-sm">Cadets ({cadets.length})</span>
+              <span className="text-xs text-gray-400">Fill course performance for each cadet</span>
+            </div>
+            <div className="divide-y divide-gray-100">
+              {cadets.map((cadet, index) => {
+                const isSaved = !!existingIds[cadet.id];
+                return (
+                  <div key={cadet.id} className="p-4 flex items-start gap-4">
+                    <div className="w-8 text-center text-sm font-bold text-gray-400 pt-2">{index + 1}</div>
+                    <div className="w-44 shrink-0 pt-2">
+                      <div className="font-medium text-gray-900 text-sm flex items-center gap-1.5">
+                        {cadet.name}
+                        {isSaved && (
+                          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-green-100 text-green-700">Saved</span>
+                        )}
+                      </div>
+                      <div className="text-xs text-gray-500 font-mono">{cadet.cadet_number}</div>
+                    </div>
+                    <textarea
+                      value={performances[cadet.id] || ""}
+                      onChange={(e) => setPerformances((p) => ({ ...p, [cadet.id]: e.target.value }))}
+                      placeholder="Enter course performance..."
+                      rows={3}
+                      className={`flex-1 px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none resize-none text-sm text-gray-900 ${isSaved ? "border-green-300 bg-green-50" : "border-gray-200"}`}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )
+      ) : (
+        <div className="text-center py-12 border border-dashed border-gray-200 rounded-xl text-gray-400 text-sm">
+          <Icon icon="hugeicons:filter" className="w-10 h-10 mx-auto mb-2" />
+          Select Course, Semester and Program to load cadets.
+        </div>
+      )}
+
+      {/* Buttons */}
+      <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-200">
+        <button type="button" onClick={onCancel} disabled={loading}
+          className="px-6 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 disabled:opacity-50 font-medium">
           Cancel
         </button>
-        <button
-          type="submit"
-          className="px-6 py-2 bg-blue-500 text-white rounded-xl hover:bg-blue-600 flex items-center gap-2"
-          disabled={loading}
-        >
-          {loading && <Icon icon="hugeicons:loading-03" className="w-4 h-4 animate-spin" />}
-          {loading ? (isEdit ? "Updating..." : "Saving...") : (isEdit ? "Update Result" : "Save Result")}
+        <button type="submit" disabled={loading}
+          className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2 font-medium">
+          {loading
+            ? <><Icon icon="hugeicons:fan-01" className="w-4 h-4 animate-spin" />{isEdit ? "Updating..." : "Saving..."}</>
+            : <><Icon icon="hugeicons:floppy-disk" className="w-4 h-4" />{isEdit ? "Update Result" : "Save Results"}</>
+          }
         </button>
       </div>
     </form>

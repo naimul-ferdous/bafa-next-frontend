@@ -3,13 +3,13 @@
 
 import React, { useState, useEffect } from "react";
 import { Icon } from "@iconify/react";
-import type { CtwAssessmentCounselingType } from "@/libs/types/ctw";
-import type { SystemSemester, SystemCourse } from "@/libs/types/system";
+import type { CtwAssessmentCounselingType, CtwAssessmentCounselingTypeCreateData } from "@/libs/types/ctwAssessmentCounseling";
+import type { SystemSemester } from "@/libs/types/system";
 import { commonService } from "@/libs/services/commonService";
 
 interface CounselingTypeFormProps {
   initialData?: CtwAssessmentCounselingType | null;
-  onSubmit: (data: any) => Promise<void>;
+  onSubmit: (data: CtwAssessmentCounselingTypeCreateData) => Promise<void>;
   onCancel: () => void;
   loading: boolean;
   isEdit?: boolean;
@@ -24,7 +24,6 @@ interface EventInput {
 }
 
 export interface CounselingTypeFormData {
-  course_id: number | "";
   type_name: string;
   type_code: string;
   is_active: boolean;
@@ -34,7 +33,6 @@ export interface CounselingTypeFormData {
 
 export default function CounselingTypeForm({ initialData, onSubmit, onCancel, loading, isEdit = false }: CounselingTypeFormProps) {
   const [formData, setFormData] = useState<CounselingTypeFormData>({
-    course_id: "",
     type_name: "",
     type_code: "",
     is_active: true,
@@ -43,7 +41,6 @@ export default function CounselingTypeForm({ initialData, onSubmit, onCancel, lo
   });
   const [errors, setErrors] = useState<Partial<Record<keyof CounselingTypeFormData, string>>>({});
   const [semesters, setSemesters] = useState<SystemSemester[]>([]);
-  const [courses, setCourses] = useState<SystemCourse[]>([]);
   const [loadingMetadata, setLoadingMetadata] = useState(true);
 
   useEffect(() => {
@@ -53,7 +50,6 @@ export default function CounselingTypeForm({ initialData, onSubmit, onCancel, lo
         const options = await commonService.getResultOptions();
         if (options) {
           setSemesters(options.semesters || []);
-          setCourses(options.courses || []);
         }
       } catch (error) {
         console.error("Failed to load form metadata:", error);
@@ -71,7 +67,6 @@ export default function CounselingTypeForm({ initialData, onSubmit, onCancel, lo
         : [];
 
       setFormData({
-        course_id: initialData.course_id || "",
         type_name: initialData.type_name,
         type_code: initialData.type_code,
         is_active: initialData.is_active,
@@ -82,17 +77,13 @@ export default function CounselingTypeForm({ initialData, onSubmit, onCancel, lo
           event_type: e.event_type,
           order: e.order,
         })) || [],
-        semesters: initialData.semesters?.map(s => (s as any).semester_id) || [],
+        semesters: initialData.semesters?.map(s => s.semester_id) || [],
       });
     }
   }, [initialData]);
 
   const validateForm = (): boolean => {
     const newErrors: Partial<Record<keyof CounselingTypeFormData, string>> = {};
-
-    if (!formData.course_id) {
-      newErrors.course_id = "Course is required";
-    }
 
     if (!formData.type_name.trim()) {
       newErrors.type_name = "Type name is required";
@@ -114,8 +105,7 @@ export default function CounselingTypeForm({ initialData, onSubmit, onCancel, lo
     }
 
     try {
-      const submitData = {
-        course_id: formData.course_id as number,
+      const submitData: CtwAssessmentCounselingTypeCreateData = {
         type_name: formData.type_name,
         type_code: formData.type_code,
         is_active: formData.is_active,
@@ -191,32 +181,7 @@ export default function CounselingTypeForm({ initialData, onSubmit, onCancel, lo
           <Icon icon="hugeicons:document-01" className="w-5 h-5 text-blue-500" />
           Basic Information
         </h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {/* Course */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Course <span className="text-red-500">*</span>
-            </label>
-            <select
-              value={formData.course_id}
-              onChange={(e) => handleChange("course_id", e.target.value ? parseInt(e.target.value) : "")}
-              className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white ${
-                errors.course_id ? "border-red-500" : "border-gray-300"
-              }`}
-              disabled={loadingMetadata}
-            >
-              <option value="">Select a course</option>
-              {courses.map((course) => (
-                <option key={course.id} value={course.id}>
-                  {course.name} ({course.code})
-                </option>
-              ))}
-            </select>
-            {errors.course_id && (
-              <p className="mt-1 text-sm text-red-500">{errors.course_id}</p>
-            )}
-          </div>
-
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Type Name */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">

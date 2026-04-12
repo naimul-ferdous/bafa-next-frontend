@@ -11,6 +11,7 @@ interface CourseQueryParams {
   page?: number;
   per_page?: number;
   search?: string;
+  allData?: boolean;
 }
 
 interface CoursePaginatedResponse {

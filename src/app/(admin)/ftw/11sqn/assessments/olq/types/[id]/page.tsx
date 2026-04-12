@@ -5,14 +5,14 @@ import { useRouter, useParams } from "next/navigation";
 import { Icon } from "@iconify/react";
 import { ftw11sqnAssessmentOlqTypeService } from "@/libs/services/ftw11sqnAssessmentOlqTypeService";
 import FullLogo from "@/components/ui/fulllogo";
-import type { Ftw11sqnAssessmentOlqType } from "@/libs/types/ftw11sqnAssessmentOlq";
+import type { Ftw11SqnAssessmentOlqType, Ftw11SqnAssessmentOlqTypeEstimatedMark } from "@/libs/types/ftw11sqnAssessmentOlq";
 
 export default function OlqTypeDetailsPage() {
   const router = useRouter();
   const params = useParams();
   const typeId = params?.id as string;
 
-  const [type, setType] = useState<Ftw11sqnAssessmentOlqType | null>(null);
+  const [type, setType] = useState<Ftw11SqnAssessmentOlqType | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [reordering, setReordering] = useState(false);
@@ -24,7 +24,7 @@ export default function OlqTypeDetailsPage() {
       if (data) {
         // Sort estimated marks by order
         if (data.estimated_marks) {
-          data.estimated_marks.sort((a, b) => (a.order || 0) - (b.order || 0));
+          data.estimated_marks.sort((a: Ftw11SqnAssessmentOlqTypeEstimatedMark, b: Ftw11SqnAssessmentOlqTypeEstimatedMark) => (a.order || 0) - (b.order || 0));
         }
         setType(data);
       } else {
@@ -125,13 +125,6 @@ export default function OlqTypeDetailsPage() {
             <Icon icon="hugeicons:printer" className="w-4 h-4" />
             Print
           </button>
-          <button
-            onClick={() => router.push(`/ftw/11sqn/assessments/olq/types/${type.id}/edit`)}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2"
-          >
-            <Icon icon="hugeicons:pencil-edit-01" className="w-4 h-4" />
-            Edit Type
-          </button>
         </div>
       </div>
 
@@ -156,13 +149,6 @@ export default function OlqTypeDetailsPage() {
             Type Information
           </h2>
           <div className="grid grid-cols-2 gap-x-12 gap-y-3">
-            <div className="flex">
-              <span className="w-48 text-gray-900 font-medium">Course</span>
-              <span className="mr-4">:</span>
-              <span className="text-gray-900 flex-1 font-semibold">
-                {type.course ? `${type.course.name} (${type.course.code})` : "N/A"}
-              </span>
-            </div>
             <div className="flex">
               <span className="w-48 text-gray-900 font-medium">Type Name</span>
               <span className="mr-4">:</span>
@@ -262,7 +248,7 @@ export default function OlqTypeDetailsPage() {
                   key={sem.id}
                   className="px-3 py-1 bg-purple-100 text-purple-800 rounded-full text-sm font-medium"
                 >
-                  {sem.semester?.name || `Semester ${sem.semester_id}`}
+                  {'semester' in sem && sem.semester ? sem.semester.name : ('semester_id' in sem ? `Semester ${sem.semester_id}` : '-')}
                 </span>
               ))}
             </div>

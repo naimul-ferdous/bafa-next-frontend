@@ -13,10 +13,12 @@ export default function CreateResultPage() {
   const handleSubmit = async (data: any) => {
     setLoading(true);
     try {
-      const res = await ctwAssessmentPenpictureResultService.createResult(data);
-      if (res) {
-        router.push("/ctw/assessments/penpicture/results");
+      if (Array.isArray(data)) {
+        await ctwAssessmentPenpictureResultService.bulkCreate(data);
+      } else {
+        await ctwAssessmentPenpictureResultService.createResult(data);
       }
+      router.push("/ctw/assessments/penpicture/results/view");
     } catch (err: any) {
       throw err;
     } finally {
@@ -25,7 +27,7 @@ export default function CreateResultPage() {
   };
 
   const handleCancel = () => {
-    router.push("/ctw/assessments/penpicture/results");
+    router.push("/ctw/assessments/penpicture/results/view");
   };
 
   return (

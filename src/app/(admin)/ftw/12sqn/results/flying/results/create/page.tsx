@@ -41,7 +41,7 @@ export default function CreateFtw12sqnFlyingExaminationMarkPage() {
           Bangladesh Air Force Academy
         </h1>
         <h2 className="text-md font-semibold text-gray-700 mt-2 uppercase">
-          FTW 12sqn Flying Examination Marks - Bulk Entry
+          FTW 12SQN Flying Examination Marks - Bulk Entry
         </h2>
       </div>
 

@@ -4,8 +4,9 @@
 import React, { useState, useEffect } from "react";
 import Label from "@/components/form/Label";
 import { commonService } from "@/libs/services/commonService";
+import { ctwCommonService } from "@/libs/services/ctwCommonService";
 import { ctwResultsModuleService } from "@/libs/services/ctwResultsModuleService";
-import { ctwInstructorAssignCadetService } from "@/libs/services/ctwInstructorAssignCadetService";
+import { cadetService } from "@/libs/services/cadetService";
 import { ctwInstructorAssignModuleService } from "@/libs/services/ctwInstructorAssignModuleService";
 import { useAuth } from "@/libs/hooks/useAuth";
 import { Icon } from "@iconify/react";
@@ -49,7 +50,6 @@ export default function SwimmingResultForm({ initialData, onSubmit, onCancel, lo
   const [cadetRows, setCadetRows] = useState<CadetRow[]>([]);
   const [error, setError] = useState("");
 
-  // Dropdown data
   const [courses, setCourses] = useState<SystemCourse[]>([]);
   const [semesters, setSemesters] = useState<SystemSemester[]>([]);
   const [programs, setPrograms] = useState<SystemProgram[]>([]);
@@ -57,35 +57,32 @@ export default function SwimmingResultForm({ initialData, onSubmit, onCancel, lo
   const [groups, setGroups] = useState<SystemGroup[]>([]);
   const [exams, setExams] = useState<SystemExam[]>([]);
   const [estimatedMarks, setEstimatedMarks] = useState<any[]>([]);
-  const [swimmingModuleId, setSwimmingModuleId] = useState<number>(0);
+  const [moduleId, setModuleId] = useState<number>(0);
   const [loadingDropdowns, setLoadingDropdowns] = useState(true);
   const [loadingCadets, setLoadingCadets] = useState(false);
   const [loadingEstimatedMarks, setLoadingEstimatedMarks] = useState(false);
+  const [loadingSemesters, setLoadingSemesters] = useState(false);
   const [moduleAssigned, setModuleAssigned] = useState(false);
 
-  // Load dropdown data + find swimming module
+  // Load all form options in a single API call
   useEffect(() => {
+    if (!user?.id) return;
+
     const loadDropdownData = async () => {
       try {
         setLoadingDropdowns(true);
-        const [options, modulesRes] = await Promise.all([
-          commonService.getResultOptions(),
-          ctwResultsModuleService.getAllModules({ per_page: 100 }),
-        ]);
+        const options = await ctwCommonService.getSwimmingFormOptions(user.id);
 
         if (options) {
           setCourses(options.courses);
-          setSemesters(options.semesters);
           setPrograms(options.programs);
           setBranches(options.branches);
           setGroups(options.groups);
           setExams(options.exams);
-        }
 
-        // Find swimming module id
-        const swimmingModule = modulesRes.data.find((m: any) => m.code === SWIMMING_MODULE_CODE);
-        if (swimmingModule) {
-          setSwimmingModuleId(swimmingModule.id);
+          if (options.module) {
+            setModuleId(options.module.id);
+          }
         }
       } catch (err) {
         console.error("Failed to load dropdown data:", err);
@@ -96,20 +93,43 @@ export default function SwimmingResultForm({ initialData, onSubmit, onCancel, lo
     };
 
     loadDropdownData();
-  }, []);
+  }, [user?.id]);
 
-  // Load estimated marks from DB when course + semester are selected
+  // Load semesters dynamically when course is selected
+  useEffect(() => {
+    if (!formData.course_id) {
+      setSemesters([]);
+      if (!initialData) setFormData(prev => ({ ...prev, semester_id: 0 }));
+      return;
+    }
+
+    const loadSemesters = async () => {
+      try {
+        setLoadingSemesters(true);
+        if (!initialData) setFormData(prev => ({ ...prev, semester_id: 0 }));
+        const result = await commonService.getSemestersByCourse(formData.course_id);
+        setSemesters(result);
+      } catch (err) {
+        console.error("Failed to load semesters:", err);
+        setSemesters([]);
+      } finally {
+        setLoadingSemesters(false);
+      }
+    };
+
+    loadSemesters();
+  }, [formData.course_id, initialData]);
+
   useEffect(() => {
     const loadEstimatedMarks = async () => {
-      if (!swimmingModuleId || !formData.course_id || !formData.semester_id) {
+      if (!moduleId || !formData.course_id || !formData.semester_id) {
         setEstimatedMarks([]);
         return;
       }
 
       try {
         setLoadingEstimatedMarks(true);
-        const response = await ctwResultsModuleService.getEstimatedMarks(swimmingModuleId, {
-          course_id: formData.course_id,
+        const response = await ctwResultsModuleService.getEstimatedMarks(moduleId, {
           semester_id: formData.semester_id,
         });
         setEstimatedMarks(response);
@@ -122,17 +142,23 @@ export default function SwimmingResultForm({ initialData, onSubmit, onCancel, lo
     };
 
     loadEstimatedMarks();
-  }, [swimmingModuleId, formData.course_id, formData.semester_id]);
+  }, [moduleId, formData.course_id, formData.semester_id]);
 
-  // Check if exam type exists in the fetched estimated marks
   const hasEstimatedMark = (examTypeId: number): boolean => {
     return estimatedMarks.some((em: any) => em.exam_type_id === examTypeId);
   };
 
-  // Auto-load cadets after exam type selected
+  const getMaxMark = (): number => {
+    if (!formData.exam_type_id) return 0;
+    const em = estimatedMarks.find((em: any) => em.exam_type_id === formData.exam_type_id);
+    return em?.conversation_mark ? parseFloat(em.conversation_mark) : (em?.estimated_mark || em?.mark || 0);
+  };
+
+  const maxMark = getMaxMark();
+
   useEffect(() => {
     const loadCadets = async () => {
-      if (!user?.id || !swimmingModuleId || !formData.course_id || !formData.semester_id || !formData.exam_type_id) {
+      if (!user?.id || !moduleId || !formData.course_id || !formData.semester_id || !formData.exam_type_id) {
         setCadetRows([]);
         setModuleAssigned(false);
         return;
@@ -157,35 +183,30 @@ export default function SwimmingResultForm({ initialData, onSubmit, onCancel, lo
 
         setModuleAssigned(true);
 
-        const params: any = {
+        const cadetParams: any = {
           per_page: 500,
-          instructor_id: user.id,
-          ctw_results_module_id: swimmingModuleId,
           course_id: formData.course_id,
           semester_id: formData.semester_id,
-          is_active: true,
+          is_current: 1,
         };
-        if (formData.program_id) params.program_id = formData.program_id;
-        if (formData.branch_id) params.branch_id = formData.branch_id;
-        if (formData.group_id) params.group_id = formData.group_id;
+        if (formData.program_id) cadetParams.program_id = formData.program_id;
+        if (formData.branch_id) cadetParams.branch_id = formData.branch_id;
+        if (formData.group_id) cadetParams.group_id = formData.group_id;
 
-        const assignedCadetsRes = await ctwInstructorAssignCadetService.getAll(params);
+        const cadetsRes = await cadetService.getAllCadets(cadetParams);
 
-        const rows: CadetRow[] = assignedCadetsRes.data
-          .filter((ac: any) => ac.cadet)
-          .map((ac: any) => {
-            const cadet = ac.cadet;
-            const currentRank = cadet.assigned_ranks?.find((ar: any) => ar.rank)?.rank;
-            return {
-              cadet_id: cadet.id,
-              cadet_number: cadet.cadet_number || "",
-              cadet_name: cadet.name,
-              cadet_rank: currentRank?.short_name || currentRank?.name || "Officer Cadet",
-              branch: cadet.assigned_branchs?.find((ab: any) => ab.is_current)?.branch?.name || cadet.assigned_branchs?.[0]?.branch?.name || "N/A",
-              mark: 0,
-              is_active: true,
-            };
-          });
+        const rows: CadetRow[] = cadetsRes.data.map((cadet: any) => {
+          const currentRank = cadet.assigned_ranks?.find((ar: any) => ar.rank)?.rank;
+          return {
+            cadet_id: cadet.id,
+            cadet_number: cadet.cadet_number || "",
+            cadet_name: cadet.name,
+            cadet_rank: currentRank?.short_name || currentRank?.name || "Officer Cadet",
+            branch: cadet.assigned_branchs?.find((ab: any) => ab.is_current)?.branch?.name || cadet.assigned_branchs?.[0]?.branch?.name || "N/A",
+            mark: 0,
+            is_active: true,
+          };
+        });
 
         setCadetRows(rows);
       } catch (err) {
@@ -198,9 +219,8 @@ export default function SwimmingResultForm({ initialData, onSubmit, onCancel, lo
     if (!initialData) {
       loadCadets();
     }
-  }, [user?.id, swimmingModuleId, formData.course_id, formData.semester_id, formData.program_id, formData.branch_id, formData.group_id, formData.exam_type_id, initialData]);
+  }, [user?.id, moduleId, formData.course_id, formData.semester_id, formData.program_id, formData.branch_id, formData.group_id, formData.exam_type_id, initialData]);
 
-  // Populate form with initial data
   useEffect(() => {
     if (initialData) {
       setFormData({
@@ -215,6 +235,7 @@ export default function SwimmingResultForm({ initialData, onSubmit, onCancel, lo
       });
 
       if (initialData.result_marks && initialData.result_marks.length > 0) {
+        setModuleAssigned(true);
         const rows: CadetRow[] = initialData.result_marks.map(mark => {
           const currentRank = mark.cadet?.assigned_ranks?.find((ar: any) => ar.rank)?.rank;
 
@@ -240,10 +261,11 @@ export default function SwimmingResultForm({ initialData, onSubmit, onCancel, lo
   const handleCadetChange = (cadetIndex: number, field: keyof CadetRow, value: any) => {
     setCadetRows(prev => {
       const updated = [...prev];
-      updated[cadetIndex] = {
-        ...updated[cadetIndex],
-        [field]: value
-      };
+      let finalValue = value;
+      if (field === "mark" && maxMark > 0 && typeof value === "number" && value > maxMark) {
+        finalValue = maxMark;
+      }
+      updated[cadetIndex] = { ...updated[cadetIndex], [field]: finalValue };
       return updated;
     });
   };
@@ -271,7 +293,7 @@ export default function SwimmingResultForm({ initialData, onSubmit, onCancel, lo
         group_id: formData.group_id || undefined,
         exam_type_id: formData.exam_type_id,
         instructor_id: user.id,
-        ctw_results_module_id: swimmingModuleId,
+        ctw_results_module_id: moduleId,
         remarks: formData.remarks || undefined,
         is_active: formData.is_active,
         marks: marks,
@@ -302,7 +324,6 @@ export default function SwimmingResultForm({ initialData, onSubmit, onCancel, lo
       )}
 
       <div className="space-y-6">
-        {/* Basic Information */}
         <div className="border border-gray-200 rounded-lg p-6">
           <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
             <Icon icon="hugeicons:file-01" className="w-5 h-5 text-blue-500" />
@@ -320,8 +341,16 @@ export default function SwimmingResultForm({ initialData, onSubmit, onCancel, lo
 
             <div>
               <Label>Semester <span className="text-red-500">*</span></Label>
-              <select value={formData.semester_id} onChange={(e) => handleChange("semester_id", parseInt(e.target.value))} className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500" required>
-                <option value={0}>Select Semester</option>
+              <select
+                value={formData.semester_id}
+                onChange={(e) => handleChange("semester_id", parseInt(e.target.value))}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500"
+                required
+                disabled={!formData.course_id || loadingSemesters}
+              >
+                <option value={0}>
+                  {loadingSemesters ? "Loading..." : !formData.course_id ? "Select course first" : "Select Semester"}
+                </option>
                 {semesters.map(semester => (<option key={semester.id} value={semester.id}>{semester.name} ({semester.code})</option>))}
               </select>
             </div>
@@ -371,6 +400,9 @@ export default function SwimmingResultForm({ initialData, onSubmit, onCancel, lo
                   );
                 })}
               </select>
+              {formData.course_id && formData.semester_id && !loadingEstimatedMarks && (
+                <p className="mt-1 text-xs text-gray-500">Only exam types with estimated marks for the selected course & semester are enabled</p>
+              )}
             </div>
 
             <div className="md:col-span-2">
@@ -380,11 +412,11 @@ export default function SwimmingResultForm({ initialData, onSubmit, onCancel, lo
           </div>
         </div>
 
-        {/* Marks Table */}
         <div className="border border-gray-200 rounded-lg p-6">
           <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
             <Icon icon="hugeicons:note-edit" className="w-5 h-5 text-blue-500" />
             Cadets Marks Entry
+            {loadingCadets && <Icon icon="hugeicons:fan-01" className="w-10 h-10 animate-spin mx-auto my-10 text-blue-500" />}
           </h3>
 
           {!filtersSelected ? (
@@ -400,6 +432,7 @@ export default function SwimmingResultForm({ initialData, onSubmit, onCancel, lo
             <div className="text-center py-12 text-red-500">
               <Icon icon="hugeicons:alert-circle" className="w-10 h-10 mx-auto mb-2" />
               <p className="font-medium">You are not assigned to the Swimming module for the selected course & semester.</p>
+              <p className="text-sm text-gray-500 mt-1">Please contact admin to assign you to this module.</p>
             </div>
           ) : cadetRows.length === 0 ? (
             <div className="text-center py-12 text-gray-500">
@@ -408,33 +441,34 @@ export default function SwimmingResultForm({ initialData, onSubmit, onCancel, lo
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full border-collapse border border-black">
+              <table className="w-full border-collapse border border-black text-xs">
                 <thead>
-                  <tr className="bg-gray-50">
+                  <tr>
                     <th className="border border-black px-3 py-2 text-center uppercase">SL</th>
                     <th className="border border-black px-3 py-2 text-center uppercase">CADET NO.</th>
                     <th className="border border-black px-3 py-2 text-center uppercase">RANK</th>
                     <th className="border border-black px-3 py-2 text-left uppercase">NAME</th>
                     <th className="border border-black px-3 py-2 text-left uppercase">BRANCH</th>
-                    <th className="border border-black px-3 py-2 text-center uppercase w-32">MARK</th>
+                    <th className="border border-black px-3 py-2 text-center uppercase">MARK{maxMark > 0 ? ` (Max: ${maxMark})` : ""}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {cadetRows.map((cadet, index) => (
                     <tr key={cadet.cadet_id}>
-                      <td className="border border-black px-3 py-2 text-center font-medium">{index + 1}</td>
+                      <td className="border border-black px-3 py-2 text-center">{index + 1}</td>
                       <td className="border border-black px-3 py-2 text-center">{cadet.cadet_number}</td>
                       <td className="border border-black px-3 py-2 text-center">{cadet.cadet_rank}</td>
-                      <td className="border border-black px-3 py-2 font-medium">{cadet.cadet_name}</td>
-                      <td className="border border-black px-3 py-2 font-medium">{cadet.branch}</td>
+                      <td className="border border-black px-3 py-2">{cadet.cadet_name}</td>
+                      <td className="border border-black px-3 py-2">{cadet.branch}</td>
                       <td className="border border-black px-2 py-1 text-center">
                         <input
                           type="number"
                           min={0}
+                          max={maxMark > 0 ? maxMark : undefined}
                           step={0.01}
                           value={cadet.mark || ""}
                           onChange={(e) => handleCadetChange(index, "mark", parseFloat(e.target.value) || 0)}
-                          className="w-full px-2 py-1 border border-gray-300 rounded text-center text-sm focus:ring-2 focus:ring-blue-500 bg-white"
+                          className="w-full px-2 py-1 border border-gray-300 rounded text-center text-xs focus:ring-2 focus:ring-blue-500 bg-white"
                           placeholder="0"
                         />
                       </td>

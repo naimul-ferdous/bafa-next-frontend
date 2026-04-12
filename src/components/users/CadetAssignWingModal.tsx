@@ -7,6 +7,7 @@ import { cadetAssignmentService } from "@/libs/services/cadetAssignmentService";
 import { wingService } from "@/libs/services/wingService";
 import { subWingService } from "@/libs/services/subWingService";
 import { cadetService } from "@/libs/services/cadetService";
+import { useAuth } from "@/context/AuthContext";
 import type { User, Wing, SubWing, CadetWingAssignment, CadetSubWingAssignment, CadetProfile } from "@/libs/types/user";
 
 interface CadetAssignWingModalProps {
@@ -24,6 +25,14 @@ export default function CadetAssignWingModal({
   cadet,
   onSuccess,
 }: CadetAssignWingModalProps) {
+  const { user: authUser } = useAuth();
+
+  // Detect if the logged-in user is assigned to a flying wing (no subwing)
+  const authUserFlyingWing = (
+    authUser?.roleAssignments?.find(ra => ra.is_active && ra.wing?.is_flying && !ra.sub_wing_id) ||
+    authUser?.role_assignments?.find(ra => (ra as {is_active?: boolean}).is_active && ra.wing?.is_flying && !(ra as {sub_wing_id?: number | null}).sub_wing_id)
+  )?.wing ?? null;
+
   const [wings, setWings] = useState<Wing[]>([]);
   const [subWings, setSubWings] = useState<SubWing[]>([]);
   const [cadetProfile, setCadetProfile] = useState<CadetProfile | null>(null);
@@ -43,7 +52,18 @@ export default function CadetAssignWingModal({
     if (isOpen && (user || cadet)) {
       loadData();
     }
+    if (!isOpen) {
+      // Reset to flying wing pre-selection on close
+      setSelectedWingId(authUserFlyingWing ? authUserFlyingWing.id : "");
+    }
   }, [isOpen, user, cadet]);
+
+  // Pre-select the logged-in user's flying wing when wings are loaded
+  useEffect(() => {
+    if (authUserFlyingWing) {
+      setSelectedWingId(authUserFlyingWing.id);
+    }
+  }, [authUserFlyingWing?.id]);
 
   // Load subwings when wing changes
   useEffect(() => {
@@ -66,23 +86,32 @@ export default function CadetAssignWingModal({
       let foundCadet: CadetProfile | null = null;
 
       if (cadet) {
-        // If cadet object is passed directly
         foundCadet = cadet;
       } else if (user) {
-        // If user object is passed, search for linked cadet profile
         const cadetsRes = await cadetService.getAllCadets({ search: user.service_number });
         foundCadet = cadetsRes.data.find(c => c.cadet_number === user.service_number || c.email === user.email) || null;
       }
-      
+
       if (foundCadet) {
         setCadetProfile(foundCadet);
-        // 3. Get existing assignments
-        const [wingAssRes, subWingAssRes] = await Promise.all([
-          cadetAssignmentService.getCadetWings(foundCadet.id),
-          cadetAssignmentService.getCadetSubWings(foundCadet.id)
-        ]);
-        setWingAssignments(wingAssRes);
-        setSubWingAssignments(subWingAssRes);
+
+        // Seed directly from cadet prop data (already loaded by list page)
+        if (foundCadet.assigned_wings) {
+          setWingAssignments(foundCadet.assigned_wings);
+        }
+        if (foundCadet.assigned_sub_wings) {
+          setSubWingAssignments(foundCadet.assigned_sub_wings);
+        }
+
+        // Fetch fresh from API only if prop data is missing
+        if (!foundCadet.assigned_wings || !foundCadet.assigned_sub_wings) {
+          const [wingAssRes, subWingAssRes] = await Promise.all([
+            cadetAssignmentService.getCadetWings(foundCadet.id),
+            cadetAssignmentService.getCadetSubWings(foundCadet.id),
+          ]);
+          if (!foundCadet.assigned_wings) setWingAssignments(wingAssRes || []);
+          if (!foundCadet.assigned_sub_wings) setSubWingAssignments(subWingAssRes || []);
+        }
       } else {
         setError("Cadet profile not found.");
       }
@@ -128,13 +157,13 @@ export default function CadetAssignWingModal({
         });
       }
 
-      // Reload assignments
+      // Reload fresh assignments from API after save
       const [wingAssRes, subWingAssRes] = await Promise.all([
         cadetAssignmentService.getCadetWings(cadetProfile.id),
-        cadetAssignmentService.getCadetSubWings(cadetProfile.id)
+        cadetAssignmentService.getCadetSubWings(cadetProfile.id),
       ]);
-      setWingAssignments(wingAssRes);
-      setSubWingAssignments(subWingAssRes);
+      setWingAssignments(wingAssRes || []);
+      setSubWingAssignments(subWingAssRes || []);
 
       // Reset form
       setSelectedWingId("");
@@ -190,7 +219,7 @@ export default function CadetAssignWingModal({
           <div>
             <h3 className="text-xl font-bold text-gray-900">Cadet Wing Assignment</h3>
             <p className="text-sm text-gray-600">
-              {user?.name || "Cadet"} ({user?.service_number || "N/A"})
+              {user?.name || cadet?.name || "Cadet"} ({user?.service_number || cadet?.cadet_number || "N/A"})
             </p>
           </div>
         </div>
@@ -287,7 +316,12 @@ export default function CadetAssignWingModal({
                     <select
                       value={selectedWingId}
                       onChange={(e) => setSelectedWingId(e.target.value ? Number(e.target.value) : "")}
-                      className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className={`w-full px-3 py-2 border rounded-lg text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                        authUserFlyingWing
+                          ? "bg-gray-100 border-gray-200 cursor-not-allowed opacity-75"
+                          : "bg-white border-gray-200"
+                      }`}
+                      disabled={!!authUserFlyingWing}
                       required
                     >
                       <option value="">Select Wing</option>
@@ -297,6 +331,11 @@ export default function CadetAssignWingModal({
                         </option>
                       ))}
                     </select>
+                    {authUserFlyingWing && (
+                      <p className="mt-1 text-xs text-blue-600">
+                        Wing locked to your assigned wing: <span className="font-semibold">{authUserFlyingWing.name}</span>
+                      </p>
+                    )}
                   </div>
 
                   {/* SubWing Selection */}
@@ -315,20 +354,6 @@ export default function CadetAssignWingModal({
                         </option>
                       ))}
                     </select>
-                  </div>
-
-                  {/* Start Date */}
-                  <div className="md:col-span-2">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Start Date <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      type="date"
-                      value={startDate}
-                      onChange={(e) => setStartDate(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      required
-                    />
                   </div>
                 </div>
 

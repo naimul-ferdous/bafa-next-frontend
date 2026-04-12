@@ -124,8 +124,7 @@ const OverallCourseOlqConsolidatedTable = ({ data }: { data: any | null }) => {
 
     return (
         <div className="mt-8 mb-12">
-            <div className="flex justify-between items-end gap-4 border-b border-dashed border-gray-400 mb-4 pb-2">
-                <h2 className="text-lg font-bold text-gray-900 uppercase text-base">Overall Course OLQ Result</h2>
+            <div className="flex justify-end items-end gap-4 mb-2">
                 <div className="flex items-center gap-1 bg-gray-100 border border-gray-200 p-1 rounded-full text-xs no-print">
                     <button 
                         onClick={() => setFilter("gdp")} 
@@ -276,40 +275,17 @@ export default function CptcOlqConsolidatedPage({ params }: { params: Promise<{ 
                 </div>
             </div>
 
-            <div className="p-8 cv-content">
+            <div className="p-4 cv-content">
                 {/* Page Header */}
                 <div className="mb-8">
                     <div className="flex justify-center mb-4"><FullLogo /></div>
                     <h1 className="text-center text-xl font-bold text-gray-900 uppercase tracking-wider">Bangladesh Air Force Academy</h1>
-                    <p className="text-center font-medium text-gray-900 uppercase tracking-wider pb-2 inline-block w-full">Consolidated OLQ Result Sheet</p>
-                </div>
-
-                {/* Course Info */}
-                <div className="mb-6">
-                    <h2 className="text-lg font-bold text-gray-900 mb-4 pb-1 border-b border-dashed border-gray-400 uppercase text-base">Course Information</h2>
-                    <div className="grid grid-cols-2 gap-x-12 gap-y-3 text-base">
-                        <div className="flex"><span className="w-64 text-gray-900 font-bold uppercase">Course</span><span className="mr-4">:</span><span className="text-gray-900 flex-1">{data.course_details?.name} ({data.course_details?.code})</span></div>
-                        <div className="flex"><span className="w-64 text-gray-900 font-bold uppercase">Total Semesters</span><span className="mr-4">:</span><span className="text-gray-900 flex-1">{data.course_details?.semesters.length}</span></div>
-                    </div>
+                    <p className="text-center font-medium text-gray-900 uppercase tracking-wider inline-block w-full underline">Consolidated OLQ Result Sheet</p>
+                    <p className="text-center font-medium text-gray-900 uppercase tracking-wider pb-2 inline-block w-full underline">Course : {data.course_details?.name} ({data.course_details?.code})</p>
                 </div>
 
                 {/* Overall Table */}
                 <OverallCourseOlqConsolidatedTable data={data} />
-
-                {/* System Information */}
-                <div className="mb-6">
-                    <h2 className="text-lg font-bold text-gray-900 mb-4 pb-1 border-b border-dashed border-gray-400 uppercase text-base">System Information</h2>
-                    <div className="grid grid-cols-2 gap-x-12 gap-y-3 text-base">
-                        <div className="flex"><span className="w-64 text-gray-900 font-bold uppercase">Status</span><span className="mr-4">:</span><span className="flex-1 text-green-600 font-bold uppercase">Consolidated & Verified</span></div>
-                        <div className="flex">
-                            <span className="w-64 text-gray-900 font-bold uppercase">Generated At</span><span className="mr-4">:</span>
-                            <span className="text-gray-900 flex-1 font-medium">
-                                {new Date().toLocaleString("en-GB", { day: "2-digit", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" })}
-                            </span>
-                        </div>
-                    </div>
-                </div>
-
                 {/* Signature Section for Print */}
                 <div className="hidden print:grid grid-cols-3 gap-12 mt-24">
                     <div className="text-center"><div className="border-t-2 border-black pt-3"><p className="font-bold text-sm uppercase tracking-widest">Instructor</p></div></div>

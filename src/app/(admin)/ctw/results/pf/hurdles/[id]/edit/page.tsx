@@ -4,7 +4,8 @@
 import React, { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { ctwHurdlesResultService } from "@/libs/services/ctwHurdlesResultService";
-import { ctwResultsModuleService } from "@/libs/services/ctwResultsModuleService";
+import { ctwCommonService } from "@/libs/services/ctwCommonService";
+import { useAuth } from "@/libs/hooks/useAuth";
 import FullLogo from "@/components/ui/fulllogo";
 import HurdlesResultForm from "@/components/ctw-hurdles/HurdlesResultForm";
 import { Icon } from "@iconify/react";
@@ -16,23 +17,48 @@ export default function EditHurdlesResultPage() {
   const router = useRouter();
   const params = useParams();
   const resultId = params?.id as string;
+  const { user } = useAuth();
 
   const [loading, setLoading] = useState(false);
   const [loadingResult, setLoadingResult] = useState(true);
   const [result, setResult] = useState<CtwHurdlesResult | null>(null);
   const [error, setError] = useState("");
   const [hurdlesModuleId, setHurdlesModuleId] = useState<number | null>(null);
+  const [moduleLoading, setModuleLoading] = useState(true);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    const fetchModuleId = async () => {
+      try {
+        setModuleLoading(true);
+        const options = await ctwCommonService.getHurdlesFormOptions(user?.id || 0);
+        if (options?.module) {
+          setHurdlesModuleId(options.module.id);
+        } else {
+          setHurdlesModuleId(null);
+          setLoading(false);
+          setError("Module not found.");
+        }
+      } catch (err) {
+        setHurdlesModuleId(null);
+        setLoading(false);
+        setError("Failed to fetch module ID.");
+      } finally {
+        setModuleLoading(false);
+      }
+    };
+    fetchModuleId();
+  }, [user?.id]);
 
   useEffect(() => {
     const fetchModuleAndResult = async () => {
       try {
         setLoadingResult(true);
-        const modulesRes = await ctwResultsModuleService.getAllModules({ per_page: 100 });
-        const hurdlesModule = modulesRes.data.find((m: any) => m.code === HURDLES_MODULE_CODE);
+        const options = await ctwCommonService.getHurdlesFormOptions(user?.id || 0);
         
-        if (hurdlesModule) {
-          setHurdlesModuleId(hurdlesModule.id);
-          const resultData = await ctwHurdlesResultService.getResult(hurdlesModule.id, parseInt(resultId));
+        if (options?.module) {
+          setHurdlesModuleId(options.module.id);
+          const resultData = await ctwHurdlesResultService.getResult(options.module.id, parseInt(resultId));
           if (resultData) {
             setResult(resultData);
           } else {

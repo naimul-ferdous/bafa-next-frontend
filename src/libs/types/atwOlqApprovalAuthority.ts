@@ -5,6 +5,7 @@ export interface AtwOlqApprovalAuthority {
   sort: number;
   is_cadet_approve: boolean;
   is_final: boolean;
+  is_signature: boolean;
   is_active: boolean;
   role?: {
     id: number;

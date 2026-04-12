@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { CtwOneMileResult } from "@/libs/types/ctwOneMile";
 import { Icon } from "@iconify/react";
 import { ctwOneMileResultService } from "@/libs/services/ctwOneMileResultService";
-import { ctwResultsModuleService } from "@/libs/services/ctwResultsModuleService";
+import { ctwCommonService } from "@/libs/services/ctwCommonService";
 import { useAuth } from "@/libs/hooks/useAuth";
 import FullLogo from "@/components/ui/fulllogo";
 import DataTable, { Column } from "@/components/ui/DataTable";
@@ -44,27 +44,29 @@ export default function CtwTwoKmTenStationResultsPage() {
   const [moduleLoading, setModuleLoading] = useState(true);
 
   useEffect(() => {
+    if (!user?.id) return;
     const fetchModuleId = async () => {
       try {
         setModuleLoading(true);
-        const modulesRes = await ctwResultsModuleService.getAllModules({ per_page: 100 });
-        const module = modulesRes.data.find((m: any) => m.code === TWO_KM_10_STATION_MODULE_CODE);
-        if (module) {
-          setTwoKm10ModuleId(module.id);
+        const options = await ctwCommonService.getTwoKmTenStationFormOptions(user?.id || 0);
+        if (options?.module) {
+          setTwoKm10ModuleId(options.module.id);
         } else {
-          console.error(`Module with code ${TWO_KM_10_STATION_MODULE_CODE} not found.`);
+          setTwoKm10ModuleId(null);
+          setLoading(false);
         }
       } catch (err) {
-        console.error("Failed to fetch module ID:", err);
+        setTwoKm10ModuleId(null);
+        setLoading(false);
       } finally {
         setModuleLoading(false);
       }
     };
     fetchModuleId();
-  }, []);
+  }, [user?.id]);
 
   const loadResults = useCallback(async () => {
-    if (twoKm10ModuleId === null || !user?.id) return;
+    if (twoKm10ModuleId === null || !user?.id) { setLoading(false); return; }
 
     try {
       setLoading(true);
@@ -338,7 +340,7 @@ export default function CtwTwoKmTenStationResultsPage() {
       </div>
 
       {isInstructor ? (
-        (loading || moduleLoading) ? <TableLoading /> : (
+        (loading) ? <TableLoading /> : (
           <>
             <DataTable columns={columns} data={results} keyExtractor={(result) => result.id.toString()} emptyMessage="No results found" />
 

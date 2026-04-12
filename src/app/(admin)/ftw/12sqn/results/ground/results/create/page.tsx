@@ -14,10 +14,13 @@ export default function CreateFtw12sqnGroundExaminationMarkPage() {
   const handleSubmit = async (data: any) => {
     setLoading(true);
     try {
-      // Submit all marks to API
-      await ftw12sqnGroundExaminationMarkService.createBulkMark(data);
-      router.push("/ftw/12sqn/results/ground/results");
+      const res = await ftw12sqnGroundExaminationMarkService.createBulkMark(data);
+      
+      if (res) {
+        router.push("/ftw/12sqn/results/ground/results");
+      }
     } catch (err: any) {
+      console.error("Error creating marks:", err);
       throw err;
     } finally {
       setLoading(false);
@@ -32,8 +35,12 @@ export default function CreateFtw12sqnGroundExaminationMarkPage() {
     <div className="bg-white p-6 rounded-lg border border-gray-200">
       <div className="text-center mb-8">
         <div className="flex justify-center mb-4"><FullLogo /></div>
-        <h1 className="text-xl font-bold text-gray-900 uppercase">Bangladesh Air Force Academy</h1>
-        <h2 className="text-md font-semibold text-gray-700 mt-2 uppercase">FTW 12SQN Ground Examination Marks - Bulk Entry</h2>
+        <h1 className="text-xl font-bold text-gray-900 uppercase">
+          Bangladesh Air Force Academy
+        </h1>
+        <h2 className="text-md font-semibold text-gray-700 mt-2 uppercase">
+          FTW 12SQN Ground Examination Marks - Bulk Entry
+        </h2>
       </div>
 
       <Ftw12sqnGroundExaminationMarkForm

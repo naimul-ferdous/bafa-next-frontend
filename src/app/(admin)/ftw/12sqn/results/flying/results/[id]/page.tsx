@@ -2,196 +2,206 @@
 
 import React, { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { ftw11sqnFlyingExaminationMarkService } from "@/libs/services/ftw11sqnFlyingExaminationMarkService";
+import { ftw12sqnFlyingExaminationMarkService } from "@/libs/services/ftw12sqnFlyingExaminationMarkService";
 import FullLogo from "@/components/ui/fulllogo";
-import type { Ftw11sqnFlyingExaminationMark } from "@/libs/types/ftw11sqnExamination";
+import type { Ftw12sqnFlyingExaminationMark } from "@/libs/types/ftw12sqnExamination";
 import { Icon } from "@iconify/react";
 
-export default function ViewFtw11sqnFlyingExaminationMarkPage() {
+const formatDate = (date?: string | null) => {
+  if (!date) return "—";
+  return new Date(date).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
+};
+
+export default function ViewFtw12sqnFlyingExaminationMarkPage() {
   const router = useRouter();
   const params = useParams();
   const id = Number(params.id);
   const [loading, setLoading] = useState(true);
-  const [mark, setMark] = useState<Ftw11sqnFlyingExaminationMark | null>(null);
+  const [mark, setMark] = useState<Ftw12sqnFlyingExaminationMark | null>(null);
+  const [error, setError] = useState("");
 
   useEffect(() => {
+    if (!id) return;
     const fetchMark = async () => {
       try {
         setLoading(true);
-        const data = await ftw11sqnFlyingExaminationMarkService.getMark(id);
+        const data = await ftw12sqnFlyingExaminationMarkService.getMark(id);
         if (data) {
           setMark(data);
         } else {
-          alert("Examination mark not found");
-          router.push("/ftw/11sqn/results/flying/results");
+          setError("Examination mark not found");
         }
-      } catch (error) {
-        console.error("Failed to fetch examination mark:", error);
-        alert("Failed to fetch examination mark");
-        router.push("/ftw/11sqn/results/flying/results");
+      } catch {
+        setError("Failed to fetch examination mark");
       } finally {
         setLoading(false);
       }
     };
+    fetchMark();
+  }, [id]);
 
-    if (id) {
-      fetchMark();
-    }
-  }, [id, router]);
+  const handlePrint = () => window.print();
 
   if (loading) {
     return (
       <div className="bg-white p-6 rounded-lg border border-gray-200">
-        <div className="flex items-center justify-center min-h-[400px]">
-          <Icon icon="hugeicons:fan-01" className="w-10 h-10 animate-spin text-blue-500" />
+        <div className="text-center py-12">
+          <Icon icon="hugeicons:fan-01" className="w-10 h-10 animate-spin mx-auto my-10 text-blue-500" />
         </div>
       </div>
     );
   }
 
-  if (!mark) {
+  if (error || !mark) {
     return (
       <div className="bg-white p-6 rounded-lg border border-gray-200">
-        <div className="text-center py-8">
-          <p className="text-gray-500">Examination mark not found</p>
+        <div className="text-center py-12">
+          <Icon icon="hugeicons:alert-circle" className="w-10 h-10 mx-auto mb-4 text-red-500" />
+          <p className="text-red-600">{error || "Result not found"}</p>
+          <button
+            onClick={() => router.push("/ftw/12sqn/results/flying/results")}
+            className="mt-4 px-6 py-2 bg-blue-500 text-white rounded-xl hover:bg-blue-600"
+          >
+            Back to Results
+          </button>
         </div>
       </div>
     );
   }
 
+  const phaseTypeName = mark.phaseType?.type_name || (mark as unknown as { phase_type?: { type_name?: string } }).phase_type?.type_name || "—";
+  const examTypeName = mark.examType?.name || (mark as unknown as { exam_type?: { name?: string } }).exam_type?.name || "—";
+
   return (
-    <div className="bg-white p-6 rounded-lg border border-gray-200">
-      <div className="text-center mb-8">
-        <div className="flex justify-center mb-4"><FullLogo /></div>
-        <h1 className="text-xl font-bold text-gray-900 uppercase">Bangladesh Air Force Academy</h1>
-        <h2 className="text-md font-semibold text-gray-700 mt-2 uppercase">FTW 11SQN Flying Examination Mark Details</h2>
+    <div className="print-no-border bg-white rounded-lg border border-gray-200">
+      <style jsx global>{`
+        @media print {
+          .no-print { display: none !important; }
+        }
+      `}</style>
+
+      {/* Action Buttons */}
+      <div className="p-4 flex items-center justify-between no-print">
+        <button
+          onClick={() => history.back()}
+          className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+        >
+          <Icon icon="hugeicons:arrow-left-01" className="w-4 h-4" />
+          Back to List
+        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={handlePrint}
+            className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+          >
+            <Icon icon="hugeicons:printer" className="w-4 h-4" />
+            Print
+          </button>
+        </div>
       </div>
 
-      <div className="space-y-6">
-        {/* Cadet Information */}
-        <div className="border border-gray-200 rounded-lg p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Cadet Information</h3>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="text-sm font-medium text-gray-500">Name</label>
-              <p className="text-gray-900">{mark.cadet?.name || "—"}</p>
-            </div>
-            <div>
-              <label className="text-sm font-medium text-gray-500">BD Number</label>
-              <p className="text-gray-900">{mark.cadet?.bdno || "—"}</p>
-            </div>
+      {/* CV Content */}
+      <div className="p-8 cv-content">
+        {/* Header */}
+        <div className="mb-8">
+          <div className="flex justify-center mb-4">
+            <FullLogo />
+          </div>
+          <h1 className="text-center text-xl font-bold text-gray-900 uppercase tracking-wider">
+            Bangladesh Air Force Academy
+          </h1>
+          <p className="text-center font-medium text-gray-900 uppercase tracking-wider pb-2">
+            FTW 12SQN Flying Examination Result Sheet
+          </p>
+        </div>
+
+        {/* Meta Info */}
+        <div className="mb-6 grid grid-cols-2 gap-x-8 gap-y-1 text-sm">
+          <div className="flex gap-2">
+            <span className="font-semibold text-gray-700 w-28">Course</span>
+            <span className="text-gray-900">: {mark.course?.name || "—"} {mark.course?.code ? `(${mark.course.code})` : ""}</span>
+          </div>
+          <div className="flex gap-2">
+            <span className="font-semibold text-gray-700 w-28">Semester</span>
+            <span className="text-gray-900">: {mark.semester?.name || "—"} {mark.semester?.code ? `(${mark.semester.code})` : ""}</span>
+          </div>
+          <div className="flex gap-2">
+            <span className="font-semibold text-gray-700 w-28">Mission</span>
+            <span className="text-gray-900">: {mark.syllabus?.phase_full_name || mark.syllabus?.phase_shortname || "—"}</span>
+          </div>
+          <div className="flex gap-2">
+            <span className="font-semibold text-gray-700 w-28">Exercise</span>
+            <span className="text-gray-900">: {mark.exercise?.exercise_name || "—"}</span>
+          </div>
+          <div className="flex gap-2">
+            <span className="font-semibold text-gray-700 w-28">Phase Type</span>
+            <span className="text-gray-900">: {phaseTypeName}</span>
+          </div>
+          <div className="flex gap-2">
+            <span className="font-semibold text-gray-700 w-28">Exam Type</span>
+            <span className="text-gray-900">: {examTypeName}</span>
+          </div>
+          <div className="flex gap-2">
+            <span className="font-semibold text-gray-700 w-28">Instructor</span>
+            <span className="text-gray-900">: {mark.instructor?.name || "—"}</span>
+          </div>
+          <div className="flex gap-2">
+            <span className="font-semibold text-gray-700 w-28">Date</span>
+            <span className="text-gray-900">: {formatDate(mark.participate_date)}</span>
           </div>
         </div>
 
-        {/* Examination Information */}
-        <div className="border border-gray-200 rounded-lg p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Examination Information</h3>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="text-sm font-medium text-gray-500">Phase</label>
-              <p className="text-gray-900">{mark.syllabus?.phase_full_name || "—"}</p>
-            </div>
-            <div>
-              <label className="text-sm font-medium text-gray-500">Exercise</label>
-              <p className="text-gray-900">{mark.exercise?.exercise_name || "—"}</p>
-            </div>
-            <div>
-              <label className="text-sm font-medium text-gray-500">Phase Type</label>
-              <p className="text-gray-900">{mark.phaseType?.type_name || "—"}</p>
-            </div>
-            <div>
-              <label className="text-sm font-medium text-gray-500">Course</label>
-              <p className="text-gray-900">{mark.course?.name || "—"}</p>
-            </div>
-            <div>
-              <label className="text-sm font-medium text-gray-500">Semester</label>
-              <p className="text-gray-900">{mark.semester?.name || "—"}</p>
-            </div>
-            <div>
-              <label className="text-sm font-medium text-gray-500">Exam Type</label>
-              <p className="text-gray-900">{mark.examType?.name || "—"}</p>
-            </div>
-            <div>
-              <label className="text-sm font-medium text-gray-500">Instructor</label>
-              <p className="text-gray-900">{mark.instructor?.name || "—"}</p>
-            </div>
-          </div>
+        {/* Mark Table */}
+        <div className="mb-6 overflow-x-auto">
+          <table className="w-full border-collapse border border-black text-sm">
+            <thead>
+              <tr>
+                <th className="border border-black px-3 py-2 text-center align-middle">Ser</th>
+                <th className="border border-black px-3 py-2 text-center align-middle">BD/No</th>
+                <th className="border border-black px-3 py-2 text-center align-middle">Rank</th>
+                <th className="border border-black px-3 py-2 text-center align-middle">Name</th>
+                <th className="border border-black px-3 py-2 text-center align-middle">Present</th>
+                <th className="border border-black px-3 py-2 text-center align-middle">Achieved Mark</th>
+                <th className="border border-black px-3 py-2 text-center align-middle">Achieved Time</th>
+                <th className="border border-black px-3 py-2 text-center align-middle">Remark</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td className="border border-black px-3 py-2 text-center">1</td>
+                <td className="border border-black px-3 py-2 text-center font-mono font-bold">
+                  {mark.cadet?.bdno || mark.cadet?.bd_no || mark.cadet?.cadet_number || "—"}
+                </td>
+                <td className="border border-black px-3 py-2 text-center">
+                  {(mark.cadet as unknown as { rank?: { name?: string } })?.rank?.name || "Officer Cadet"}
+                </td>
+                <td className="border border-black px-3 py-2 font-medium">{mark.cadet?.name || "—"}</td>
+                <td className="border border-black px-3 py-2 text-center">
+                  {mark.is_present ? (
+                    <span className="inline-flex items-center px-2 py-0.5 text-xs font-semibold rounded-full bg-green-100 text-green-800">Present</span>
+                  ) : (
+                    <span className="inline-flex items-center px-2 py-0.5 text-xs font-semibold rounded-full bg-red-100 text-red-800">Absent</span>
+                  )}
+                </td>
+                <td className="border border-black px-3 py-2 text-center font-bold text-blue-700">
+                  {mark.is_present ? (mark.achieved_mark || "—") : "—"}
+                </td>
+                <td className="border border-black px-3 py-2 text-center">
+                  {mark.is_present ? (mark.achieved_time || "—") : "—"}
+                </td>
+                <td className="border border-black px-3 py-2">
+                  {!mark.is_present && mark.absent_reason
+                    ? <span className="text-red-600">{mark.absent_reason}</span>
+                    : mark.remark || "—"}
+                </td>
+              </tr>
+            </tbody>
+          </table>
         </div>
 
-        {/* Marks & Performance */}
-        <div className="border border-gray-200 rounded-lg p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Marks & Performance</h3>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="text-sm font-medium text-gray-500">Achieved Mark</label>
-              <p className="text-gray-900 text-xl font-bold">{mark.achieved_mark || "—"}</p>
-            </div>
-            <div>
-              <label className="text-sm font-medium text-gray-500">Achieved Time</label>
-              <p className="text-gray-900">{mark.achieved_time || "—"}</p>
-            </div>
-            <div>
-              <label className="text-sm font-medium text-gray-500">Participation Date</label>
-              <p className="text-gray-900">{mark.participate_date || "—"}</p>
-            </div>
-            <div>
-              <label className="text-sm font-medium text-gray-500">Present</label>
-              <p>
-                <span className={`inline-flex items-center px-2.5 py-1 text-xs font-semibold rounded-full ${mark.is_present ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}`}>
-                  {mark.is_present ? "Yes" : "No"}
-                </span>
-              </p>
-            </div>
-          </div>
-          {!mark.is_present && mark.absent_reason && (
-            <div className="mt-4">
-              <label className="text-sm font-medium text-gray-500">Absent Reason</label>
-              <p className="text-gray-900">{mark.absent_reason}</p>
-            </div>
-          )}
-          {mark.remark && (
-            <div className="mt-4">
-              <label className="text-sm font-medium text-gray-500">Remark</label>
-              <p className="text-gray-900">{mark.remark}</p>
-            </div>
-          )}
-        </div>
-
-        {/* Status */}
-        <div className="border border-gray-200 rounded-lg p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Status</h3>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="text-sm font-medium text-gray-500">Active Status</label>
-              <p>
-                <span className={`inline-flex items-center px-2.5 py-1 text-xs font-semibold rounded-full ${mark.is_active ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}`}>
-                  {mark.is_active ? "Active" : "Inactive"}
-                </span>
-              </p>
-            </div>
-            <div>
-              <label className="text-sm font-medium text-gray-500">Created At</label>
-              <p className="text-gray-900">{mark.created_at ? new Date(mark.created_at).toLocaleString() : "—"}</p>
-            </div>
-          </div>
-        </div>
-
-        {/* Actions */}
-        <div className="flex items-center gap-4">
-          <button
-            onClick={() => router.push("/ftw/11sqn/results/flying/results")}
-            className="px-6 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
-          >
-            <Icon icon="hugeicons:arrow-left-01" className="w-4 h-4 inline mr-2" />
-            Back to List
-          </button>
-          <button
-            onClick={() => router.push(`/ftw/11sqn/results/flying/results/${mark.id}/edit`)}
-            className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-          >
-            <Icon icon="hugeicons:pencil-edit-01" className="w-4 h-4 inline mr-2" />
-            Edit Mark
-          </button>
+        {/* Footer */}
+        <div className="mt-12 text-center text-sm text-gray-600">
+          <p>Generated on: {new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}</p>
         </div>
       </div>
     </div>

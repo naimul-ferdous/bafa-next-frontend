@@ -4,7 +4,8 @@
 import React, { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { ctwPtExamResultService } from "@/libs/services/ctwPtExamResultService";
-import { ctwResultsModuleService } from "@/libs/services/ctwResultsModuleService";
+import { ctwCommonService } from "@/libs/services/ctwCommonService";
+import { useAuth } from "@/libs/hooks/useAuth";
 import FullLogo from "@/components/ui/fulllogo";
 import PtExamResultForm from "@/components/ctw-ptexam/PtExamResultForm";
 import { Icon } from "@iconify/react";
@@ -16,23 +17,48 @@ export default function EditPtExamResultPage() {
   const router = useRouter();
   const params = useParams();
   const resultId = params?.id as string;
+  const { user } = useAuth();
 
   const [loading, setLoading] = useState(false);
   const [loadingResult, setLoadingResult] = useState(true);
   const [result, setResult] = useState<CtwPtExamResult | null>(null);
   const [error, setError] = useState("");
   const [ptExamModuleId, setPtExamModuleId] = useState<number | null>(null);
+  const [moduleLoading, setModuleLoading] = useState(true);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    const fetchModuleId = async () => {
+      try {
+        setModuleLoading(true);
+        const options = await ctwCommonService.getPtExamFormOptions(user?.id || 0);
+        if (options?.module) {
+          setPtExamModuleId(options.module.id);
+        } else {
+          setPtExamModuleId(null);
+          setLoading(false);
+          setError("Module not found.");
+        }
+      } catch (err) {
+        setPtExamModuleId(null);
+        setLoading(false);
+        setError("Failed to fetch module ID.");
+      } finally {
+        setModuleLoading(false);
+      }
+    };
+    fetchModuleId();
+  }, [user?.id]);
 
   useEffect(() => {
     const fetchModuleAndResult = async () => {
       try {
         setLoadingResult(true);
-        const modulesRes = await ctwResultsModuleService.getAllModules({ per_page: 100 });
-        const ptExamModule = modulesRes.data.find((m: any) => m.code === PT_EXAM_MODULE_CODE);
+        const options = await ctwCommonService.getPtExamFormOptions(user?.id || 0);
 
-        if (ptExamModule) {
-          setPtExamModuleId(ptExamModule.id);
-          const resultData = await ctwPtExamResultService.getResult(ptExamModule.id, parseInt(resultId));
+        if (options?.module) {
+          setPtExamModuleId(options.module.id);
+          const resultData = await ctwPtExamResultService.getResult(options.module.id, parseInt(resultId));
           if (resultData) {
             setResult(resultData);
           } else {

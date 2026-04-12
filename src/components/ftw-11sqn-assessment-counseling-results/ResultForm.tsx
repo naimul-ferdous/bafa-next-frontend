@@ -2,47 +2,32 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { Icon } from "@iconify/react";
 import type {
-  Ftw11sqnAssessmentCounselingResult,
-  Ftw11sqnAssessmentCounselingType,
-  Ftw11sqnAssessmentCounselingEvent,
-} from "@/libs/types/system";
-import type { SystemCourse, SystemSemester, SystemProgram, SystemBranch, SystemGroup, SystemExam } from "@/libs/types/system";
+  Ftw11SqnAssessmentCounselingResult,
+  Ftw11SqnAssessmentCounselingResultCreateData,
+  Ftw11SqnAssessmentCounselingType,
+  Ftw11SqnAssessmentCounselingEvent
+} from "@/libs/types/ftw11sqnAssessmentCounseling";
+import type { SystemCourse, SystemSemester, SystemExam } from "@/libs/types/system";
 import { commonService } from "@/libs/services/commonService";
-import { ftw11sqnAssessmentCounselingTypeService } from "@/libs/services/ftw11sqnAssessmentCounselingTypeService";
-import { cadetService } from "@/libs/services/cadetService";
+import { ftw11sqnAssessmentCounselingResultService } from "@/libs/services/ftw11sqnAssessmentCounselingResultService";
+import { useAuth } from "@/libs/hooks/useAuth";
 import DatePicker from "@/components/form/input/DatePicker";
-
-export interface Ftw11sqnAssessmentCounselingResultCreateData {
-  course_id: number;
-  semester_id: number;
-  program_id: number;
-  branch_id?: number;
-  group_id?: number;
-  exam_type_id?: number;
-  ftw_11sqn_assessment_counseling_type_id: number;
-  counseling_date?: string;
-  instructor_id: number;
-  cadet_id: number;
-  remarks_global?: string;
-  is_active?: boolean;
-  remarks?: {
-    ftw_11sqn_assessment_counseling_event_id: number;
-    remark: string;
-    is_active: boolean;
-  }[];
-}
+import SearchableSelect from "@/components/form/SearchableSelect";
 
 interface ResultFormProps {
-  initialData?: Ftw11sqnAssessmentCounselingResult | null;
-  onSubmit: (data: Ftw11sqnAssessmentCounselingResultCreateData) => Promise<void>;
+  initialData?: Ftw11SqnAssessmentCounselingResult | null;
+  onSubmit: (data: Ftw11SqnAssessmentCounselingResultCreateData) => Promise<void>;
   onCancel: () => void;
   loading: boolean;
   isEdit?: boolean;
 }
 
 export default function ResultForm({ initialData, onSubmit, onCancel, loading, isEdit = false }: ResultFormProps) {
+  const router = useRouter();
+  const { user } = useAuth();
   const [formData, setFormData] = useState({
     course_id: 0,
     semester_id: 0,
@@ -50,9 +35,9 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
     branch_id: 0,
     group_id: 0,
     exam_type_id: 0,
-    ftw_11sqn_assessment_counseling_type_id: 0,
+    ftw11sqn_assessment_counseling_type_id: 0,
     counseling_date: new Date().toLocaleDateString("en-GB"), // Initialize with today's date
-    instructor_id: 0,
+    instructor_id: user?.id || 0,
     cadet_id: 0,
     remarks: "", // Global remarks
     is_active: true,
@@ -64,145 +49,130 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
   // Dropdown data
   const [courses, setCourses] = useState<SystemCourse[]>([]);
   const [semesters, setSemesters] = useState<SystemSemester[]>([]);
-  const [programs, setPrograms] = useState<SystemProgram[]>([]);
-  const [branches, setBranches] = useState<SystemBranch[]>([]);
-  const [groups, setGroups] = useState<SystemGroup[]>([]);
   const [exams, setExams] = useState<SystemExam[]>([]);
   const [cadets, setCadets] = useState<any[]>([]);
-  const [instructors, setInstructors] = useState<any[]>([]);
+  const [cadetToResultMap, setCadetToResultMap] = useState<{ [cadetId: number]: number }>({});
+  const [duplicateWarning, setDuplicateWarning] = useState<{ name: string; resultId: number } | null>(null);
   
   const [loadingDropdowns, setLoadingDropdowns] = useState(true);
+  const [loadingSemesters, setLoadingSemesters] = useState(false);
   const [loadingCadets, setLoadingCadets] = useState(false);
 
   // Auto-detected Counseling type
-  const [detectedType, setDetectedType] = useState<Ftw11sqnAssessmentCounselingType | null>(null);
-  const [availableEvents, setAvailableEvents] = useState<Ftw11sqnAssessmentCounselingEvent[]>([]);
+  const [detectedType, setDetectedType] = useState<Ftw11SqnAssessmentCounselingType | null>(null);
+  const [availableEvents, setAvailableEvents] = useState<Ftw11SqnAssessmentCounselingEvent[]>([]);
 
-  // Load dropdown data
+  // 1. Initial Load: Get Courses and Exams
   useEffect(() => {
-    const loadDropdownData = async () => {
+    const loadInitialOptions = async () => {
       try {
         setLoadingDropdowns(true);
-        const commonData = await commonService.getResultOptions();
-
-        if (commonData) {
-          setCourses(commonData.courses || []);
-          setSemesters(commonData.semesters.filter(s => !!s.is_flying));
-          setPrograms((commonData.programs || []).filter(p => !!p.is_flying));
-          setBranches(commonData.branches.filter(b => !!b.is_flying));
-          setGroups(commonData.groups || []);
-          setExams(commonData.exams || []);
-          setInstructors(commonData.instructors || []);
+        const options = await ftw11sqnAssessmentCounselingResultService.getFormOptions();
+        if (options) {
+          setCourses(options.courses);
+          setExams(options.exams);
         }
       } catch (err) {
-        console.error("Failed to load dropdown data:", err);
-        setError("Failed to load required data. Please refresh the page.");
+        console.error("Failed to load initial form options:", err);
+        setError("Failed to load form options. Please refresh.");
       } finally {
         setLoadingDropdowns(false);
       }
     };
-
-    loadDropdownData();
+    loadInitialOptions();
   }, []);
 
-  // Fetch Counseling Type when course and semester change
+  // 2a. Load semesters when course changes
   useEffect(() => {
-    const fetchCounselingType = async () => {
-      if (!formData.course_id || !formData.semester_id) {
-        setDetectedType(null);
-        setAvailableEvents([]);
-        return;
-      }
-
+    if (!formData.course_id) {
+      setSemesters([]);
+      return;
+    }
+    const fetchSemesters = async () => {
+      setLoadingSemesters(true);
       try {
-        const response = await ftw11sqnAssessmentCounselingTypeService.getAllTypes({
-          course_id: formData.course_id,
-          semester_id: formData.semester_id,
-        });
-
-        if (response.data && response.data.length > 0) {
-          const type = response.data.find(t => t.is_active) || response.data[0];
-          setDetectedType(type);
-          setFormData(prev => ({ ...prev, ftw_11sqn_assessment_counseling_type_id: type.id }));
-          
-          const fullType = await ftw11sqnAssessmentCounselingTypeService.getType(type.id);
-          if (fullType && fullType.events) {
-            const activeEvents = fullType.events.filter(e => e.is_active).sort((a, b) => (a.order || 0) - (b.order || 0));
-            setAvailableEvents(activeEvents);
-            
-            // Initialize remarks if not already set
-            if (Object.keys(eventRemarks).length === 0) {
-                const initialRemarks: { [key: number]: string } = {};
-                activeEvents.forEach(e => {
-                    initialRemarks[e.id] = "";
-                });
-                setEventRemarks(initialRemarks);
-            }
-          }
-        } else {
-          setDetectedType(null);
-          setAvailableEvents([]);
-          setFormData(prev => ({ ...prev, ftw_11sqn_assessment_counseling_type_id: 0 }));
+        const allSemesters = await commonService.getSemestersByCourse(formData.course_id);
+        const semestersList = allSemesters.filter(s => s.is_flying === true);
+        setSemesters(semestersList);
+        if (semestersList.length === 1) {
+          setFormData(prev => ({ ...prev, semester_id: semestersList[0].id }));
+        } else if (semestersList.length > 0 && !isEdit) {
+          setFormData(prev => {
+            if (prev.semester_id && semestersList.some(s => s.id === prev.semester_id)) return prev;
+            return { ...prev, semester_id: semestersList[0].id };
+          });
         }
       } catch (err) {
-        console.error("Failed to fetch counseling type:", err);
+        console.error("Failed to fetch semesters:", err);
+      } finally {
+        setLoadingSemesters(false);
       }
     };
+    fetchSemesters();
+  }, [formData.course_id, isEdit]);
 
-    if (!isEdit) {
-      fetchCounselingType();
-    }
-  }, [formData.course_id, formData.semester_id, isEdit]);
-
-  // Load cadets based on filters
+  // 2b. Load cadets/events when course+semester both selected
   useEffect(() => {
-    const loadCadets = async () => {
-      if (!formData.course_id || !formData.semester_id || !formData.program_id) {
-        setCadets([]);
-        return;
-      }
+    if (!formData.course_id || !formData.semester_id) return;
 
+    const loadContextData = async () => {
       try {
         setLoadingCadets(true);
-        const cadetsRes = await cadetService.getAllCadets({
-          per_page: 500,
+
+        const options = await ftw11sqnAssessmentCounselingResultService.getFormOptions({
           course_id: formData.course_id,
           semester_id: formData.semester_id,
-          program_id: formData.program_id,
-          branch_id: formData.branch_id || undefined,
-          group_id: formData.group_id || undefined,
         });
-        setCadets(cadetsRes.data.filter(c => c.is_active));
+
+        if (options) {
+          setCadets(options.cadets);
+          setCadetToResultMap(options.existing_results_map);
+
+          if (options.counseling_type) {
+            setDetectedType(options.counseling_type);
+            setFormData(prev => ({ ...prev, ftw11sqn_assessment_counseling_type_id: options.counseling_type!.id }));
+
+            const activeEvents = (options.counseling_type.events || [])
+              .filter((e: Ftw11SqnAssessmentCounselingEvent) => e.is_active)
+              .sort((a: Ftw11SqnAssessmentCounselingEvent, b: Ftw11SqnAssessmentCounselingEvent) => (a.order || 0) - (b.order || 0));
+            setAvailableEvents(activeEvents);
+
+            const initialRemarks: { [key: number]: string } = {};
+            activeEvents.forEach((e: Ftw11SqnAssessmentCounselingEvent) => { initialRemarks[e.id] = ""; });
+            setEventRemarks(initialRemarks);
+          } else {
+            setDetectedType(null);
+            setAvailableEvents([]);
+          }
+        }
       } catch (err) {
-        console.error("Failed to load cadets:", err);
+        console.error("Failed to load context data:", err);
       } finally {
         setLoadingCadets(false);
       }
     };
 
-    if (!isEdit) {
-      loadCadets();
-    }
-  }, [formData.course_id, formData.semester_id, formData.program_id, formData.branch_id, formData.group_id, isEdit]);
+    loadContextData();
+  }, [formData.course_id, formData.semester_id]);
 
-  // Populate form with initial data
+  // Populate form with initial data (Edit mode)
   useEffect(() => {
     if (initialData) {
       setFormData({
         course_id: initialData.course_id,
         semester_id: initialData.semester_id,
-        program_id: initialData.program_id,
+        program_id: initialData.program_id || 0,
         branch_id: initialData.branch_id || 0,
         group_id: initialData.group_id || 0,
         exam_type_id: initialData.exam_type_id || 0,
-        ftw_11sqn_assessment_counseling_type_id: initialData.ftw_11sqn_assessment_counseling_type_id || 0,
+        ftw11sqn_assessment_counseling_type_id: initialData.ftw11sqn_assessment_counseling_type_id,
         counseling_date: initialData.counseling_date 
             ? new Date(initialData.counseling_date).toLocaleDateString("en-GB") 
             : new Date().toLocaleDateString("en-GB"),
         instructor_id: initialData.instructor_id || 0,
-        cadet_id: initialData.cadet_id || 0,
-        remarks: initialData.remarks_global || "",
-        is_active: initialData.is_active ?? true,
+        cadet_id: initialData.cadet_id || (initialData.result_cadets?.[0]?.cadet_id || 0),
+        remarks: initialData.remarks || "",
+        is_active: initialData.is_active,
       });
 
       if (initialData.counseling_type) {
@@ -212,8 +182,9 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
             setAvailableEvents(activeEvents);
             
             const remarksMap: { [key: number]: string } = {};
-            if (initialData.remarks) {
-                initialData.remarks.forEach(r => {
+            const firstCadet = initialData.result_cadets?.[0];
+            if (firstCadet && firstCadet.remarks) {
+                firstCadet.remarks.forEach(r => {
                     remarksMap[r.ftw_11sqn_assessment_counseling_event_id] = r.remark || "";
                 });
             }
@@ -224,6 +195,39 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
   }, [initialData]);
 
   const handleChange = (field: string, value: any) => {
+    if (field === "course_id") {
+      setFormData(prev => ({ ...prev, course_id: value, semester_id: 0, cadet_id: 0 }));
+      return;
+    }
+    if (field === "semester_id") {
+      setFormData(prev => ({ ...prev, semester_id: value, cadet_id: 0 }));
+      return;
+    }
+    if (field === "cadet_id") {
+      const selectedCadet = cadets.find(c => c.id === value);
+      
+      if (!isEdit && value && cadetToResultMap[value]) {
+        setDuplicateWarning({
+          name: selectedCadet?.name || "this cadet",
+          resultId: cadetToResultMap[value]
+        });
+      } else {
+        setDuplicateWarning(null);
+      }
+
+      if (selectedCadet) {
+        setFormData(prev => ({
+          ...prev,
+          cadet_id: value,
+          program_id: selectedCadet.program_id || prev.program_id,
+          branch_id: selectedCadet.branch_id || prev.branch_id,
+          group_id: selectedCadet.group_id || prev.group_id,
+        }));
+      } else {
+        setFormData(prev => ({ ...prev, cadet_id: value }));
+      }
+      return;
+    }
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
@@ -232,8 +236,7 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
   };
 
   const getSelectedInstructor = () => {
-    const instructor = instructors.find(i => i.id === formData.instructor_id);
-    return instructor?.name || instructor?.instructor_biodata?.name || "—";
+    return user?.name || "—";
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -242,36 +245,45 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
 
     if (!formData.course_id) { setError("Please select a course"); return; }
     if (!formData.semester_id) { setError("Please select a semester"); return; }
-    if (!formData.program_id) { setError("Please select a program"); return; }
-    if (!formData.instructor_id) { setError("Please select an instructor"); return; }
+    if (!formData.exam_type_id) { setError("Please select an exam type"); return; }
+    if (!formData.instructor_id) { setError("Instructor information not found. Please log in again."); return; }
     if (!formData.cadet_id) { setError("Please select a cadet"); return; }
-    if (!formData.ftw_11sqn_assessment_counseling_type_id) { setError("No Counseling Type found for selected Course and Semester"); return; }
+    if (duplicateWarning) { setError(`Counseling is already done for ${duplicateWarning.name}. Please edit existing result instead.`); return; }
+    if (!formData.ftw11sqn_assessment_counseling_type_id) { setError("No Counseling Type found for selected Course and Semester"); return; }
 
     try {
-      // Format date from dd/mm/yyyy to yyyy-mm-dd
+      const selectedCadet = cadets.find(c => c.id === formData.cadet_id);
+      
       const dateParts = formData.counseling_date.split("/");
       const formattedDate = dateParts.length === 3 
         ? `${dateParts[2]}-${dateParts[1]}-${dateParts[0]}` 
         : null;
 
-      const submitData: Ftw11sqnAssessmentCounselingResultCreateData = {
+      const submitData: Ftw11SqnAssessmentCounselingResultCreateData = {
         course_id: formData.course_id,
         semester_id: formData.semester_id,
-        program_id: formData.program_id,
+        program_id: formData.program_id || undefined,
         branch_id: formData.branch_id || undefined,
         group_id: formData.group_id || undefined,
         exam_type_id: formData.exam_type_id || undefined,
-        ftw_11sqn_assessment_counseling_type_id: formData.ftw_11sqn_assessment_counseling_type_id,
+        ftw11sqn_assessment_counseling_type_id: formData.ftw11sqn_assessment_counseling_type_id,
         counseling_date: formattedDate || undefined,
         instructor_id: formData.instructor_id,
-        cadet_id: formData.cadet_id,
-        remarks_global: formData.remarks || undefined,
+        remarks: formData.remarks || undefined,
         is_active: formData.is_active,
-        remarks: Object.entries(eventRemarks).map(([eventId, remark]) => ({
-          ftw_11sqn_assessment_counseling_event_id: parseInt(eventId),
-          remark: remark || "",
-          is_active: true,
-        })).filter(r => r.remark.trim() !== ""),
+        cadets: [
+          {
+            cadet_id: formData.cadet_id,
+            bd_no: selectedCadet?.bd_no || selectedCadet?.cadet_number || "",
+            is_present: true,
+            is_active: true,
+            remarks: Object.entries(eventRemarks).map(([eventId, remark]) => ({
+              ftw_11sqn_assessment_counseling_event_id: parseInt(eventId),
+              remark: remark || "",
+              is_active: true,
+            })).filter(r => r.remark.trim() !== ""),
+          }
+        ],
       };
       await onSubmit(submitData);
     } catch (err: any) {
@@ -279,8 +291,8 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
     }
   };
 
-  const filtersSelected = formData.course_id && formData.semester_id && formData.program_id;
-  const showEvents = filtersSelected && detectedType && availableEvents.length > 0 && formData.cadet_id > 0;
+  const filtersSelected = formData.course_id && formData.semester_id;
+  const showEvents = filtersSelected && detectedType && availableEvents.length > 0 && formData.cadet_id > 0 && !duplicateWarning;
 
   if (loadingDropdowns) {
     return (
@@ -299,88 +311,95 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
         </div>
       )}
 
-      {/* Top Dropdowns - Horizontal Layout matching ATW */}
-      <div className="grid grid-cols-5 gap-4">
+      {/* Top Dropdowns */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Select Course<span className="text-red-500">*</span></label>
-          <select value={formData.course_id} onChange={(e) => handleChange("course_id", parseInt(e.target.value))} className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 focus:outline-none" required>
-            <option value={0}>Select Course</option>
-            {courses.map(course => (<option key={course.id} value={course.id}>{course.name}</option>))}
-          </select>
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Select Semester<span className="text-red-500">*</span></label>
-          <select value={formData.semester_id} onChange={(e) => handleChange("semester_id", parseInt(e.target.value))} className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 focus:outline-none" required>
-            <option value={0}>Select Semester</option>
-            {semesters.map(semester => (<option key={semester.id} value={semester.id}>{semester.name}</option>))}
-          </select>
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Select Program<span className="text-red-500">*</span></label>
-          <select value={formData.program_id} onChange={(e) => handleChange("program_id", parseInt(e.target.value))} className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 focus:outline-none" required>
-            <option value={0}>Select Program</option>
-            {programs.map(program => (<option key={program.id} value={program.id}>{program.name}</option>))}
-          </select>
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Select Branch</label>
-          <select value={formData.branch_id} onChange={(e) => handleChange("branch_id", parseInt(e.target.value))} className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 focus:outline-none">
-            <option value={0}>Select Branch</option>
-            {branches.map(branch => (<option key={branch.id} value={branch.id}>{branch.name}</option>))}
-          </select>
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Select Group</label>
-          <select value={formData.group_id} onChange={(e) => handleChange("group_id", parseInt(e.target.value))} className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 focus:outline-none">
-            <option value={0}>Select Group</option>
-            {groups.map(group => (<option key={group.id} value={group.id}>{group.name}</option>))}
-          </select>
-        </div>
-      </div>
-
-      {/* Second Row */}
-      <div className="grid grid-cols-3 gap-4">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Select Exam Type</label>
-          <select value={formData.exam_type_id} onChange={(e) => handleChange("exam_type_id", parseInt(e.target.value))} className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 focus:outline-none">
-            <option value={0}>Select Exam Type</option>
-            {exams.map(exam => (<option key={exam.id} value={exam.id}>{exam.name}</option>))}
-          </select>
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Select Instructor<span className="text-red-500">*</span></label>
-          <select value={formData.instructor_id} onChange={(e) => handleChange("instructor_id", parseInt(e.target.value))} className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 focus:outline-none" required>
-            <option value={0}>Select Instructor</option>
-            {instructors.map(ins => (<option key={ins.id} value={ins.id}>{ins.name || ins.instructor_biodata?.name} ({ins.service_number || ins.instructor_biodata?.service_number})</option>))}
-          </select>
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Select Cadet<span className="text-red-500">*</span></label>
-          <select 
-            value={formData.cadet_id} 
-            onChange={(e) => handleChange("cadet_id", parseInt(e.target.value))} 
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 focus:outline-none" 
+          <label className="block text-sm font-bold text-gray-700 mb-2 uppercase tracking-wide">Select Course<span className="text-red-500">*</span></label>
+          <SearchableSelect
+            options={courses.map((c: any) => ({ value: c.id.toString(), label: c.name }))}
+            value={formData.course_id.toString()}
+            onChange={(val: string) => handleChange("course_id", parseInt(val))}
+            placeholder="Select Course"
             required
-            disabled={!filtersSelected || loadingCadets}
-          >
-            <option value={0}>{loadingCadets ? "Loading cadets..." : "Select Cadet"}</option>
-            {cadets.map(cadet => (<option key={cadet.id} value={cadet.id}>{cadet.name} ({cadet.bd_no || cadet.cadet_number})</option>))}
-          </select>
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm font-bold text-gray-700 mb-2 uppercase tracking-wide">Select Semester<span className="text-red-500">*</span></label>
+          <SearchableSelect
+            options={semesters.map((s: any) => ({ value: s.id.toString(), label: s.name }))}
+            value={formData.semester_id.toString()}
+            onChange={(val: string) => handleChange("semester_id", parseInt(val))}
+            placeholder={
+              loadingSemesters 
+                ? "Loading semesters..." 
+                : !formData.course_id 
+                  ? "Select course first" 
+                  : semesters.length === 0 
+                    ? "No semesters found" 
+                    : "Select Semester"
+            }
+            disabled={!formData.course_id || loadingSemesters}
+            required
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-bold text-gray-700 mb-2 uppercase tracking-wide">Select Exam Type<span className="text-red-500">*</span></label>
+          <SearchableSelect
+            options={exams.map((e: any) => ({ value: e.id.toString(), label: e.name }))}
+            value={formData.exam_type_id.toString()}
+            onChange={(val: string) => handleChange("exam_type_id", parseInt(val))}
+            placeholder="Select Exam Type"
+            required
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm font-bold text-gray-700 mb-2 uppercase tracking-wide">Select Cadet <span className="text-gray-500 font-normal italic">(Search by Name or BD No)</span><span className="text-red-500">*</span></label>
+          <SearchableSelect
+            options={cadets.map((c: any) => ({
+              value: c.id.toString(),
+              label: `${c.name} (${c.bd_no || c.cadet_number})${cadetToResultMap[c.id] ? " — [ALREADY COUNSELED]" : ""}`,
+              ...(cadetToResultMap[c.id] ? { className: "text-orange-500 font-medium" } : {}),
+            }))}
+            value={formData.cadet_id.toString()}
+            onChange={(val: string) => handleChange("cadet_id", parseInt(val))}
+            placeholder={
+              !formData.course_id || !formData.semester_id
+                ? "Select course & semester first"
+                : loadingCadets
+                  ? "Loading cadets..."
+                  : cadets.length === 0
+                    ? "No assigned cadets found"
+                    : "Search for a cadet..."
+            }
+            disabled={isEdit || !formData.course_id || !formData.semester_id || loadingCadets}
+            required
+          />
         </div>
       </div>
 
-      {/* Input Matrix / Table - Exactly following ATW format */}
+      {/* Input Matrix */}
       {!showEvents ? (
         <div className="text-center py-12 text-gray-500 border border-dashed border-black rounded-xl">
           <Icon icon="hugeicons:user-edit" className="w-12 h-12 mx-auto mb-3 text-black" />
-          {!filtersSelected ? (
-            <p>Please select Course, Semester, and Program first</p>
+          {duplicateWarning ? (
+            <div className="space-y-4">
+                <p className="text-amber-700 font-bold text-lg">Counseling Session Already Recorded</p>
+                <p className="text-gray-600">A counseling record already exists for <b>{duplicateWarning.name}</b> in this semester.</p>
+                <div className="flex justify-center">
+                  <button
+                    type="button"
+                    onClick={() => router.push(`/ftw11sqn/assessments/counselings/results/${duplicateWarning.resultId}/edit`)}
+                    className="px-6 py-2 bg-amber-600 text-white font-bold rounded-lg hover:bg-amber-700 flex items-center gap-2 shadow-md transition-all active:scale-95"
+                  >
+                    <Icon icon="hugeicons:pencil-edit-01" className="w-5 h-5" />
+                    EDIT EXISTING RESULT
+                  </button>
+                </div>
+            </div>
+          ) : !filtersSelected ? (
+            <p>Please select Course and Semester first</p>
           ) : !formData.cadet_id ? (
             <p>Please select a Cadet to start inputting remarks</p>
           ) : !detectedType ? (
@@ -396,14 +415,14 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
               <tr className="border-b border-black">
                 <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 border-r border-black uppercase">EVENTS</th>
                 <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 border-r border-black uppercase">REMARKS<span className="text-red-500">*</span></th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 border-r border-black uppercase whitespace-nowrap">{`Cadet's Initial & Date`}</th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 border-r border-black uppercase whitespace-nowrap">Instructor (Rank & Name)</th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 border-r border-black uppercase">OC WGS</th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 uppercase">CI BAFA</th>
+                <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700 border-r border-black uppercase whitespace-nowrap">{`Cadet's Initial & Date`}</th>
+                <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700 border-r border-black uppercase whitespace-nowrap">Instructor (Rank & Name)</th>
+                <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700 border-r border-black uppercase">OC WGS</th>
+                <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700 uppercase">CI BAFA</th>
               </tr>
             </thead>
             <tbody>
-              {availableEvents.map((event, index) => (
+              {availableEvents.map((event: Ftw11SqnAssessmentCounselingEvent, index: number) => (
                 <tr key={event.id} className={index !== availableEvents.length - 1 ? "border-b border-black" : ""}>
                   <td className="px-4 py-3 text-sm text-gray-900 border-r border-black font-medium">
                     {event.event_name}
@@ -411,7 +430,7 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
                   <td className="px-4 py-3 border-r border-black min-w-[450px]">
                     <textarea
                       value={eventRemarks[event.id] || ""}
-                      onChange={(e) => handleEventRemarkChange(event.id, e.target.value)}
+                      onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => handleEventRemarkChange(event.id, e.target.value)}
                       className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none min-h-[80px] resize-none text-sm"
                       placeholder="Enter remarks..."
                       required
@@ -422,8 +441,9 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
                       <td rowSpan={availableEvents.length} className="px-4 py-3 border-r border-black align-middle text-center bg-white max-w-[150px]">
                         <DatePicker
                           value={formData.counseling_date}
-                          onChange={(e) => handleChange("counseling_date", e.target.value)}
+                          onChange={(e: any) => handleChange("counseling_date", e.target.value)}
                           placeholder="Select Date"
+                          className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none text-center"
                         />
                       </td>
                       <td rowSpan={availableEvents.length} className="px-4 py-3 text-sm text-gray-900 border-r border-black align-middle text-center bg-white">
@@ -439,17 +459,6 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
           </table>
         </div>
       )}
-
-      {/* Global Batch Remarks */}
-      <div className="border border-gray-200 rounded-lg p-6">
-        <label className="block text-sm font-medium text-gray-700 mb-2 font-bold uppercase">Overall Summary / Additional Observations</label>
-        <textarea
-          value={formData.remarks}
-          onChange={(e) => handleChange("remarks", e.target.value)}
-          className="w-full px-4 py-2 border border-gray-200 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 focus:outline-none min-h-[100px]"
-          placeholder="Add any general summary..."
-        />
-      </div>
 
       <div className="flex items-center justify-end gap-3 mt-8 pt-6 border-t border-gray-200">
         <button type="button" onClick={onCancel} className="px-6 py-2 border border-black text-black rounded-xl hover:bg-gray-50" disabled={loading}>

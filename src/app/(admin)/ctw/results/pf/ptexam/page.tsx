@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { CtwPtExamResult } from "@/libs/types/ctwPtExam";
 import { Icon } from "@iconify/react";
 import { ctwPtExamResultService } from "@/libs/services/ctwPtExamResultService";
-import { ctwResultsModuleService } from "@/libs/services/ctwResultsModuleService";
+import { ctwCommonService } from "@/libs/services/ctwCommonService";
 import { useAuth } from "@/libs/hooks/useAuth";
 import FullLogo from "@/components/ui/fulllogo";
 import DataTable, { Column } from "@/components/ui/DataTable";
@@ -44,27 +44,29 @@ export default function CtwPtExamResultsPage() {
   const [moduleLoading, setModuleLoading] = useState(true);
 
   useEffect(() => {
+    if (!user?.id) return;
     const fetchModuleId = async () => {
       try {
         setModuleLoading(true);
-        const modulesRes = await ctwResultsModuleService.getAllModules({ per_page: 100 });
-        const ptExamModule = modulesRes.data.find((m: any) => m.code === PT_EXAM_MODULE_CODE);
-        if (ptExamModule) {
-          setPtExamModuleId(ptExamModule.id);
+        const options = await ctwCommonService.getPtExamFormOptions(user?.id || 0);
+        if (options?.module) {
+          setPtExamModuleId(options.module.id);
         } else {
-          console.error(`Module with code ${PT_EXAM_MODULE_CODE} not found.`);
+          setPtExamModuleId(null);
+          setLoading(false);
         }
       } catch (err) {
-        console.error("Failed to fetch module ID:", err);
+        setPtExamModuleId(null);
+        setLoading(false);
       } finally {
         setModuleLoading(false);
       }
     };
     fetchModuleId();
-  }, []);
+  }, [user?.id]);
 
   const loadResults = useCallback(async () => {
-    if (ptExamModuleId === null || !user?.id) return;
+    if (ptExamModuleId === null || !user?.id) { setLoading(false); return; }
 
     try {
       setLoading(true);
@@ -338,7 +340,7 @@ export default function CtwPtExamResultsPage() {
       </div>
 
       {isInstructor ? (
-        (loading || moduleLoading) ? <TableLoading /> : (
+        (loading) ? <TableLoading /> : (
           <>
             <DataTable columns={columns} data={results} keyExtractor={(result) => result.id.toString()} emptyMessage="No results found" />
 

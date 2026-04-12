@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useMemo, use } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Icon } from "@iconify/react";
 import { atwResultService } from "@/libs/services/atwResultService";
 import { cadetService } from "@/libs/services/cadetService";
@@ -20,16 +20,21 @@ interface SubjectComponent {
     name: string;
     estimate_mark: number;
     percentage: number;
+    type?: string;
+    is_combined?: boolean;
+    combined_cols?: { id: number; combined_mark_id: number; referenced_mark_id: number }[];
 }
 
 interface Subject {
     id: number;
-    mapping_id: number;
     name: string;
     code: string;
     legend: string | null;
     full_mark: number;
     components: SubjectComponent[];
+    university_name?: string | null;
+    program_name?: string | null;
+    changeable_semester_id?: number | null;
 }
 
 interface Cadet {
@@ -60,9 +65,16 @@ type ActiveTab = 'consolidated' | 'breakdown';
 export default function CptcAtwCourseSemesterProgramResultsPage({ params }: { params: Promise<{ courseId: string; semesterId: string; programId: string }> }) {
     const resolvedParams = use(params);
     const router = useRouter();
+    const searchParams = useSearchParams();
     const courseId = resolvedParams.courseId;
     const semesterId = resolvedParams.semesterId;
     const programId = resolvedParams.programId;
+
+    const changeableParam = searchParams.get('changeable');
+    const changeableId = changeableParam ? parseInt(changeableParam) : undefined;
+    // Default: when no ?changeable=X is set, always show main (non-changeable) subjects only.
+    // Changeable subjects are only shown when explicitly navigating with ?changeable=X.
+    const mainOnly = !changeableId;
 
     const [data, setData] = useState<ApiResponseData | null>(null);
     const [loading, setLoading] = useState(true);
@@ -91,7 +103,9 @@ export default function CptcAtwCourseSemesterProgramResultsPage({ params }: { pa
             const responseData = await atwResultService.getSubjectWiseByProgram(
                 parseInt(courseId),
                 parseInt(semesterId),
-                parseInt(programId)
+                parseInt(programId),
+                changeableId,
+                mainOnly
             );
             if (responseData) {
                 setData(responseData);
@@ -104,7 +118,7 @@ export default function CptcAtwCourseSemesterProgramResultsPage({ params }: { pa
         } finally {
             setLoading(false);
         }
-    }, [courseId, semesterId, programId]);
+    }, [courseId, semesterId, programId, changeableId, mainOnly]);
 
     useEffect(() => {
         loadResults();
@@ -145,14 +159,20 @@ export default function CptcAtwCourseSemesterProgramResultsPage({ params }: { pa
 
     const calculateSubjectTotal = useCallback((cadet: Cadet, subject: Subject) => {
         let hasAnyMark = false;
-        const subMarks = cadet.marks[subject.mapping_id];
+        const subMarks = cadet.marks[subject.id];
         if (!subMarks) return null;
 
+        const rIds = new Set(subject.components.flatMap(c =>
+            c.is_combined && c.combined_cols ? c.combined_cols.map(col => col.referenced_mark_id) : []
+        ));
+
         const total = subject.components.reduce((acc, comp) => {
+            if (rIds.has(comp.id)) return acc;
             const inputMark = subMarks[comp.id];
             if (inputMark !== undefined) {
                 hasAnyMark = true;
                 const markVal = Number(inputMark) || 0;
+                if (comp.is_combined) return acc + markVal;
                 const estimateMark = Number(comp.estimate_mark) || 0;
                 const percentageMark = Number(comp.percentage) || 0;
                 let adjustedMark = markVal;
@@ -172,21 +192,41 @@ export default function CptcAtwCourseSemesterProgramResultsPage({ params }: { pa
         parseFloat(String(cadet.marks[subjectId]?.[compId] || 0));
 
     const getWeightedCompMark = (cadet: Cadet, subjectId: number, comp: SubjectComponent) => {
+        if (comp.is_combined) return getCompMark(cadet, subjectId, comp.id);
         const obtained = getCompMark(cadet, subjectId, comp.id);
         const estimate = parseFloat(String(comp.estimate_mark || 0));
         const percentage = parseFloat(String(comp.percentage || 0));
-        if (estimate === 0) return 0;
+        if (estimate === 0 && percentage === 0) return 0;
+        if (estimate === percentage || estimate === 0) return obtained;
         return (obtained / estimate) * percentage;
     };
 
     const isCompDiff = (comp: SubjectComponent) =>
-        parseFloat(String(comp.estimate_mark || 0)) !== parseFloat(String(comp.percentage || 0));
+        !comp.is_combined && parseFloat(String(comp.estimate_mark || 0)) !== parseFloat(String(comp.percentage || 0));
 
     const getSubjectColSpan = (subject: Subject) =>
         subject.components.reduce((acc, c) => acc + (isCompDiff(c) ? 2 : 1), 0);
 
     const subjectHasWeighted = (subject: Subject) =>
         subject.components.some(c => isCompDiff(c));
+
+    const getGroupLabel = (key: string) => {
+        if (key === 'classtest') return 'Class Test';
+        if (key === 'quiztest') return 'Quiz Test';
+        if (key === 'midsemester') return 'Mid Semester';
+        if (key === 'endsemester') return 'End Semester';
+        return key.replace(/([A-Z])/g, ' $1').trim();
+    };
+
+    const getCompGroups = (subject: Subject): Record<string, SubjectComponent[]> => {
+        const groups: Record<string, SubjectComponent[]> = {};
+        [...subject.components].sort((a, b) => a.id - b.id).forEach(comp => {
+            const type = comp.type?.toLowerCase() || 'other';
+            if (!groups[type]) groups[type] = [];
+            groups[type].push(comp);
+        });
+        return groups;
+    };
 
     const getOrdinal = (n: number) => {
         const s = ["th", "st", "nd", "rd"];
@@ -340,7 +380,13 @@ export default function CptcAtwCourseSemesterProgramResultsPage({ params }: { pa
                     <div className="mb-2">
                         <p className="text-center font-medium text-gray-900 uppercase underline tracking-wider">Academic Training Wing</p>
                         <p className="text-center font-medium text-gray-900 uppercase underline tracking-wider">
-                            {data.course_details?.name} ({data.program_details?.name})
+                            {data.course_details?.name} ({(() => {
+                                if (changeableId) {
+                                    const changeableName = data.subjects.find(s => s.changeable_semester_id != null && s.changeable_semester_id === changeableId)?.program_name;
+                                    return changeableName ?? data.program_details?.name;
+                                }
+                                return data.program_details?.name;
+                            })()})
                         </p>
                         <p className="text-center font-medium text-gray-900 uppercase underline tracking-wider">
                             {data.semester_details?.name} Exam : Mar 2026
@@ -371,277 +417,195 @@ export default function CptcAtwCourseSemesterProgramResultsPage({ params }: { pa
 
                 {/* ── CONSOLIDATED TAB ── */}
                 {activeTab === 'consolidated' && (
-                    <>
+                    <div>
                         <div className="overflow-x-auto">
                             <table className="w-full border-collapse border border-black text-sm">
-                                <thead className="font-bold">
+                                <thead>
                                     <tr>
                                         <th rowSpan={4} className="border border-black p-2 text-center align-middle w-10 no-print">
                                             <input type="checkbox" checked={sortedCadets.length > 0 && selectedIds.size === sortedCadets.length} onChange={toggleSelectAll} className="w-4 h-4 cursor-pointer" />
                                         </th>
-                                        <th rowSpan={4} className="border border-black p-2 text-center align-middle">Sl.</th>
-                                        <th rowSpan={4} className="border border-black p-2 cursor-pointer hover:bg-gray-100 no-print" onClick={() => handleSort('bd_no')}>
-                                            <div className="flex items-center justify-between">BD/No <SortIcon columnKey="bd_no" /></div>
-                                        </th>
-                                        <th rowSpan={4} className="border border-black p-2 text-center align-middle only-print">BD Number</th>
-                                        <th rowSpan={4} className="border border-black p-2 cursor-pointer hover:bg-gray-100 no-print" onClick={() => handleSort('rank')}>
-                                            <div className="flex items-center justify-between">Rank <SortIcon columnKey="rank" /></div>
-                                        </th>
-                                        <th rowSpan={4} className="border border-black p-2 text-center align-middle only-print">Rank</th>
-                                        <th rowSpan={4} className="border border-black p-2 cursor-pointer hover:bg-gray-100 no-print" onClick={() => handleSort('name')}>
-                                            <div className="flex items-center justify-between">Name <SortIcon columnKey="name" /></div>
-                                        </th>
-                                        <th rowSpan={4} className="border border-black p-2 text-center align-middle only-print">Name</th>
-                                        <th rowSpan={4} className="border border-black p-2 text-center align-middle">Branch</th>
-                                        <th colSpan={data.subjects.length} className="border border-black p-2 text-center tracking-wider">BUP Subjects</th>
-                                        <th rowSpan={4} className="border border-black p-2 text-center align-middle">Total<br />({grandTotalFullMark})</th>
-                                        <th rowSpan={4} className="border border-black p-2 text-center align-middle">%</th>
-                                        <th rowSpan={4} className="border border-black p-2 text-center cursor-pointer hover:bg-gray-100 no-print" onClick={() => handleSort('position')}>
-                                            <div className="flex items-center justify-center gap-1">Posn. <SortIcon columnKey="position" /></div>
-                                        </th>
-                                        <th rowSpan={4} className="border border-black p-2 text-center align-middle only-print">Posn.</th>
-                                        <th rowSpan={4} className="border border-black p-2 text-center align-middle">Remarks</th>
-                                        <th rowSpan={4} className="border border-black p-2 text-center align-middle no-print">Action</th>
-                                    </tr>
-                                    <tr>
-                                        {data.subjects.map((_, idx) => (
-                                            <th key={idx} className="border border-black p-1 text-center">{idx + 1}</th>
-                                        ))}
-                                    </tr>
-                                    <tr>
-                                        {data.subjects.map((sub, idx) => {
-                                            return (
-                                                <th
-                                                    key={idx}
-                                                    className="border border-black p-2 text-center text-xs"
-                                                >
-                                                    <div className="truncate" title={sub.name}>{sub.code}</div>
+                                        <th rowSpan={4} className="border border-black p-2">Sl.</th>
+                                        <th rowSpan={4} className="border border-black p-2">BD/No</th>
+                                        <th rowSpan={4} className="border border-black p-2">Rank</th>
+                                        <th rowSpan={4} className="border border-black p-2">Name</th>
+                                        <th rowSpan={4} className="border border-black p-2">Branch</th>
+                                        {(() => {
+                                            const groups: { programName: string | null; universityName: string | null; changeableId: number | null; count: number }[] = [];
+                                            let currentKey = '';
+                                            data.subjects.forEach((sub) => {
+                                                const key = `${sub.program_name || ''}-${sub.university_name || ''}-${sub.changeable_semester_id || ''}`;
+                                                if (key === currentKey && groups.length > 0) {
+                                                    groups[groups.length - 1].count++;
+                                                } else {
+                                                    groups.push({ programName: sub.program_name || null, universityName: sub.university_name || null, changeableId: sub.changeable_semester_id || null, count: 1 });
+                                                    currentKey = key;
+                                                }
+                                            });
+                                            return groups.map((g, i) => (
+                                                <th key={i} colSpan={g.count} className="border border-black p-2 text-center">
+                                                    <div>{g.universityName ? `${g.universityName} Subjects` : 'Subjects'}</div>
                                                 </th>
-                                            );
-                                        })}
+                                            ));
+                                        })()}
+                                        <th rowSpan={4} className="border border-black p-2">Total<br />({grandTotalFullMark})</th>
+                                        <th rowSpan={4} className="border border-black p-2">Percentile</th>
+                                        <th rowSpan={4} className="border border-black p-2">Position</th>
+                                        <th rowSpan={4} className="border border-black p-2">Remarks</th>
+                                        <th rowSpan={4} className="border border-black p-2 no-print">Action</th>
                                     </tr>
+                                    <tr>{data.subjects.map((_, idx) => <th key={idx} className="border border-black p-1">{idx + 1}</th>)}</tr>
                                     <tr>
                                         {data.subjects.map((sub, idx) => (
-                                            <th key={idx} className="border border-black p-1 text-center text-[10px]">{sub.full_mark}</th>
+                                            <th key={idx} className="border border-black p-2 text-xs">{sub.code}</th>
                                         ))}
                                     </tr>
+                                    <tr>{data.subjects.map((sub, idx) => <th key={idx} className="border border-black p-1 text-[10px]">{sub.full_mark}</th>)}</tr>
                                 </thead>
                                 <tbody>
-                                    {sortedCadets.map((cadet, index) => {
-                                        const failedSubjects = data.subjects
-                                            .filter(sub => {
+                                    {sortedCadets.map((cadet, index) => (
+                                        <tr key={cadet.id} className={`hover:bg-gray-50 transition-colors ${selectedIds.has(cadet.id) ? 'bg-purple-50' : ''}`}>
+                                            <td className="border border-black p-2 text-center no-print">
+                                                <input type="checkbox" checked={selectedIds.has(cadet.id)} onChange={() => toggleSelect(cadet.id)} className="w-4 h-4 cursor-pointer" />
+                                            </td>
+                                            <td className="border border-black p-2 text-center">{index + 1}</td>
+                                            <td className="border border-black p-2 text-center">{cadet.bd_no}</td>
+                                            <td className="border border-black p-2">{cadet.rank || "—"}</td>
+                                            <td className="border border-black p-2">{cadet.name}</td>
+                                            <td className="border border-black p-2 text-center">{cadet.branch || "—"}</td>
+                                            {data.subjects.map((sub) => {
                                                 const total = calculateSubjectTotal(cadet, sub);
-                                                const roundedTotal = total !== null ? Math.ceil(total) : null;
-                                                return roundedTotal !== null && roundedTotal < 50;
-                                            })
-                                            .map(sub => sub.code);
-                                        const failMessage = failedSubjects.length > 0 ? `Failed in ${failedSubjects.join(' & ')}` : "";
-                                        const finalRemarks = [failMessage, cadet.remarks].filter(Boolean).join('. ');
-
-                                        return (
-                                            <tr key={cadet.id} className={`hover:bg-gray-50/50 transition-colors font-medium ${selectedIds.has(cadet.id) ? "bg-purple-50" : ""}`}>
-                                                <td className="border border-black p-2 text-center no-print">
-                                                    <input type="checkbox" checked={selectedIds.has(cadet.id)} onChange={() => toggleSelect(cadet.id)} className="w-4 h-4 cursor-pointer" />
-                                                </td>
-                                                <td className="border border-black p-2 text-center">{index + 1}</td>
-                                                <td className="border border-black p-2 text-center">{cadet.bd_no}</td>
-                                                <td className="border border-black p-2">{cadet.rank || "—"}</td>
-                                                <td className="border border-black p-2">{cadet.name}</td>
-                                                <td className="border border-black p-2 text-center">{cadet.branch || "—"}</td>
-                                                {data.subjects.map((sub) => {
-                                                    const subTotal = calculateSubjectTotal(cadet, sub);
-                                                    const roundedTotal = subTotal !== null ? Math.ceil(subTotal) : null;
-                                                    return (
-                                                        <td
-                                                            key={`${cadet.id}-${sub.id}`}
-                                                            className={`border border-black p-2 text-center font-bold no-print ${roundedTotal !== null && roundedTotal < 50 ? 'text-red-600' : ''}`}
-                                                        >
-                                                            {roundedTotal !== null ? roundedTotal : "—"}
-                                                        </td>
-                                                    );
-                                                })}
-                                                {data.subjects.map((sub) => {
-                                                    const subTotal = calculateSubjectTotal(cadet, sub);
-                                                    const roundedTotal = subTotal !== null ? Math.ceil(subTotal) : null;
-                                                    return (
-                                                        <td key={`print-${cadet.id}-${sub.id}`} className={`border border-black p-2 text-center font-bold only-print ${roundedTotal !== null && roundedTotal < 50 ? 'text-red-600' : ''}`}>
-                                                            {roundedTotal !== null ? roundedTotal : "—"}
-                                                        </td>
-                                                    );
-                                                })}
-                                                <td className="border border-black p-2 text-center font-bold">{Math.ceil(Number(cadet.total_achieved || 0))}</td>
-                                                <td className="border border-black p-2 text-center font-bold">{cadet.percentage}</td>
-                                                <td className="border border-black p-2 text-center">{getOrdinal(cadet.position)}</td>
-                                                <td className={`border border-black p-2 text-center text-xs italic ${failedSubjects.length > 0 ? 'text-red-600 font-bold' : 'text-gray-500'}`}>
-                                                    {finalRemarks || "—"}
-                                                </td>
-                                                <td className="border border-black p-2 text-center no-print">
-                                                    <button
-                                                        onClick={() => handlePromoteSingle(cadet.id)}
-                                                        disabled={promoteFetching}
-                                                        className="px-2 py-1 bg-purple-600 text-white rounded text-xs font-bold hover:bg-purple-700 transition-colors flex items-center gap-1 mx-auto"
-                                                        title="Promote"
-                                                    >
-                                                        <Icon icon="hugeicons:graduation-scroll" className="w-3.5 h-3.5" />
-                                                        Promote
-                                                    </button>
-                                                </td>
-                                            </tr>
-                                        );
-                                    })}
+                                                const rounded = total !== null ? Math.ceil(total) : null;
+                                                return <td key={sub.id} className={`border border-black p-2 text-center font-bold ${rounded !== null && rounded < 50 ? 'text-red-600' : ''}`}>{rounded ?? "—"}</td>;
+                                            })}
+                                            <td className="border border-black p-2 text-center font-bold">{Math.ceil(cadet.total_achieved)}</td>
+                                            <td className="border border-black p-2 text-center font-bold">{cadet.percentage}</td>
+                                            <td className="border border-black p-2 text-center">{getOrdinal(cadet.position)}</td>
+                                            <td className="border border-black p-2 text-center text-xs italic text-gray-500">{cadet.remarks || "—"}</td>
+                                            <td className="border border-black p-2 text-center no-print">
+                                                <button
+                                                    onClick={() => handlePromoteSingle(cadet.id)}
+                                                    disabled={promoteFetching}
+                                                    className="px-2 py-1 bg-purple-600 text-white rounded text-xs font-bold hover:bg-purple-700 transition-colors flex items-center gap-1 mx-auto"
+                                                    title="Promote"
+                                                >
+                                                    <Icon icon="hugeicons:graduation-scroll" className="w-3.5 h-3.5" />
+                                                    Promote
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    ))}
                                 </tbody>
                             </table>
                         </div>
-
-                        <div className="px-16">
-                            <div className="flex gap-2 mt-6 mb-6">
-                                <p className="font-semibold">Legend : </p>
-                                <table className="border-collapse border border-black text-sm">
-                                    <tbody>
-                                        {data.subjects.map((sub, idx) => (
-                                            <tr key={idx}>
-                                                <td className="border border-black p-2 text-center min-w-24">{sub.legend ?? "—"}</td>
-                                                <td className="border border-black p-2 min-w-48">{sub.name}</td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-
-                            <div className="mt-12 mb-6 break-inside-avoid grid grid-cols-1 md:grid-cols-3 gap-6">
-                                <div className="flex flex-col items-center">
-                                    <div className="w-48 border-t border-black mt-16 text-center pt-2 font-bold uppercase text-sm">Prepared By</div>
-                                </div>
-                                <div className="flex flex-col items-center">
-                                    <div className="w-48 border-t border-black mt-16 text-center pt-2 font-bold uppercase text-sm">Checked By</div>
-                                </div>
-                                <div className="flex flex-col items-center">
-                                    <div className="w-48 border-t border-black mt-16 text-center pt-2 font-bold uppercase text-sm">CI / OC ATW</div>
-                                </div>
-                            </div>
-                        </div>
-                    </>
+                    </div>
                 )}
 
                 {/* ── BREAKDOWN TAB ── */}
                 {activeTab === 'breakdown' && (
                     <div className="space-y-10">
                         {data.subjects.map((subject) => {
+                            const compGroups = getCompGroups(subject);
+                            const compGroupKeys = Object.keys(compGroups);
                             const hasWeighted = subjectHasWeighted(subject);
                             const marksColSpan = getSubjectColSpan(subject);
-                            // Show ALL cadets; only hide the subject entirely if nobody has marks
-                            const hasAnyMarksForSubject = sortedCadets.some(c => c.result_ids[subject.mapping_id] !== undefined);
-                            const subjectCadets = sortedCadets;
+                            const hasResults = data.cadets.some(c => c.result_ids[subject.id] !== undefined);
 
                             return (
                                 <div key={subject.id} className="break-inside-avoid">
-                                    {/* Subject header */}
-                                    <div className="flex justify-between items-center mb-3 flex-wrap gap-2">
-                                        <div className="flex items-center gap-3">
-                                            <div className="flex items-center gap-2">
-                                                <p className="text-sm">
-                                                    <span className="font-bold text-gray-900 uppercase mr-2">Subject</span>
-                                                    <span className="border-b border-dashed border-black">
-                                                        : {subject.name} ({subject.code})
-                                                    </span>
-                                                </p>
-                                            </div>
-                                        </div>
-                                        <p className="text-sm">
-                                            <span className="font-bold text-gray-900 uppercase mr-2">Full Mark</span>
-                                            <span className="border-b border-dashed border-black">: {subject.full_mark}</span>
+                                    <div className="flex justify-between items-center mb-3">
+                                        <p className="text-sm font-bold uppercase">
+                                            Subject: {subject.name} ({subject.code})
                                         </p>
+                                        <p className="text-sm font-bold uppercase">Full Mark: {subject.full_mark}</p>
                                     </div>
 
-                                    <div className="overflow-x-auto">
-                                        <table className="w-full border-collapse border border-black text-sm">
-                                            <thead>
-                                                {/* Header Row 1 */}
-                                                <tr>
-                                                    <th rowSpan={2} className="border border-black px-2 py-2 text-center align-middle">Ser</th>
-                                                    <th rowSpan={2} className="border border-black px-2 py-2 text-center align-middle">BD/No</th>
-                                                    <th rowSpan={2} className="border border-black px-2 py-2 text-center align-middle">Rank</th>
-                                                    <th rowSpan={2} className="border border-black px-2 py-2 text-center align-middle">Name</th>
-                                                    <th rowSpan={2} className="border border-black px-2 py-2 text-center align-middle">Branch</th>
-                                                    <th colSpan={marksColSpan} className="border border-black px-2 py-2 text-center">
-                                                        Marks Obtained
+                                    <table className="w-full border-collapse border border-black text-sm">
+                                        <thead>
+                                            <tr>
+                                                <th rowSpan={3} className="border border-black px-2 py-2 text-center align-middle">Ser</th>
+                                                <th rowSpan={3} className="border border-black px-2 py-2 text-center align-middle">BD/No</th>
+                                                <th rowSpan={3} className="border border-black px-2 py-2 text-center align-middle">Rank</th>
+                                                <th rowSpan={3} className="border border-black px-2 py-2 text-center align-middle">Name</th>
+                                                <th rowSpan={3} className="border border-black px-2 py-2 text-center align-middle">Branch</th>
+                                                <th colSpan={marksColSpan} className="border border-black px-2 py-2 text-center">Marks Obtained</th>
+                                                {hasWeighted && (
+                                                    <th rowSpan={3} className="border border-black px-2 py-2 text-center align-middle">
+                                                        Total Marks<br />{subject.full_mark}
                                                     </th>
-                                                    {hasWeighted && (
-                                                        <th rowSpan={2} className="border border-black px-2 py-2 text-center align-middle text-blue-700">
-                                                            Total Marks<br />{subject.full_mark}
+                                                )}
+                                            </tr>
+                                            <tr>
+                                                {compGroupKeys.map(key => {
+                                                    const groupTotal = compGroups[key].reduce((acc, c) => acc + parseFloat(String(c.percentage || 0)), 0);
+                                                    return (
+                                                        <th key={key} colSpan={compGroups[key].reduce((acc, c) => acc + (isCompDiff(c) ? 2 : 1), 0)} className="border border-black px-2 py-1 text-center capitalize">
+                                                            {getGroupLabel(key)}<br />
+                                                            <span>{groupTotal % 1 === 0 ? groupTotal : groupTotal.toFixed(2)}%</span>
                                                         </th>
-                                                    )}
-                                                </tr>
-                                                {/* Header Row 2 – component names */}
-                                                <tr>
-                                                    {subject.components.map(comp => {
-                                                        const diff = isCompDiff(comp);
-                                                        return diff ? (
+                                                    );
+                                                })}
+                                            </tr>
+                                            <tr>
+                                                {compGroupKeys.map(key =>
+                                                    compGroups[key].map(comp => (
+                                                        isCompDiff(comp) ? (
                                                             <React.Fragment key={comp.id}>
-                                                                <th className="border border-black px-2 py-1 text-center text-xs">
-                                                                    {comp.name}<br />({comp.estimate_mark})
-                                                                </th>
-                                                                <th className="border border-black px-2 py-1 text-center text-xs">
-                                                                    {comp.percentage}% of Obt. Mks.
-                                                                </th>
+                                                                <th className="border border-black px-2 py-1 text-center text-xs">{Number(comp.estimate_mark).toFixed(0)}%</th>
+                                                                <th className="border border-black px-2 py-1 text-center text-xs">{Number(comp.percentage).toFixed(0)}%</th>
                                                             </React.Fragment>
                                                         ) : (
-                                                            <th key={comp.id} className="border border-black px-2 py-1 text-center text-xs">
-                                                                {comp.name}<br />({comp.estimate_mark})
-                                                            </th>
-                                                        );
-                                                    })}
+                                                            <th key={comp.id} className="border border-black px-2 py-1 text-center text-xs">{comp.name} <br />{Number(comp.percentage).toFixed(0)}%</th>
+                                                        )
+                                                    ))
+                                                )}
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {(!hasResults || sortedCadets.length === 0) ? (
+                                                <tr>
+                                                    <td colSpan={5 + marksColSpan + (hasWeighted ? 1 : 0)} className="border border-black px-4 py-8 text-center text-gray-500 italic">
+                                                        No result inputted yet
+                                                    </td>
                                                 </tr>
-                                            </thead>
-                                            <tbody>
-                                                {!hasAnyMarksForSubject ? (
-                                                    <tr>
-                                                        <td colSpan={6 + marksColSpan + (hasWeighted ? 1 : 0)} className="border border-black px-2 py-4 text-center text-gray-400 text-xs">
-                                                            No marks recorded for this subject
-                                                        </td>
-                                                    </tr>
-                                                ) : (
-                                                    subjectCadets.map((cadet, index) => {
-                                                        const subTotal = calculateSubjectTotal(cadet, subject);
-                                                        return (
-                                                            <tr key={cadet.id}>
-                                                                <td className="border border-black px-2 py-2 text-center">{index + 1}</td>
-                                                                <td className="border border-black px-2 py-2 text-center">{cadet.bd_no}</td>
-                                                                <td className="border border-black px-2 py-2 text-center">{cadet.rank || "—"}</td>
-                                                                <td className="border border-black px-2 py-2 font-medium">{cadet.name}</td>
-                                                                <td className="border border-black px-2 py-2 text-center">{cadet.branch || "—"}</td>
-
-                                                                {subject.components.map(comp => {
-                                                                    const diff = isCompDiff(comp);
-                                                                    const hasMark = cadet.marks[subject.mapping_id]?.[comp.id] !== undefined;
-                                                                    return diff ? (
-                                                                        <React.Fragment key={comp.id}>
-                                                                            <td className="border border-black px-2 py-2 text-center">
-                                                                                {hasMark ? getCompMark(cadet, subject.mapping_id, comp.id).toFixed(2) : "—"}
-                                                                            </td>
-                                                                            <td className="border border-black px-2 py-2 text-center font-medium">
-                                                                                {hasMark ? getWeightedCompMark(cadet, subject.mapping_id, comp).toFixed(2) : "—"}
-                                                                            </td>
-                                                                        </React.Fragment>
-                                                                    ) : (
-                                                                        <td key={comp.id} className="border border-black px-2 py-2 text-center">
-                                                                            {hasMark ? getCompMark(cadet, subject.mapping_id, comp.id).toFixed(2) : "—"}
+                                            ) : sortedCadets.map((cadet, index) => {
+                                                const subTotal = calculateSubjectTotal(cadet, subject);
+                                                return (
+                                                    <tr key={cadet.id}>
+                                                        <td className="border border-black px-2 py-2 text-center">{index + 1}</td>
+                                                        <td className="border border-black px-2 py-2 text-center">{cadet.bd_no}</td>
+                                                        <td className="border border-black px-2 py-2 text-center">{cadet.rank || "—"}</td>
+                                                        <td className="border border-black px-2 py-2 font-medium">{cadet.name}</td>
+                                                        <td className="border border-black px-2 py-2 text-center">{cadet.branch || "—"}</td>
+                                                        {compGroupKeys.map(key =>
+                                                            compGroups[key].map(comp => {
+                                                                if (comp.is_combined) {
+                                                                    return (
+                                                                        <td key={comp.id} className="border border-black px-2 py-2 text-center font-medium">
+                                                                            {getCompMark(cadet, subject.id, comp.id).toFixed(2)}
                                                                         </td>
                                                                     );
-                                                                })}
-
-                                                                {hasWeighted && (
-                                                                    <td className="border border-black px-2 py-2 text-center text-blue-700 font-bold">
-                                                                        {subTotal !== null ? Math.ceil(subTotal) : "—"}
-                                                                    </td>
-                                                                )}
-                                                            </tr>
-                                                        );
-                                                    })
-                                                )}
-                                            </tbody>
-                                        </table>
-                                    </div>
+                                                                }
+                                                                return isCompDiff(comp) ? (
+                                                                    <React.Fragment key={comp.id}>
+                                                                        <td className="border border-black px-2 py-2 text-center">{getCompMark(cadet, subject.id, comp.id).toFixed(2)}</td>
+                                                                        <td className="border border-black px-2 py-2 text-center font-medium">{getWeightedCompMark(cadet, subject.id, comp).toFixed(2)}</td>
+                                                                    </React.Fragment>
+                                                                ) : (
+                                                                    <td key={comp.id} className="border border-black px-2 py-2 text-center">{getCompMark(cadet, subject.id, comp.id).toFixed(2)}</td>
+                                                                );
+                                                            })
+                                                        )}
+                                                        {hasWeighted && (
+                                                            <td className="border border-black px-2 py-2 text-center font-bold">
+                                                                {subTotal !== null ? Math.ceil(subTotal) : "—"}
+                                                            </td>
+                                                        )}
+                                                    </tr>
+                                                );
+                                            })}
+                                        </tbody>
+                                    </table>
                                 </div>
                             );
                         })}

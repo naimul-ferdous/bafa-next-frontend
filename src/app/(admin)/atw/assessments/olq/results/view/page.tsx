@@ -121,18 +121,6 @@ export default function AtwViewAssessmentOlqResultsPage() {
       render: (result) => result.semester?.name || "—"
     },
     {
-      key: "program",
-      header: "Program",
-      className: "text-gray-700",
-      render: (result) => result.program?.name || "—"
-    },
-    {
-      key: "branch",
-      header: "Branch",
-      className: "text-gray-700",
-      render: (result) => result.branch?.name || "—"
-    },
-    {
       key: "olq_type",
       header: "OLQ Type",
       className: "text-gray-700",
@@ -148,6 +136,33 @@ export default function AtwViewAssessmentOlqResultsPage() {
           {result.result_cadets?.length || 0} cadets
         </span>
       ),
+    },
+    {
+      key: "approval_status",
+      header: "Approval Status",
+      headerAlign: "center",
+      className: "text-center",
+      render: (result) => {
+        const semApprovals = result.semester_approvals ?? [];
+        const isActive = semApprovals.length > 0;
+        const forwardedByMe = semApprovals.some((a: any) => a.forwarded_by === user?.id);
+        return (
+          <div className="flex flex-col items-center gap-1">
+            <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase border ${
+              isActive
+                ? "bg-blue-50 text-blue-700 border-blue-100"
+                : "bg-yellow-50 text-yellow-700 border-yellow-100"
+            }`}>
+              {isActive ? "In Progress" : "Not Started"}
+            </span>
+            {forwardedByMe && (
+              <span className="text-[9px] text-blue-600 font-bold flex items-center gap-0.5">
+                <Icon icon="hugeicons:checkmark-circle-02" className="w-2.5 h-2.5" /> Forwarded by me
+              </span>
+            )}
+          </div>
+        );
+      },
     },
     {
       key: "is_active",
@@ -171,19 +186,22 @@ export default function AtwViewAssessmentOlqResultsPage() {
       header: "Actions",
       headerAlign: "center",
       className: "text-center no-print",
-      render: (result) => (
-        <div className="flex items-center justify-center gap-1" onClick={(e) => e.stopPropagation()}>
-          {can('view') && (
-            <button onClick={() => handleViewResult(result)} className="p-1 text-blue-600 hover:bg-blue-50 rounded" title="View"><Icon icon="hugeicons:view" className="w-4 h-4" /></button>
-          )}
-          {can('edit') && result.created_by === user?.id && (
-            <button onClick={() => handleEditResult(result)} className="p-1 text-yellow-600 hover:bg-yellow-50 rounded" title="Edit"><Icon icon="hugeicons:pencil-edit-01" className="w-4 h-4" /></button>
-          )}
-          {can('delete') && result.created_by === user?.id && (
-            <button onClick={() => handleDeleteResult(result)} className="p-1 text-red-600 hover:bg-red-50 rounded" title="Delete"><Icon icon="hugeicons:delete-02" className="w-4 h-4" /></button>
-          )}
-        </div>
-      ),
+      render: (result) => {
+        const isForwarded = (result.semester_approvals?.length ?? 0) > 0;
+        return (
+          <div className="flex items-center justify-center gap-1" onClick={(e) => e.stopPropagation()}>
+            {can('view') && (
+              <button onClick={() => handleViewResult(result)} className="p-1.5 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-lg" title="View"><Icon icon="hugeicons:view" className="w-4 h-4" /></button>
+            )}
+            {!isForwarded && can('edit') && result.created_by === user?.id && (
+              <button onClick={() => handleEditResult(result)} className="p-1.5 bg-yellow-50 text-yellow-600 hover:bg-yellow-100 rounded-lg" title="Edit"><Icon icon="hugeicons:pencil-edit-01" className="w-4 h-4" /></button>
+            )}
+            {!isForwarded && can('delete') && result.created_by === user?.id && (
+              <button onClick={() => handleDeleteResult(result)} className="p-1.5 bg-red-50 text-red-600 hover:bg-red-100 rounded-lg" title="Delete"><Icon icon="hugeicons:delete-02" className="w-4 h-4" /></button>
+            )}
+          </div>
+        );
+      },
     },
   ];
 

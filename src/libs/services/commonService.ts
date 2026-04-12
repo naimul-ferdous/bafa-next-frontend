@@ -85,6 +85,46 @@ interface AddressOptionsResponse {
   };
 }
 
+interface CurrentSemesterCoursesResponse {
+  success: boolean;
+  message: string;
+  data: {
+    courses: SystemCourse[];
+    current_semester: {
+      id: number;
+      name: string;
+      code: string;
+    } | null;
+  };
+}
+
+interface InstructorAssignedMissionsResponse {
+  success: boolean;
+  message: string;
+  data: {
+    missions: { id: number; name: string; code: string }[];
+    exercises: { id: number; name: string; shortname: string; mission_id: number }[];
+  };
+}
+
+interface InstructorAssignedPhasesResponse {
+  success: boolean;
+  message: string;
+  data: {
+    phases: { id: number; semester_id: number; phase_full_name: string; phase_shortname: string }[];
+  };
+}
+
+interface InstructorAssignedDataResponse {
+  success: boolean;
+  message: string;
+  data: {
+    phases: { id: number; semester_id: number; phase_full_name: string; phase_shortname: string }[];
+    exercises: { id: number; name: string; shortname: string; mission_id: number }[];
+    cadets: { id: number; name: string; bd_no?: string; cadet_number?: string }[];
+  };
+}
+
 export const commonService = {
   /**
    * Get all common options for Result creation/filtering
@@ -141,6 +181,80 @@ export const commonService = {
       return result?.data || null;
     } catch (error) {
       console.error('Failed to fetch address options:', error);
+      return null;
+    }
+  },
+
+  /**
+   * Get courses for current semester (is_current in cadet_assign_semesters with is_flying semester)
+   */
+  async getCurrentSemesterCourses(): Promise<CurrentSemesterCoursesResponse['data'] | null> {
+    try {
+      const token = getToken();
+      const result = await apiClient.get<CurrentSemesterCoursesResponse>('/common/current-semester-courses', token);
+      return result?.data || null;
+    } catch (error) {
+      console.error('Failed to fetch current semester courses:', error);
+      return null;
+    }
+  },
+
+  /**
+   * Get instructor assigned missions and exercises
+   */
+  async getInstructorAssignedMissions(params?: { instructor_id?: number; semester_id?: number; course_id?: number }): Promise<InstructorAssignedMissionsResponse['data'] | null> {
+    try {
+      const token = getToken();
+      const query = new URLSearchParams();
+      if (params?.instructor_id) query.append('instructor_id', params.instructor_id.toString());
+      if (params?.semester_id) query.append('semester_id', params.semester_id.toString());
+      if (params?.course_id) query.append('course_id', params.course_id.toString());
+
+      const endpoint = `/common/instructor-assigned-missions${query.toString() ? `?${query.toString()}` : ''}`;
+      const result = await apiClient.get<InstructorAssignedMissionsResponse>(endpoint, token);
+      return result?.data || null;
+    } catch (error) {
+      console.error('Failed to fetch instructor assigned missions:', error);
+      return null;
+    }
+  },
+
+  /**
+   * Get instructor assigned phases (syllabuses) for filtering
+   */
+  async getInstructorAssignedPhases(params?: { instructor_id?: number; semester_id?: number; course_id?: number }): Promise<InstructorAssignedPhasesResponse['data'] | null> {
+    try {
+      const token = getToken();
+      const query = new URLSearchParams();
+      if (params?.instructor_id) query.append('instructor_id', params.instructor_id.toString());
+      if (params?.semester_id) query.append('semester_id', params.semester_id.toString());
+      if (params?.course_id) query.append('course_id', params.course_id.toString());
+
+      const endpoint = `/common/instructor-assigned-phases${query.toString() ? `?${query.toString()}` : ''}`;
+      const result = await apiClient.get<InstructorAssignedPhasesResponse>(endpoint, token);
+      return result?.data || null;
+    } catch (error) {
+      console.error('Failed to fetch instructor assigned phases:', error);
+      return null;
+    }
+  },
+
+  /**
+   * Get all instructor assigned data (phases, exercises, cadets) in one call
+   */
+  async getInstructorAssignedData(params?: { instructor_id?: number; semester_id?: number; course_id?: number }): Promise<InstructorAssignedDataResponse['data'] | null> {
+    try {
+      const token = getToken();
+      const query = new URLSearchParams();
+      if (params?.instructor_id) query.append('instructor_id', params.instructor_id.toString());
+      if (params?.semester_id) query.append('semester_id', params.semester_id.toString());
+      if (params?.course_id) query.append('course_id', params.course_id.toString());
+
+      const endpoint = `/common/instructor-assigned-data${query.toString() ? `?${query.toString()}` : ''}`;
+      const result = await apiClient.get<InstructorAssignedDataResponse>(endpoint, token);
+      return result?.data || null;
+    } catch (error) {
+      console.error('Failed to fetch instructor assigned data:', error);
       return null;
     }
   },

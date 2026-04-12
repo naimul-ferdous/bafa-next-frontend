@@ -30,6 +30,7 @@ export default function AtwOlqApprovalAuthorityModal({ isOpen, onClose, onSucces
     sort: 0,
     is_cadet_approve: false,
     is_final: false,
+    is_signature: false,
     is_active: true,
   });
 
@@ -43,10 +44,11 @@ export default function AtwOlqApprovalAuthorityModal({ isOpen, onClose, onSucces
           sort: authority.sort ?? 0,
           is_cadet_approve: authority.is_cadet_approve,
           is_final: authority.is_final,
+          is_signature: authority.is_signature,
           is_active: authority.is_active,
         });
       } else {
-        setFormData({ role_id: "", user_id: "", sort: 0, is_cadet_approve: false, is_final: false, is_active: true });
+        setFormData({ role_id: "", user_id: "", sort: 0, is_cadet_approve: false, is_final: false, is_signature: false, is_active: true });
       }
     }
   }, [isOpen, authority]);
@@ -179,6 +181,7 @@ export default function AtwOlqApprovalAuthorityModal({ isOpen, onClose, onSucces
                   {[
                     { key: "is_cadet_approve", label: "Cadet Approve" },
                     { key: "is_final",         label: "Final Authority" },
+                    { key: "is_signature",     label: "Signature" },
                     { key: "is_active",        label: "Is Active" },
                   ].map(({ key, label }) => (
                     <label key={key} className="flex items-center gap-2 p-3 bg-gray-50 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-100 transition-colors">

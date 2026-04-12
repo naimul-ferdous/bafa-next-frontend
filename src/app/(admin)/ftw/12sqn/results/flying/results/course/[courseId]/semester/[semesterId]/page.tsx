@@ -4,10 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Icon } from "@iconify/react";
 import { useParams, useRouter } from "next/navigation";
 import { ftw12sqnFlyingExaminationMarkService } from "@/libs/services/ftw12sqnFlyingExaminationMarkService";
-import { ftw12sqnGroundExaminationMarkService } from "@/libs/services/ftw12sqnGroundExaminationMarkService";
 import { ftw12sqnFlyingExamApprovalProcessService } from "@/libs/services/ftw12sqnFlyingExamApprovalProcessService";
-import { ftw12sqnFlyingExamApprovalStatusService } from "@/libs/services/ftw12sqnFlyingExamApprovalStatusService";
-import { ftw12sqnFlyingExamCadetApprovalStatusService } from "@/libs/services/ftw12sqnFlyingExamCadetApprovalStatusService";
 import { useAuth } from "@/libs/hooks/useAuth";
 import { Ftw12sqnFlyingExaminationMark, Ftw12sqnGroundExaminationMark } from "@/libs/types/ftw12sqnExamination";
 import type { ApprovalProcess, ApprovalStatus, CadetApprovalStatus } from "@/libs/types/approval";
@@ -16,10 +13,13 @@ import FullLogo from "@/components/ui/fulllogo";
 import ConfirmationModal from "@/components/ui/modal/ConfirmationModal";
 import FinalReportTab from "./components/FinalReportTab";
 import BupReportTab from "./components/BupReportTab";
+import ProgressReportTab from "./components/ProgressReportTab";
 import DetailsBreakdownTab from "./components/DetailsBreakdownTab";
 import ForwardToApprovalModal from "./components/ForwardToApprovalModal";
 import RejectModal from "./components/RejectModal";
 import BulkCadetApprovalModal from "./components/BulkCadetApprovalModal";
+import PrintTypeModal from "@/components/ui/modal/PrintTypeModal";
+import { FilePrintType } from "@/libs/types/filePrintType";
 
 interface SemesterData {
   semester_details: {
@@ -59,10 +59,27 @@ export default function FlyingExamination12SqnSemesterView() {
   const semesterId = params.semesterId as string;
 
   const [semesterData, setSemesterData] = useState<SemesterData | null>(null);
+  const [reportData, setReportData] = useState<{
+    semester_details: any;
+    course_details: any;
+    is_6th_semester: boolean;
+    exam_phases: any[];
+    final: any[];
+    bup: any[];
+    breakdown: {
+      flying_marks: any[];
+      ground_marks: any[];
+      approval_processes: any[];
+      approval_statuses: any[];
+      cadet_approval_statuses: any[];
+    };
+    ground_phases: any[];
+    flying_exam_phases: any[];
+  } | null>(null);
   const [groundData, setGroundData] = useState<{ cadets: { cadet_details: { id: number; name: string; bdno: string }; marks: Ftw12sqnGroundExaminationMark[] }[] } | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'final' | 'bup' | 'details'>('final');
+  const [activeTab, setActiveTab] = useState<'final' | 'bup' | 'details' | 'progress'>('final');
 
   // Approval system state
   const [approvalStatus, setApprovalStatus] = useState<ApprovalStatus | null>(null);
@@ -72,6 +89,30 @@ export default function FlyingExamination12SqnSemesterView() {
   const [nextLevelProcess, setNextLevelProcess] = useState<ApprovalProcess | null>(null);
   const [cadetApprovalStatuses, setCadetApprovalStatuses] = useState<CadetApprovalStatus[]>([]);
   const [selectedCadets, setSelectedCadets] = useState<number[]>([]);
+  const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
+  const [selectedPrintType, setSelectedPrintType] = useState<FilePrintType | null>(null);
+  const [is6thSemester, setIs6thSemester] = useState(false);
+
+  // Check if 6th semester
+  useEffect(() => {
+    if (semesterData?.semester_details?.name) {
+      const semesterName = semesterData.semester_details.name.toLowerCase();
+      setIs6thSemester(semesterName.includes('6th') || semesterName.includes('sixth'));
+    }
+  }, [semesterData]);
+
+  // Print handler
+  const handlePrint = (printType: FilePrintType) => {
+    setSelectedPrintType(printType);
+    setIsPrintModalOpen(true);
+  };
+
+  const confirmPrint = (type: FilePrintType) => {
+    setSelectedPrintType(type);
+    setIsPrintModalOpen(false);
+    setTimeout(() => window.print(), 100);
+  };
+
 
   // Modal states
   const [forwardModalVisible, setForwardModalVisible] = useState<boolean>(false);
@@ -82,15 +123,18 @@ export default function FlyingExamination12SqnSemesterView() {
   const [deleteLoading, setDeleteLoading] = useState<boolean>(false);
 
   const fetchApprovalProcess = useCallback(async () => {
-    if (!user?.role_id) return;
+    const userRoleId = user?.role?.id;
+    if (!userRoleId) return;
 
     try {
-      const result = await ftw12sqnFlyingExamApprovalProcessService.getByRoleId(user.role_id, { allData: true });
+      // Fetch current user's approval process by role
+      const result = await ftw12sqnFlyingExamApprovalProcessService.getByRoleId(userRoleId, { allData: true });
 
       if (result?.data && Array.isArray(result.data) && result.data.length > 0) {
         const currentProcess = result.data[0];
         setApprovalProcess(currentProcess);
 
+        // Fetch all approval processes to find next level
         const allProcessesResult = await ftw12sqnFlyingExamApprovalProcessService.getActive();
         if (allProcessesResult && Array.isArray(allProcessesResult) && allProcessesResult.length > 0) {
           setAllApprovalProcesses(allProcessesResult);
@@ -113,51 +157,7 @@ export default function FlyingExamination12SqnSemesterView() {
     } catch (error) {
       console.error("Error fetching approval process:", error);
     }
-  }, [user?.role_id]);
-
-  const fetchApprovalStatus = useCallback(async (courseIdNum: number, semesterIdNum: number) => {
-    try {
-      const response = await ftw12sqnFlyingExamApprovalStatusService.getLatestByCourseAndSemester(courseIdNum, semesterIdNum);
-      if (response) {
-        setApprovalStatus(response);
-      }
-
-      const allResponse = await ftw12sqnFlyingExamApprovalStatusService.getAll({
-        course_id: courseIdNum,
-        semester_id: semesterIdNum,
-        allData: true
-      });
-
-      if (allResponse?.data) {
-        const approvedStatuses = allResponse.data
-          .filter((status: ApprovalStatus) => status.approval_status === 'approved')
-          .sort((a: ApprovalStatus, b: ApprovalStatus) => {
-            const aProgress = a.progress_id || 0;
-            const bProgress = b.progress_id || 0;
-            return aProgress - bProgress;
-          });
-        setAllApprovalStatuses(approvedStatuses);
-      }
-    } catch (err) {
-      console.error('Error fetching approval status:', err);
-    }
-  }, []);
-
-  const fetchCadetApprovalStatuses = useCallback(async (courseIdNum: number, semesterIdNum: number) => {
-    try {
-      const response = await ftw12sqnFlyingExamCadetApprovalStatusService.getByCourseAndSemester(
-        courseIdNum,
-        semesterIdNum,
-        { allData: true }
-      );
-
-      if (response?.data) {
-        setCadetApprovalStatuses(response.data);
-      }
-    } catch (error) {
-      console.error('Error fetching cadet approval statuses:', error);
-    }
-  }, []);
+  }, [user]);
 
   const fetchSemesterData = useCallback(async () => {
     if (!courseId || !semesterId) return;
@@ -166,128 +166,128 @@ export default function FlyingExamination12SqnSemesterView() {
       setLoading(true);
       setError(null);
 
-      const response = await ftw12sqnFlyingExaminationMarkService.getAllMarks({
+      // Fetch report data with calculations from backend
+      const reportDataResult = await ftw12sqnFlyingExaminationMarkService.getReportData({
         course_id: parseInt(courseId),
         semester_id: parseInt(semesterId),
-        per_page: 1000,
       });
 
-      if (response.data.length === 0) {
+      if (!reportDataResult) {
         setSemesterData(null);
+        setReportData(null);
         setError("No examination marks found for this course and semester");
         return;
       }
 
-      const firstMark = response.data[0];
-      const cadetMap = new Map<number, CadetData>();
+      // Set the report data (contains final, bup, breakdown)
+      setReportData(reportDataResult);
+      setIs6thSemester(reportDataResult.is_6th_semester);
 
-      response.data.forEach((mark) => {
-        const cadetId = mark.cadet?.id;
-        if (!cadetId) return;
+      // Transform for legacy components that need old format
+      const transformedData = transformReportToLegacyFormat(reportDataResult);
+      setSemesterData(transformedData);
 
-        if (!cadetMap.has(cadetId)) {
-          cadetMap.set(cadetId, {
-            cadet_details: {
-              id: cadetId,
-              name: mark.cadet?.name || "",
-              bdno: mark.cadet?.bd_no || mark.cadet?.cadet_number || mark.cadet?.bdno || "",
-              rank: mark.cadet?.rank,
-              course_id: mark.course?.id || parseInt(courseId),
-              semester_id: mark.semester?.id || parseInt(semesterId),
-              total_examinations: 0,
-              average_mark: 0,
-            },
-            marks: [],
-          });
-        }
+      // Get ground data from reportData.breakdown
+      if (reportDataResult.breakdown?.ground_marks && reportDataResult.breakdown.ground_marks.length > 0) {
+        const groundCadetMap = new Map<number, { cadet_details: { id: number; name: string; bdno: string }; marks: any[] }>();
 
-        cadetMap.get(cadetId)!.marks.push(mark);
-      });
+        reportDataResult.breakdown.ground_marks.forEach((mark: any) => {
+          const cadetId = mark.cadet?.id;
+          if (!cadetId) return;
 
-      cadetMap.forEach((cadetData) => {
-        const validMarks = cadetData.marks
-          .map((m) => parseFloat(m.achieved_mark || "0"))
-          .filter((m) => !isNaN(m) && m > 0);
+          if (!groundCadetMap.has(cadetId)) {
+            groundCadetMap.set(cadetId, {
+              cadet_details: {
+                id: cadetId,
+                name: mark.cadet?.name || "",
+                bdno: mark.cadet?.bd_no || mark.cadet?.cadet_number || "",
+              },
+              marks: [],
+            });
+          }
 
-        cadetData.cadet_details.total_examinations = cadetData.marks.length;
-        cadetData.cadet_details.average_mark = validMarks.length > 0
-          ? validMarks.reduce((sum, m) => sum + m, 0) / validMarks.length
-          : 0;
-      });
-
-      const semData: SemesterData = {
-        semester_details: {
-          id: firstMark.semester?.id || parseInt(semesterId),
-          name: firstMark.semester?.name || "",
-          code: firstMark.semester?.code || null,
-          total_examinations: response.data.length,
-          total_cadets: cadetMap.size,
-        },
-        course_details: {
-          id: firstMark.course?.id || parseInt(courseId),
-          name: firstMark.course?.name || "",
-          code: firstMark.course?.code || null,
-        },
-        cadets: Array.from(cadetMap.values()),
-      };
-
-      setSemesterData(semData);
-
-      try {
-        const groundResponse = await ftw12sqnGroundExaminationMarkService.getAllMarks({
-          course_id: parseInt(courseId),
-          semester_id: parseInt(semesterId),
-          per_page: 1000,
+          groundCadetMap.get(cadetId)!.marks.push(mark);
         });
 
-        if (groundResponse.data.length > 0) {
-          const groundCadetMap = new Map<number, { cadet_details: { id: number; name: string; bdno: string }; marks: Ftw12sqnGroundExaminationMark[] }>();
-
-          groundResponse.data.forEach((mark) => {
-            const cadetId = mark.cadet?.id;
-            if (!cadetId) return;
-
-            if (!groundCadetMap.has(cadetId)) {
-              groundCadetMap.set(cadetId, {
-                cadet_details: {
-                  id: cadetId,
-                  name: mark.cadet?.name || "",
-                  bdno: mark.cadet?.bd_no || mark.cadet?.cadet_number || mark.cadet?.bdno || "",
-                },
-                marks: [],
-              });
-            }
-
-            groundCadetMap.get(cadetId)!.marks.push(mark);
-          });
-
-          setGroundData({
-            cadets: Array.from(groundCadetMap.values()),
-          });
-        }
-      } catch (groundErr) {
-        console.error("Error fetching ground data:", groundErr);
+        setGroundData({ cadets: Array.from(groundCadetMap.values()) });
       }
 
-      await fetchApprovalStatus(parseInt(courseId), parseInt(semesterId));
-      await fetchCadetApprovalStatuses(parseInt(courseId), parseInt(semesterId));
-    } catch (err: unknown) {
+      // Set approval data from reportData.breakdown
+      if (reportDataResult.breakdown?.approval_processes) {
+        setAllApprovalProcesses(reportDataResult.breakdown.approval_processes);
+      }
+      if (reportDataResult.breakdown?.approval_statuses) {
+        setAllApprovalStatuses(reportDataResult.breakdown.approval_statuses);
+      }
+      if (reportDataResult.breakdown?.cadet_approval_statuses) {
+        setCadetApprovalStatuses(reportDataResult.breakdown.cadet_approval_statuses);
+      }
+
+    } catch (err) {
       console.error("Error fetching semester data:", err);
-      setError(err instanceof Error ? err.message : "Failed to fetch semester data");
+      setError("Failed to load examination data");
     } finally {
       setLoading(false);
     }
-  }, [courseId, semesterId, fetchApprovalStatus, fetchCadetApprovalStatuses]);
+  }, [courseId, semesterId]);
+
+  // Transform backend report data to legacy format for existing components
+  const transformReportToLegacyFormat = (data: typeof reportData) => {
+    if (!data || !data.final) return null;
+
+    // Get flying marks from breakdown
+    const flyingMarks = data.breakdown?.flying_marks || [];
+    
+    // Group marks by cadet_id
+    const cadetMarksMap = new Map<number, any[]>();
+    flyingMarks.forEach((mark: any) => {
+      const cadetId = mark.cadet_id;
+      if (!cadetMarksMap.has(cadetId)) {
+        cadetMarksMap.set(cadetId, []);
+      }
+      cadetMarksMap.get(cadetId)!.push(mark);
+    });
+
+    const cadets = data.final.map(cadet => ({
+      cadet_details: {
+        id: cadet.cadet_id,
+        name: cadet.name,
+        bdno: cadet.bd_no,
+        rank: { id: 0, name: cadet.rank || "Officer Cadet" },
+        course_id: data.course_details?.id || 0,
+        semester_id: data.semester_details?.id || 0,
+        total_examinations: 0,
+        average_mark: 0,
+      },
+      marks: cadetMarksMap.get(cadet.cadet_id) || [],
+    }));
+
+    return {
+      semester_details: {
+        id: data.semester_details?.id || 0,
+        name: `Semester ${data.semester_details?.semester_id || ''}`,
+        code: null,
+        total_examinations: data.final.length,
+        total_cadets: cadets.length,
+      },
+      course_details: {
+        id: data.course_details?.id || 0,
+        name: `Course ${data.course_details?.id || ''}`,
+        code: null,
+      },
+      cadets,
+    };
+  };
 
   useEffect(() => {
     fetchSemesterData();
   }, [fetchSemesterData]);
 
   useEffect(() => {
-    if (user?.role_id) {
+    if (user?.role?.id) {
       fetchApprovalProcess();
     }
-  }, [user?.role_id, fetchApprovalProcess]);
+  }, [user, fetchApprovalProcess]);
 
   const handleBack = () => {
     router.push("/ftw/12sqn/results/flying/results");
@@ -320,7 +320,7 @@ export default function FlyingExamination12SqnSemesterView() {
   };
 
   const handlePrintSummary = () => {
-    window.print();
+    setIsPrintModalOpen(true);
   };
 
   const handleForwardToApproval = () => {
@@ -353,23 +353,25 @@ export default function FlyingExamination12SqnSemesterView() {
   const handleBulkApprovalSuccess = () => {
     setSelectedCadets([]);
     if (semesterData?.course_details?.id && semesterId) {
-      fetchApprovalStatus(semesterData.course_details.id, parseInt(semesterId));
-      fetchCadetApprovalStatuses(semesterData.course_details.id, parseInt(semesterId));
+      fetchSemesterData();
     }
   };
 
+  // Check if all cadets are approved at current level
   const allCadetsApproved = semesterData && approvalProcess
     ? checkAllCadetsApprovedByCurrentRole(
-        semesterData.cadets,
-        cadetApprovalStatuses,
-        approvalProcess
-      )
+      semesterData.cadets,
+      cadetApprovalStatuses,
+      approvalProcess
+    )
     : false;
 
+  // Check if final approval is complete
   const isFinalApprovalComplete = allApprovalStatuses.some(
     status => status.remark && status.remark.includes('Final approval completed')
   );
 
+  // Loading state
   if (loading) {
     return (
       <div className="w-full min-h-[60vh] flex items-center justify-center">
@@ -380,6 +382,7 @@ export default function FlyingExamination12SqnSemesterView() {
     );
   }
 
+  // Error state
   if (error || !semesterData) {
     return (
       <div className="max-w-full mx-auto px-4 py-6">
@@ -415,29 +418,145 @@ export default function FlyingExamination12SqnSemesterView() {
   const noNeedForward = approvalProcess?.no_need_forward === true;
   const isDraftman = userStatusCode === '0' || user?.role?.name?.toLowerCase().includes('draftman');
 
+  // Check if user has already forwarded at SEMESTER level
+  // (This is separate from cadet-level approvals)
   const userHasForwardedSemester = allApprovalStatuses.some(
     status => status.send_progress_id === approvalProcess?.id && status.approval_status === 'approved'
   );
 
+  // Determine if workflow is at user's level
+  // Check the latest semester-level approval status OR if no status exists yet
   const workflowAtUserLevel = (() => {
+    // If no semester approval status exists yet
     if (!approvalStatus) {
+      // First level can act if no approval yet
       return isFirstLevel || isDraftman;
     }
+
+    // Check if current semester progress is at user's level
+    // progress_id in approval_status indicates which level the workflow is at
     return approvalStatus.progress_id === approvalProcess?.id;
   })();
 
+  // Also allow action if previous level has forwarded to this level
+  // Check if there's a semester status where next_progress_id matches user's process
   const previousLevelForwardedToUser = allApprovalStatuses.some(
     status => status.next_progress_id === approvalProcess?.id && status.approval_status === 'approved'
   );
 
+  // Show action buttons if:
+  // - Final approval is not complete AND
+  // - User has NOT yet forwarded at semester level AND
+  // - Either workflow is at user's level OR previous level forwarded to user
   const canShowActionButtons = !isFinalApprovalComplete &&
     !userHasForwardedSemester &&
     (workflowAtUserLevel || previousLevelForwardedToUser || (isFirstLevel && !approvalStatus));
 
+  // Determine if forward button should be shown
+  // - Hide if is_final is true (this is the last level)
+  // - Hide if no_need_forward is true (role only approves without forwarding)
   const hasNextLevel = !isFinalLevel && !noNeedForward && nextLevelProcess !== null;
 
   return (
-    <div className="bg-white p-6 rounded-lg border border-gray-200 space-y-6">
+    <div className="bg-white p-4 rounded-lg border border-gray-200 space-y-6">
+      <style jsx global>{`
+        @media print {
+          .cv-content { width: 100% !important; max-width: none !important; }
+          table { font-size: 14px !important; }
+          .print-div { max-width: 60vh !important; margin: 0 auto !important; }
+          .no-print { display: none !important; }
+          .tab-container { display: none !important; }
+          .signature-section {
+            margin-top: 40px !important;
+            padding-top: 20px !important;
+            display: flex !important;
+            justify-content: space-between !important;
+            gap: 40px !important;
+            padding-left: 8px !important;
+            padding-right: 8px !important;
+            page-break-inside: avoid !important;
+          }
+          .signature-box {
+            min-width: 180px !important;
+            display: flex !important;
+            flex-direction: column !important;
+            align-items: flex-start !important;
+          }
+          .signature-box .sig-label {
+            font-size: 10px !important;
+            font-weight: 700 !important;
+            color: #b91c1c !important;
+            text-transform: uppercase !important;
+            letter-spacing: 0.05em !important;
+            margin-bottom: 4px !important;
+          }
+          .signature-box .sig-area {
+            height: 60px !important;
+            display: flex !important;
+            align-items: flex-end !important;
+            padding-bottom: 4px !important;
+            margin-bottom: 4px !important;
+          }
+          .signature-box .sig-name {
+            font-size: 12px !important;
+            font-weight: 700 !important;
+            text-transform: uppercase !important;
+            color: #121827 !important;
+            margin-top: 2px !important;
+          }
+          .signature-box .sig-rank {
+            font-size: 12px !important;
+            font-weight: 600 !important;
+            color: #f97316 !important;
+          }
+          .signature-box .sig-designation {
+            font-size: 10px !important;
+            color: #374151 !important;
+          }
+          .signature-box .sig-date {
+            font-size: 10px !important;
+            color: #6b7280 !important;
+            padding-top: 3px !important;
+            border-top: 1px solid #1f2937 !important;
+            margin-top: 4px !important;
+          }
+        }
+      `}</style>
+
+      {/* Dynamic @page rules — overrides browser default header/footer with custom content */}
+      <style dangerouslySetInnerHTML={{
+        __html: `
+        @media print {
+          @page {
+            size: A3 landscape;
+            margin: 14mm 10mm 14mm 10mm;
+
+            @top-left   { content: ""; }
+            @top-center {
+              content: "${(selectedPrintType?.name ?? '').replace(/"/g, '\\"')}";
+              font-size: 10pt;
+              white-space: pre;
+              text-align: center;
+              text-transform: uppercase;
+            }
+            @top-right  {
+              content: "";
+              font-size: 10pt;
+              text-align: right;
+            }
+
+            @bottom-left   { content: ""; }
+            @bottom-center {
+              content: "${(selectedPrintType?.name ?? '').replace(/"/g, '\\"')}" "\\A" counter(page);
+              font-size: 10pt;
+              white-space: pre;
+              text-align: center;
+              text-transform: uppercase;
+            }
+            @bottom-right  { content: ""; }
+          }
+        }
+      ` }} />
       <div className="relative text-center mb-8">
         <div className="flex justify-center mb-4"><FullLogo /></div>
         <h1 className="text-xl font-bold text-gray-900 uppercase">Bangladesh Air Force Academy</h1>
@@ -445,18 +564,21 @@ export default function FlyingExamination12SqnSemesterView() {
           {semesterData.semester_details.name} Flying Mission Examination Data - 12SQN BAF
         </h2>
 
-        <div className="absolute top-4 left-4">
+        {/* Back Button */}
+        <div className="absolute top-0 left-0">
           <button
             onClick={handleBack}
             className="flex items-center space-x-2 px-4 py-2 bg-transparent hover:bg-gray-100 border border-gray-300 text-black rounded-md transition-colors"
             title="Go Back"
           >
             <Icon icon="hugeicons:arrow-left-01" className="w-4 h-4" />
-            <span>Back</span>
+            <span>Back to List</span>
           </button>
         </div>
 
-        <div className="absolute flex flex-col top-4 right-4 space-y-2 print:hidden">
+        {/* Right Side - Approval Info & Buttons */}
+        <div className="absolute flex flex-col top-0 right-0 space-y-2 print:hidden">
+          {/* Approval Level Information */}
           {approvalProcess && canShowActionButtons && (
             <>
               <div className="flex items-center justify-end space-x-2 px-4 py-2 bg-blue-50 border border-blue-200 rounded-md">
@@ -488,6 +610,7 @@ export default function FlyingExamination12SqnSemesterView() {
                 </div>
               </div>
 
+              {/* Warning if not all cadets approved */}
               {!allCadetsApproved && !isDraftman && !noNeedForward && (
                 <div className="flex items-center justify-center space-x-2 px-4 py-2 bg-yellow-50 border border-yellow-200 rounded-md">
                   <Icon icon="solar:info-circle-bold" className="w-5 h-5 text-yellow-600" />
@@ -503,6 +626,7 @@ export default function FlyingExamination12SqnSemesterView() {
             </>
           )}
 
+          {/* Action Buttons */}
           <div className="flex space-x-2">
             {canShowActionButtons && (
               <>
@@ -516,6 +640,7 @@ export default function FlyingExamination12SqnSemesterView() {
                   </div>
                 )}
 
+                {/* Reject button - hide for first level (is_first) and draftman */}
                 {!isDraftman && !isFirstLevel && (
                   <button
                     onClick={handleReject}
@@ -527,7 +652,9 @@ export default function FlyingExamination12SqnSemesterView() {
                   </button>
                 )}
 
+                {/* Forward/Approve button based on workflow flags */}
                 {noNeedForward ? (
+                  /* Role only approves cadets without forwarding */
                   <button
                     onClick={handleForwardToApproval}
                     className="flex items-center space-x-2 px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors cursor-pointer"
@@ -540,11 +667,10 @@ export default function FlyingExamination12SqnSemesterView() {
                   <button
                     onClick={handleForwardToApproval}
                     disabled={!allCadetsApproved}
-                    className={`flex items-center space-x-2 px-4 py-2 rounded-md transition-colors ${
-                      allCadetsApproved
-                        ? 'bg-blue-600 text-white hover:bg-blue-700 cursor-pointer'
-                        : 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                    }`}
+                    className={`flex items-center space-x-2 px-4 py-2 rounded-md transition-colors ${allCadetsApproved
+                      ? 'bg-blue-600 text-white hover:bg-blue-700 cursor-pointer'
+                      : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                      }`}
                     title={allCadetsApproved ? "Forward to Next Level" : "Approve all cadets first"}
                   >
                     <Icon icon="solar:forward-linear" className="w-4 h-4" />
@@ -554,11 +680,10 @@ export default function FlyingExamination12SqnSemesterView() {
                   <button
                     onClick={handleForwardToApproval}
                     disabled={!allCadetsApproved}
-                    className={`flex items-center space-x-2 px-4 py-2 rounded-md transition-colors ${
-                      allCadetsApproved
-                        ? 'bg-green-600 text-white hover:bg-green-700 cursor-pointer'
-                        : 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                    }`}
+                    className={`flex items-center space-x-2 px-4 py-2 rounded-md transition-colors ${allCadetsApproved
+                      ? 'bg-green-600 text-white hover:bg-green-700 cursor-pointer'
+                      : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                      }`}
                     title={allCadetsApproved ? "Mark as Final Approval" : "Approve all cadets first"}
                   >
                     <Icon icon="solar:check-circle-bold" className="w-4 h-4" />
@@ -568,6 +693,7 @@ export default function FlyingExamination12SqnSemesterView() {
               </>
             )}
 
+            {/* Final Approval Complete Badge */}
             {isFinalApprovalComplete && (
               <div className="flex items-center space-x-2 px-4 py-2 bg-green-50 border border-green-200 rounded-md">
                 <Icon icon="solar:check-circle-bold" className="w-5 h-5 text-green-600" />
@@ -577,6 +703,7 @@ export default function FlyingExamination12SqnSemesterView() {
               </div>
             )}
 
+            {/* Print button */}
             <button
               onClick={handlePrintSummary}
               className="flex items-center space-x-2 px-4 py-2 bg-transparent hover:bg-gray-100 border border-gray-300 text-black rounded-md transition-colors"
@@ -605,12 +732,17 @@ export default function FlyingExamination12SqnSemesterView() {
                 const processIsFirst = process.is_first === true;
                 const processIsFinal = process.is_final === true;
 
+                // Check if this step has been approved
+                // A step is approved if:
+                // 1. Semester-level: send_progress_id matches this process (forwarded from this step), OR
+                // 2. Cadet-level: All cadets have been approved at this step and forwarded to next
                 const semesterLevelApproved = allApprovalStatuses.some(
                   (status) =>
                     (status.send_progress_id === process.id && status.approval_status === "approved") ||
                     (status.progress_id === process.id && status.approval_status === "approved")
                 );
 
+                // Check cadet-level approvals - step is done if cadets were approved and forwarded from this step
                 const cadetLevelApproved = cadetApprovalStatuses.some(
                   (cadetStatus) =>
                     cadetStatus.progress_id === process.id &&
@@ -620,17 +752,21 @@ export default function FlyingExamination12SqnSemesterView() {
 
                 const isApproved = semesterLevelApproved || cadetLevelApproved;
 
+                // Determine current step logic:
+                // - If no approval status exists (null), the step with is_first=true is current
+                // - If approval status exists, the progress_id step is current
                 const isCurrentStep = approvalStatus === null
-                  ? processIsFirst
+                  ? processIsFirst  // First step (is_first=true) is current when no approval started
                   : approvalStatus?.progress_id === process.id;
 
                 const isLast = index === arr.length - 1;
 
+                // Determine step status
                 let stepStatus: "completed" | "current" | "user" | "pending" = "pending";
                 if (isFinalApprovalComplete || isApproved) {
                   stepStatus = "completed";
                 } else if (isCurrentStep && isUserStep) {
-                  stepStatus = "user";
+                  stepStatus = "user"; // Current step AND user's step
                 } else if (isCurrentStep) {
                   stepStatus = "current";
                 } else if (isUserStep && !isApproved) {
@@ -641,15 +777,14 @@ export default function FlyingExamination12SqnSemesterView() {
                   <div key={process.id} className="flex items-center flex-1">
                     <div className="flex flex-col items-center">
                       <div
-                        className={`w-10 h-10 rounded-full flex items-center justify-center border-2 transition-all ${
-                          stepStatus === "completed"
-                            ? "bg-green-500 border-green-500 text-white"
-                            : stepStatus === "user"
+                        className={`w-10 h-10 rounded-full flex items-center justify-center border-2 transition-all ${stepStatus === "completed"
+                          ? "bg-green-500 border-green-500 text-white"
+                          : stepStatus === "user"
                             ? "bg-blue-500 border-blue-500 text-white ring-4 ring-blue-200"
                             : stepStatus === "current"
-                            ? "bg-yellow-500 border-yellow-500 text-white"
-                            : "bg-gray-200 border-gray-300 text-gray-500"
-                        }`}
+                              ? "bg-yellow-500 border-yellow-500 text-white"
+                              : "bg-gray-200 border-gray-300 text-gray-500"
+                          }`}
                       >
                         {stepStatus === "completed" ? (
                           <Icon icon="solar:check-circle-bold" className="w-5 h-5" />
@@ -660,15 +795,14 @@ export default function FlyingExamination12SqnSemesterView() {
 
                       <div className="mt-2 text-center max-w-[120px]">
                         <p
-                          className={`text-xs font-medium ${
-                            stepStatus === "completed"
-                              ? "text-green-700"
-                              : stepStatus === "user"
+                          className={`text-xs font-medium ${stepStatus === "completed"
+                            ? "text-green-700"
+                            : stepStatus === "user"
                               ? "text-blue-700 font-bold"
                               : stepStatus === "current"
-                              ? "text-yellow-700"
-                              : "text-gray-500"
-                          }`}
+                                ? "text-yellow-700"
+                                : "text-gray-500"
+                            }`}
                           title={process.role?.name || "Unknown Role"}
                         >
                           {process.role?.name || "Unknown"}
@@ -693,9 +827,8 @@ export default function FlyingExamination12SqnSemesterView() {
 
                     {!isLast && (
                       <div
-                        className={`flex-1 h-1 mx-2 rounded ${
-                          stepStatus === "completed" ? "bg-green-400" : "bg-gray-300"
-                        }`}
+                        className={`flex-1 h-1 mx-2 rounded ${stepStatus === "completed" ? "bg-green-400" : "bg-gray-300"
+                          }`}
                       />
                     )}
                   </div>
@@ -737,6 +870,7 @@ export default function FlyingExamination12SqnSemesterView() {
         </div>
       )}
 
+      {/* Bulk Approval Button */}
       {selectedCadets.length > 0 && approvalProcess && activeTab === 'final' && canShowActionButtons && (
         <div className="mb-4 flex items-center justify-center">
           <button
@@ -749,6 +883,7 @@ export default function FlyingExamination12SqnSemesterView() {
         </div>
       )}
 
+      {/* Tab Navigation */}
       <div className="print:hidden w-full flex justify-center items-center mb-6">
         <nav className="flex space-x-2 border border-gray-200 bg-gray-100 rounded-full p-1">
           <button
@@ -756,7 +891,7 @@ export default function FlyingExamination12SqnSemesterView() {
             className={`py-1 px-4 font-medium text-sm rounded-full transition-colors ${activeTab === 'final'
               ? 'bg-blue-500 text-white'
               : 'bg-transparent text-black hover:bg-gray-200'
-            }`}
+              }`}
           >
             Sem Flg
           </button>
@@ -765,26 +900,36 @@ export default function FlyingExamination12SqnSemesterView() {
             className={`py-1 px-4 font-medium text-sm rounded-full transition-colors ${activeTab === 'bup'
               ? 'bg-blue-500 text-white'
               : 'bg-transparent text-black hover:bg-gray-200'
-            }`}
+              }`}
           >
             BUP Report
+          </button>
+          <button
+            onClick={() => setActiveTab('progress')}
+            className={`py-1 px-4 font-medium text-sm rounded-full transition-colors ${activeTab === 'progress'
+              ? 'bg-blue-500 text-white'
+              : 'bg-transparent text-black hover:bg-gray-200'
+              }`}
+          >
+            Progress
           </button>
           <button
             onClick={() => setActiveTab('details')}
             className={`py-1 px-4 font-medium text-sm rounded-full transition-colors ${activeTab === 'details'
               ? 'bg-blue-500 text-white'
               : 'bg-transparent text-black hover:bg-gray-200'
-            }`}
+              }`}
           >
             Breakdown
           </button>
         </nav>
       </div>
 
+      {/* Tab Content */}
       <div className="tab-content">
         {activeTab === 'final' && (
           <FinalReportTab
-            semesterData={semesterData}
+            reportData={reportData}
             semesterId={parseInt(semesterId)}
             courseId={parseInt(courseId)}
             selectedCadets={selectedCadets}
@@ -793,10 +938,12 @@ export default function FlyingExamination12SqnSemesterView() {
             cadetApprovalStatuses={cadetApprovalStatuses}
             approvalProcesses={allApprovalProcesses}
             profile={user}
+            is6thSemester={is6thSemester}
           />
         )}
         {activeTab === 'bup' && (
           <BupReportTab
+            reportData={reportData}
             semesterData={semesterData}
             semesterId={parseInt(semesterId)}
             courseId={parseInt(courseId)}
@@ -809,6 +956,14 @@ export default function FlyingExamination12SqnSemesterView() {
             profile={user}
           />
         )}
+        {activeTab === 'progress' && (
+          <ProgressReportTab
+            reportData={reportData}
+            semesterData={semesterData}
+            semesterId={parseInt(semesterId)}
+            courseId={parseInt(courseId)}
+          />
+        )}
         {activeTab === 'details' && (
           <DetailsBreakdownTab
             semesterData={semesterData}
@@ -818,6 +973,7 @@ export default function FlyingExamination12SqnSemesterView() {
         )}
       </div>
 
+      {/* Delete Confirmation Modal */}
       <ConfirmationModal
         isOpen={deleteModalVisible}
         onClose={() => {
@@ -833,6 +989,7 @@ export default function FlyingExamination12SqnSemesterView() {
         variant="danger"
       />
 
+      {/* Forward to Approval Modal */}
       {forwardModalVisible && semesterData && (
         <ForwardToApprovalModal
           open={forwardModalVisible}
@@ -844,12 +1001,12 @@ export default function FlyingExamination12SqnSemesterView() {
           approvalProcess={approvalProcess}
           nextLevelProcess={nextLevelProcess}
           onSuccess={() => {
-            fetchApprovalStatus(parseInt(courseId), parseInt(semesterId));
-            fetchCadetApprovalStatuses(parseInt(courseId), parseInt(semesterId));
+            fetchSemesterData();
           }}
         />
       )}
 
+      {/* Reject Modal */}
       {rejectModalVisible && semesterData && (
         <RejectModal
           open={rejectModalVisible}
@@ -860,11 +1017,12 @@ export default function FlyingExamination12SqnSemesterView() {
           currentApprovalStatus={approvalStatus}
           approvalProcess={approvalProcess}
           onSuccess={() => {
-            fetchApprovalStatus(parseInt(courseId), parseInt(semesterId));
+            fetchSemesterData();
           }}
         />
       )}
 
+      {/* Bulk Cadet Approval Modal */}
       {bulkApprovalModalVisible && semesterData && approvalProcess && (
         <BulkCadetApprovalModal
           open={bulkApprovalModalVisible}
@@ -888,14 +1046,16 @@ export default function FlyingExamination12SqnSemesterView() {
             if (!acc[levelKey]) {
               acc[levelKey] = {
                 approver: status.approver,
-                approvalProcess: status.approval_process,
+                approvalProcess: status.approvalProcess,
                 created_at: status.approved_at || status.created_at,
               };
             }
             return acc;
-          }, {} as Record<number, { approver: CadetApprovalStatus['approver']; approvalProcess: CadetApprovalStatus['approval_process']; created_at: string | undefined }>);
+          }, {} as Record<number, { approver: typeof cadetApprovalStatuses[0]['approver']; approvalProcess: typeof cadetApprovalStatuses[0]['approvalProcess']; created_at: string | undefined }>);
 
-        const uniqueApprovers = Object.values(approversByLevel);
+        const uniqueApprovers = Object.entries(approversByLevel)
+          .sort(([a], [b]) => Number(a) - Number(b))
+          .map(([, value]) => value);
 
         if (uniqueApprovers.length === 0) return null;
 
@@ -907,17 +1067,19 @@ export default function FlyingExamination12SqnSemesterView() {
             <div className={`grid ${uniqueApprovers.length === 1 ? 'justify-end' : uniqueApprovers.length <= 4 ? 'grid-cols-4' : 'grid-cols-4'} gap-6`}>
               {uniqueApprovers.map((item, index) => (
                 <div key={index} className="flex flex-col items-center p-4">
+                  {/* Signature placeholder */}
                   <div className="w-full h-24 flex items-center justify-center mb-2 bg-white">
                     <span className="text-gray-400 text-xs">Signature</span>
                   </div>
+                  {/* Approver Info */}
                   <div className="text-center">
                     <p className="text-sm uppercase font-semibold text-gray-900 border-t border-black pt-2">
                       {item.approver?.rank?.name && `${item.approver.rank.name} `}
                       {item.approver?.name || 'Unknown'}
                     </p>
-                    {item.approver?.role?.name && (
+                    {(item.approver?.role?.name || item.approvalProcess?.role?.name) && (
                       <p className="text-xs text-blue-600 font-medium">
-                        {item.approver.role.name}
+                        {item.approver?.role?.name || item.approvalProcess?.role?.name}
                       </p>
                     )}
                     <p className="text-xs text-blue-600 font-medium">12 Squadron BAF</p>
@@ -933,6 +1095,11 @@ export default function FlyingExamination12SqnSemesterView() {
           </div>
         );
       })()}
+      <PrintTypeModal
+        isOpen={isPrintModalOpen}
+        onClose={() => setIsPrintModalOpen(false)}
+        onConfirm={confirmPrint}
+      />
     </div>
   );
 }

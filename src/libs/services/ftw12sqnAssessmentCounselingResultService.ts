@@ -1,11 +1,11 @@
 /**
- * FTW 12sqn Assessment Counseling Result Service
+ * CTW Assessment Counseling Result Service
  * API calls for counseling result management
  */
 
 import apiClient from '@/libs/auth/api-client';
 import { getToken } from '@/libs/auth/auth-token';
-import type { Ftw12sqnAssessmentCounselingResult } from '@/libs/types/system';
+import type { Ftw12SqnAssessmentCounselingResult } from '@/libs/types/ftw12sqnAssessmentCounseling';
 
 interface ResultQueryParams {
   page?: number;
@@ -15,7 +15,7 @@ interface ResultQueryParams {
 }
 
 interface ResultPaginatedResponse {
-  data: Ftw12sqnAssessmentCounselingResult[];
+  data: Ftw12SqnAssessmentCounselingResult[];
   current_page: number;
   last_page: number;
   per_page: number;
@@ -27,7 +27,7 @@ interface ResultPaginatedResponse {
 interface ResultApiResponse {
   success: boolean;
   message: string;
-  data: Ftw12sqnAssessmentCounselingResult[];
+  data: Ftw12SqnAssessmentCounselingResult[];
   pagination?: {
     current_page: number;
     last_page: number;
@@ -41,13 +41,13 @@ interface ResultApiResponse {
 interface SingleResultApiResponse {
   success: boolean;
   message: string;
-  data: Ftw12sqnAssessmentCounselingResult;
+  data: Ftw12SqnAssessmentCounselingResult;
 }
 
 interface ResultActionApiResponse {
   success: boolean;
   message: string;
-  data?: Ftw12sqnAssessmentCounselingResult;
+  data?: Ftw12SqnAssessmentCounselingResult;
 }
 
 interface ResultFormData {
@@ -58,7 +58,7 @@ interface ResultFormData {
   instructor_id: number;
   cadet_id: number;
   remarks?: Array<{
-    ftw_12sqn_assessment_counseling_event_id: number;
+    ftw12sqn_assessment_counseling_event_id: number;
     remark: string;
   }>;
 }
@@ -87,7 +87,7 @@ export const ftw12sqnAssessmentCounselingResultService = {
         query.append('instructor_id', params.instructor_id.toString());
       }
 
-      const endpoint = `/ftw-12sqn-assessment-counseling-results${query.toString() ? `?${query.toString()}` : ''}`;
+      const endpoint = `/ftw12sqn-assessment-counseling-results${query.toString() ? `?${query.toString()}` : ''}`;
 
       const token = getToken();
       const result = await apiClient.get<ResultApiResponse>(endpoint, token);
@@ -130,10 +130,10 @@ export const ftw12sqnAssessmentCounselingResultService = {
   /**
    * Get single result
    */
-  async getResult(id: number): Promise<Ftw12sqnAssessmentCounselingResult | null> {
+  async getResult(id: number): Promise<Ftw12SqnAssessmentCounselingResult | null> {
     try {
       const token = getToken();
-      const result = await apiClient.get<SingleResultApiResponse>(`/ftw-12sqn-assessment-counseling-results/${id}`, token);
+      const result = await apiClient.get<SingleResultApiResponse>(`/ftw12sqn-assessment-counseling-results/${id}`, token);
 
       if (!result || !result.success) {
         return null;
@@ -149,7 +149,7 @@ export const ftw12sqnAssessmentCounselingResultService = {
   /**
    * Create new result
    */
-  async createResult(data: ResultFormData): Promise<Ftw12sqnAssessmentCounselingResult | null> {
+  async createResult(data: ResultFormData): Promise<Ftw12SqnAssessmentCounselingResult | null> {
     try {
       const token = getToken();
 
@@ -157,7 +157,7 @@ export const ftw12sqnAssessmentCounselingResultService = {
         throw new Error('Authentication token not found. Please login again.');
       }
 
-      const result = await apiClient.post<ResultActionApiResponse>('/ftw-12sqn-assessment-counseling-results', data, token);
+      const result = await apiClient.post<ResultActionApiResponse>('/ftw12sqn-assessment-counseling-results', data, token);
 
       if (!result || !result.success) {
         throw new Error(result?.message || 'Failed to create result');
@@ -176,7 +176,7 @@ export const ftw12sqnAssessmentCounselingResultService = {
   /**
    * Update result
    */
-  async updateResult(id: number, data: Partial<ResultFormData>): Promise<Ftw12sqnAssessmentCounselingResult | null> {
+  async updateResult(id: number, data: Partial<ResultFormData>): Promise<Ftw12SqnAssessmentCounselingResult | null> {
     try {
       const token = getToken();
 
@@ -184,7 +184,7 @@ export const ftw12sqnAssessmentCounselingResultService = {
         throw new Error('Authentication token not found. Please login again.');
       }
 
-      const result = await apiClient.put<ResultActionApiResponse>(`/ftw-12sqn-assessment-counseling-results/${id}`, data, token);
+      const result = await apiClient.put<ResultActionApiResponse>(`/ftw12sqn-assessment-counseling-results/${id}`, data, token);
 
       if (!result || !result.success) {
         throw new Error(result?.message || 'Failed to update result');
@@ -206,7 +206,7 @@ export const ftw12sqnAssessmentCounselingResultService = {
   async deleteResult(id: number): Promise<boolean> {
     try {
       const token = getToken();
-      const result = await apiClient.delete<ResultActionApiResponse>(`/ftw-12sqn-assessment-counseling-results/${id}`, token);
+      const result = await apiClient.delete<ResultActionApiResponse>(`/ftw12sqn-assessment-counseling-results/${id}`, token);
       return result?.success || false;
     } catch (error) {
       console.error(`Failed to delete result ${id}:`, error);
@@ -215,28 +215,91 @@ export const ftw12sqnAssessmentCounselingResultService = {
   },
 
   /**
-   * Get grouped results for summary reporting
+   * Get results grouped by course and semester with pagination
    */
-  async getGroupedResults(params?: {
-    search?: string;
-    course_id?: number;
-    semester_id?: number;
-  }): Promise<any[]> {
+  async getGroupedResults(params?: { instructor_id?: number; authority_id?: number; course_id?: number; semester_id?: number; page?: number; per_page?: number; search?: string; allData?: boolean }): Promise<ResultPaginatedResponse & { data: any[]; semester_approvals: any[]; authorities: any[]; my_authority: any; has_counseling_assign: boolean }> {
     try {
       const query = new URLSearchParams();
-
+      if (params?.instructor_id) query.append('instructor_id', params.instructor_id.toString());
+      if (params?.authority_id) query.append('authority_id', params.authority_id.toString());
+      if (params?.course_id) query.append('course_id', params.course_id.toString());
+      if (params?.semester_id) query.append('semester_id', params.semester_id.toString());
+      if (params?.page) query.append('page', params.page.toString());
+      if (params?.per_page) query.append('per_page', params.per_page.toString());
       if (params?.search) query.append('search', params.search);
+      if (params?.allData) query.append('allData', 'true');
+
+      const endpoint = `/ftw12sqn-assessment-counseling-results/grouped${query.toString() ? `?${query.toString()}` : ''}`;
+      const token = getToken();
+      const result = await apiClient.get<any>(endpoint, token);
+
+      return {
+        data: result?.data || [],
+        current_page: result?.pagination?.current_page || 1,
+        last_page: result?.pagination?.last_page || 1,
+        per_page: result?.pagination?.per_page || 10,
+        total: result?.pagination?.total || 0,
+        from: result?.pagination?.from || 0,
+        to: result?.pagination?.to || 0,
+        semester_approvals: result?.semester_approvals || [],
+        authorities: result?.authorities || [],
+        my_authority: result?.my_authority || null,
+        has_counseling_assign: result?.has_counseling_assign || false,
+      };
+    } catch (error) {
+      console.error('Failed to fetch grouped results:', error);
+      return { data: [], current_page: 1, last_page: 1, per_page: 10, total: 0, from: 0, to: 0, semester_approvals: [], authorities: [], my_authority: null, has_counseling_assign: false };
+    }
+  },
+
+  /**
+   * Get consolidated results for a specific course and semester
+   */
+  async getConsolidatedResults(params: { course_id: number; semester_id: number }): Promise<{
+    results: any[];
+    approvals: any[];
+    semester_approvals: any[];
+    authorities: any[];
+    my_authority: any;
+    assigned_cadets: any[];
+    stats: { total_cadets: number; total_counseled: number; total_approved: number };
+  } | null> {
+    try {
+      const query = new URLSearchParams();
+      query.append('course_id', params.course_id.toString());
+      query.append('semester_id', params.semester_id.toString());
+
+      const token = getToken();
+      const res = await apiClient.get<any>(`/ftw12sqn-assessment-counseling-results/consolidated?${query.toString()}`, token);
+      return res?.data || null;
+    } catch (error) {
+      console.error('Failed to fetch CTW consolidated results:', error);
+      return null;
+    }
+  },
+
+  /**
+   * Get options for the counseling form
+   */
+  async getFormOptions(params?: { course_id?: number; semester_id?: number }): Promise<{
+    courses: any[];
+    semesters: any[];
+    exams: any[];
+    counseling_type: any;
+    cadets: any[];
+    existing_results_map: { [cadetId: number]: number };
+  } | null> {
+    try {
+      const query = new URLSearchParams();
       if (params?.course_id) query.append('course_id', params.course_id.toString());
       if (params?.semester_id) query.append('semester_id', params.semester_id.toString());
 
-      const endpoint = `/ftw-12sqn-assessment-counseling-results/grouped${query.toString() ? `?${query.toString()}` : ''}`;
       const token = getToken();
-      const result = await apiClient.get<ResultApiResponse>(endpoint, token);
-
-      return result?.data || [];
+      const res = await apiClient.get<any>(`/ftw12sqn-assessment-counseling-results/form-options?${query.toString()}`, token);
+      return res?.data || null;
     } catch (error) {
-      console.error('Failed to fetch grouped results:', error);
-      return [];
+      console.error('Failed to fetch CTW counseling form options:', error);
+      return null;
     }
   },
 };

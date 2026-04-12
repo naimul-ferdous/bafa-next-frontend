@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Ftw12sqnAssessmentOlqType } from "@/libs/types/ftw12sqnAssessmentOlq";
+import { Ftw12SqnAssessmentOlqType } from "@/libs/types/ftw12sqnAssessmentOlq";
 import { Icon } from "@iconify/react";
 import { ftw12sqnAssessmentOlqTypeService } from "@/libs/services/ftw12sqnAssessmentOlqTypeService";
 import FullLogo from "@/components/ui/fulllogo";
@@ -11,13 +11,18 @@ import ConfirmationModal from "@/components/ui/modal/ConfirmationModal";
 
 import type { SystemCourse } from "@/libs/types/system";
 import { commonService } from "@/libs/services/commonService";
+import { useCan } from "@/context/PagePermissionsContext";
+// import { usePageContext, useCan } from "@/context/PagePermissionsContext";
 
-export default function Ftw12sqnAssessmentOlqTypesPage() {
+export default function Ftw12SqnAssessmentOlqTypesPage() {
   const router = useRouter();
-  const [types, setTypes] = useState<Ftw12sqnAssessmentOlqType[]>([]);
+  // const { permissions } = usePageContext();
+  const can = useCan();
+
+  const [types, setTypes] = useState<Ftw12SqnAssessmentOlqType[]>([]);
   const [loading, setLoading] = useState(true);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
-  const [deletingType, setDeletingType] = useState<Ftw12sqnAssessmentOlqType | null>(null);
+  const [deletingType, setDeletingType] = useState<Ftw12SqnAssessmentOlqType | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [perPage, setPerPage] = useState(10);
@@ -77,9 +82,9 @@ export default function Ftw12sqnAssessmentOlqTypesPage() {
   }, [loadTypes]);
 
   const handleAddType = () => router.push("/ftw/12sqn/assessments/olq/types/create");
-  const handleEditType = (type: Ftw12sqnAssessmentOlqType) => router.push(`/ftw/12sqn/assessments/olq/types/${type.id}/edit`);
-  const handleViewType = (type: Ftw12sqnAssessmentOlqType) => router.push(`/ftw/12sqn/assessments/olq/types/${type.id}`);
-  const handleDeleteType = (type: Ftw12sqnAssessmentOlqType) => {
+  const handleEditType = (type: Ftw12SqnAssessmentOlqType) => router.push(`/ftw/12sqn/assessments/olq/types/${type.id}/edit`);
+  const handleViewType = (type: Ftw12SqnAssessmentOlqType) => router.push(`/ftw/12sqn/assessments/olq/types/${type.id}`);
+  const handleDeleteType = (type: Ftw12SqnAssessmentOlqType) => {
     setDeletingType(type);
     setDeleteModalOpen(true);
   };
@@ -116,14 +121,8 @@ export default function Ftw12sqnAssessmentOlqTypesPage() {
     </div>
   );
 
-  const columns: Column<Ftw12sqnAssessmentOlqType>[] = [
-    { key: "id", header: "SL.", headerAlign:"center", className: "text-center text-gray-900", render: (type, index) => (pagination.from || 0) + (index + 1) },
-    { 
-      key: "course", 
-      header: "Course", 
-      className: "text-gray-900 font-semibold",
-      render: (type) => type.course ? `${type.course.name} (${type.course.code})` : "—"
-    },
+  const columns: Column<Ftw12SqnAssessmentOlqType>[] = [
+    { key: "id", header: "SL.", headerAlign:"center", className: "text-center text-gray-900", render: (type, index) => (pagination.from || 0) + (index) },
     { key: "type_name", header: "Type Name", className: "font-medium text-gray-900" },
     { key: "type_code", header: "Type Code", className: "text-gray-700 font-mono text-sm" },
     {
@@ -172,8 +171,12 @@ export default function Ftw12sqnAssessmentOlqTypesPage() {
       className: "text-center no-print",
       render: (type) => (
         <div className="flex items-center justify-center gap-1" onClick={(e) => e.stopPropagation()}>
-          <button onClick={() => handleEditType(type)} className="p-1 text-yellow-600 hover:bg-yellow-50 rounded" title="Edit"><Icon icon="hugeicons:pencil-edit-01" className="w-4 h-4" /></button>
-          <button onClick={() => handleDeleteType(type)} className="p-1 text-red-600 hover:bg-red-50 rounded" title="Delete"><Icon icon="hugeicons:delete-02" className="w-4 h-4" /></button>
+          {can('edit') && (
+            <button onClick={() => handleEditType(type)} className="p-1 text-yellow-600 hover:bg-yellow-50 rounded" title="Edit"><Icon icon="hugeicons:pencil-edit-01" className="w-4 h-4" /></button>
+          )}
+          {can('delete') && (
+            <button onClick={() => handleDeleteType(type)} className="p-1 text-red-600 hover:bg-red-50 rounded" title="Delete"><Icon icon="hugeicons:delete-02" className="w-4 h-4" /></button>
+          )}
         </div>
       ),
     },
@@ -184,7 +187,7 @@ export default function Ftw12sqnAssessmentOlqTypesPage() {
       <div className="text-center mb-8">
         <div className="flex justify-center mb-4"><FullLogo /></div>
         <h1 className="text-xl font-bold text-gray-900 uppercase">Bangladesh Air Force Academy</h1>
-        <h2 className="text-md font-semibold text-gray-700 mt-2 uppercase">FTW 12SQN Assessment OLQ Types</h2>
+        <h2 className="text-md font-semibold text-gray-700 mt-2 uppercase">12Sqn Assessment OLQ Types</h2>
       </div>
 
       <div className="flex items-center justify-between gap-4 mb-6">
@@ -210,7 +213,9 @@ export default function Ftw12sqnAssessmentOlqTypesPage() {
           </select>
         </div>
         <div className="flex items-center gap-3">
-          <button onClick={handleAddType} className="px-4 py-2 rounded-lg text-white flex items-center gap-1 bg-blue-600 hover:bg-blue-700"><Icon icon="hugeicons:add-circle" className="w-4 h-4 mr-2" />Add Type</button>
+          {can('add') && (
+            <button onClick={handleAddType} className="px-4 py-2 rounded-lg text-white flex items-center gap-1 bg-blue-600 hover:bg-blue-700"><Icon icon="hugeicons:add-circle" className="w-4 h-4 mr-2" />Add Type</button>
+          )}
           <button onClick={handleExport} className="px-4 py-2 rounded-lg text-white flex items-center gap-1 bg-green-600 hover:bg-green-700"><Icon icon="hugeicons:download-04" className="w-4 h-4 mr-2" />Export</button>
         </div>
       </div>
@@ -223,7 +228,7 @@ export default function Ftw12sqnAssessmentOlqTypesPage() {
           data={types}
           keyExtractor={(type) => type.id.toString()}
           emptyMessage="No OLQ types found"
-          onRowClick={handleViewType}
+          onRowClick={can('view') ? handleViewType : undefined}
         />
       )}
 

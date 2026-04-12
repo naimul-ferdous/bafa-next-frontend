@@ -4,8 +4,9 @@
 import React, { useState, useEffect } from "react";
 import Label from "@/components/form/Label";
 import { commonService } from "@/libs/services/commonService";
+import { ctwCommonService } from "@/libs/services/ctwCommonService";
 import { ctwResultsModuleService } from "@/libs/services/ctwResultsModuleService";
-import { ctwInstructorAssignCadetService } from "@/libs/services/ctwInstructorAssignCadetService";
+import { cadetService } from "@/libs/services/cadetService";
 import { ctwInstructorAssignModuleService } from "@/libs/services/ctwInstructorAssignModuleService";
 import { useAuth } from "@/libs/hooks/useAuth";
 import { Icon } from "@iconify/react";
@@ -63,37 +64,34 @@ export default function OneMileResultForm({ initialData, onSubmit, onCancel, loa
   const [groups, setGroups] = useState<SystemGroup[]>([]);
   const [exams, setExams] = useState<SystemExam[]>([]);
   const [estimatedMarks, setEstimatedMarks] = useState<any[]>([]);
-  const [oneMileModule, setOneMileModule] = useState<any>(null);
   const [oneMileModuleId, setOneMileModuleId] = useState<number>(0);
+  const [oneMileModule, setOneMileModule] = useState<any>(null);
   const [loadingDropdowns, setLoadingDropdowns] = useState(true);
   const [loadingCadets, setLoadingCadets] = useState(false);
   const [loadingEstimatedMarks, setLoadingEstimatedMarks] = useState(false);
+  const [loadingSemesters, setLoadingSemesters] = useState(false);
   const [moduleAssigned, setModuleAssigned] = useState(false);
 
-  // Load dropdown data + find one mile module
+  // Load all form options in a single API call
   useEffect(() => {
+    if (!user?.id) return;
+
     const loadDropdownData = async () => {
       try {
         setLoadingDropdowns(true);
-        const [options, modulesRes] = await Promise.all([
-          commonService.getResultOptions(),
-          ctwResultsModuleService.getAllModules({ per_page: 100 }),
-        ]);
+        const options = await ctwCommonService.getOneMileFormOptions(user.id);
 
         if (options) {
           setCourses(options.courses);
-          setSemesters(options.semesters);
           setPrograms(options.programs);
           setBranches(options.branches);
           setGroups(options.groups);
           setExams(options.exams);
-        }
 
-        // Find one mile module
-        const moduleData = modulesRes.data.find((m: any) => m.code === ONE_MILE_MODULE_CODE);
-        if (moduleData) {
-          setOneMileModule(moduleData);
-          setOneMileModuleId(moduleData.id);
+          if (options.module) {
+            setOneMileModuleId(options.module.id);
+            setOneMileModule(options.module);
+          }
         }
       } catch (err) {
         console.error("Failed to load dropdown data:", err);
@@ -104,7 +102,32 @@ export default function OneMileResultForm({ initialData, onSubmit, onCancel, loa
     };
 
     loadDropdownData();
-  }, []);
+  }, [user?.id]);
+
+  // Load semesters dynamically when course is selected
+  useEffect(() => {
+    if (!formData.course_id) {
+      setSemesters([]);
+      if (!initialData) setFormData(prev => ({ ...prev, semester_id: 0 }));
+      return;
+    }
+
+    const loadSemesters = async () => {
+      try {
+        setLoadingSemesters(true);
+        if (!initialData) setFormData(prev => ({ ...prev, semester_id: 0 }));
+        const result = await commonService.getSemestersByCourse(formData.course_id);
+        setSemesters(result);
+      } catch (err) {
+        console.error("Failed to load semesters:", err);
+        setSemesters([]);
+      } finally {
+        setLoadingSemesters(false);
+      }
+    };
+
+    loadSemesters();
+  }, [formData.course_id, initialData]);
 
   // Load estimated marks from DB when course + semester are selected
   useEffect(() => {
@@ -117,7 +140,6 @@ export default function OneMileResultForm({ initialData, onSubmit, onCancel, loa
       try {
         setLoadingEstimatedMarks(true);
         const response = await ctwResultsModuleService.getEstimatedMarks(oneMileModuleId, {
-          course_id: formData.course_id,
           semester_id: formData.semester_id,
         });
         setEstimatedMarks(response);
@@ -137,7 +159,7 @@ export default function OneMileResultForm({ initialData, onSubmit, onCancel, loa
     return estimatedMarks.some((em: any) => em.exam_type_id === examTypeId);
   };
 
-  // Get estimated mark value for the selected exam type
+  // Get estimated mark info for the selected exam type
   const getEstimatedMarkInfo = () => {
     if (!formData.exam_type_id) return null;
     return estimatedMarks.find((em: any) => em.exam_type_id === formData.exam_type_id);
@@ -150,9 +172,11 @@ export default function OneMileResultForm({ initialData, onSubmit, onCancel, loa
   const convPracticeWeight = estimatedMarkInfo ? parseFloat(estimatedMarkInfo.convert_of_practice || 0) : 0;
   const convExamWeight = estimatedMarkInfo ? parseFloat(estimatedMarkInfo.convert_of_exam || 0) : 0;
 
-  // Auto-load cadets from ctw_instructor_assign_cadets after exam type selected
+  // Auto-load cadets after exam type selected
+  // First check if instructor is assigned to this module via ctw_instructor_assign_modules
   useEffect(() => {
     const loadCadets = async () => {
+      // Required: user, module, course, semester, exam_type
       if (!user?.id || !oneMileModuleId || !formData.course_id || !formData.semester_id || !formData.exam_type_id) {
         setCadetRows([]);
         setModuleAssigned(false);
@@ -162,6 +186,7 @@ export default function OneMileResultForm({ initialData, onSubmit, onCancel, loa
       try {
         setLoadingCadets(true);
 
+        // First check if instructor is assigned to this one_mile module
         const moduleAssignRes = await ctwInstructorAssignModuleService.getAll({
           instructor_id: user.id,
           module_code: ONE_MILE_MODULE_CODE,
@@ -171,6 +196,7 @@ export default function OneMileResultForm({ initialData, onSubmit, onCancel, loa
         });
 
         if (!moduleAssignRes.data || moduleAssignRes.data.length === 0) {
+          // Instructor is NOT assigned to this module
           setModuleAssigned(false);
           setCadetRows([]);
           return;
@@ -178,41 +204,37 @@ export default function OneMileResultForm({ initialData, onSubmit, onCancel, loa
 
         setModuleAssigned(true);
 
-        const params: any = {
+        // Fetch cadets directly by course + semester
+        const cadetParams: any = {
           per_page: 500,
-          instructor_id: user.id,
-          ctw_results_module_id: oneMileModuleId,
           course_id: formData.course_id,
           semester_id: formData.semester_id,
-          is_active: true,
+          is_current: 1,
         };
-        if (formData.program_id) params.program_id = formData.program_id;
-        if (formData.branch_id) params.branch_id = formData.branch_id;
-        if (formData.group_id) params.group_id = formData.group_id;
+        if (formData.program_id) cadetParams.program_id = formData.program_id;
+        if (formData.branch_id) cadetParams.branch_id = formData.branch_id;
+        if (formData.group_id) cadetParams.group_id = formData.group_id;
 
-        const assignedCadetsRes = await ctwInstructorAssignCadetService.getAll(params);
+        const cadetsRes = await cadetService.getAllCadets(cadetParams);
 
-        const rows: CadetRow[] = assignedCadetsRes.data
-          .filter((ac: any) => ac.cadet)
-          .map((ac: any) => {
-            const cadet = ac.cadet;
-            const currentRank = cadet.assigned_ranks?.find((ar: any) => ar.rank)?.rank;
-            return {
-              cadet_id: cadet.id,
-              cadet_number: cadet.cadet_number || "",
-              cadet_name: cadet.name,
-              cadet_rank: currentRank?.short_name || currentRank?.name || "-",
-              cadet_gender: cadet.gender,
-              branch: cadet.assigned_branchs?.find((ab: any) => ab.is_current)?.branch?.name || cadet.assigned_branchs?.[0]?.branch?.name || "N/A",
-              practices: {},
-              avg_practice: 0,
-              conv_practice: 0,
-              test_mark: 0,
-              conv_exam: 0,
-              mark: 0,
-              is_active: true,
-            };
-          });
+        const rows: CadetRow[] = cadetsRes.data.map((cadet: any) => {
+          const currentRank = cadet.assigned_ranks?.find((ar: any) => ar.rank)?.rank;
+          return {
+            cadet_id: cadet.id,
+            cadet_number: cadet.cadet_number || "",
+            cadet_name: cadet.name,
+            cadet_rank: currentRank?.short_name || currentRank?.name || "Officer Cadet",
+            cadet_gender: cadet.gender,
+            branch: cadet.assigned_branchs?.find((ab: any) => ab.is_current)?.branch?.name || cadet.assigned_branchs?.[0]?.branch?.name || "N/A",
+            practices: {},
+            avg_practice: 0,
+            conv_practice: 0,
+            test_mark: 0,
+            conv_exam: 0,
+            mark: 0,
+            is_active: true,
+          };
+        });
 
         setCadetRows(rows);
       } catch (err) {
@@ -255,7 +277,6 @@ export default function OneMileResultForm({ initialData, onSubmit, onCancel, loa
           let practicesTotalForAvg = 0;
           let practicesCountForAvg = 0;
 
-
           if (mark?.details) {
             mark.details.forEach(det => {
               if (det.practices_marks !== null && det.practices_marks !== undefined) {
@@ -265,7 +286,6 @@ export default function OneMileResultForm({ initialData, onSubmit, onCancel, loa
                 practicesCountForAvg++;
                 pIdx++;
               }
-              // marks in details are no longer used for exam mark
             });
           }
           const avg_practice = practicesCountForAvg > 0 ? practicesTotalForAvg / practicesCountForAvg : 0;
@@ -277,12 +297,12 @@ export default function OneMileResultForm({ initialData, onSubmit, onCancel, loa
             cadet_rank: currentRank?.short_name || currentRank?.name || "-",
             cadet_gender: mark?.cadet?.gender,
             branch: initialData.branch?.name || "N/A",
-            practices: practices, // Assign the correctly populated practices object
+            practices: practices,
             avg_practice: avg_practice,
             conv_practice: 0,
             test_mark: test_mark,
             conv_exam: 0,
-            mark: 0, // Initialize to 0, updateCalculatedMarks will set the correct total
+            mark: 0,
             is_active: mark?.is_active || true,
           };
 
@@ -291,7 +311,7 @@ export default function OneMileResultForm({ initialData, onSubmit, onCancel, loa
         setCadetRows(rows);
       }
     }
-  }, [initialData, oneMileModule]); // Added oneMileModule dependency to ensure calculations run when module data is available
+  }, [initialData, oneMileModule]);
 
   const updateCalculatedMarks = (cadet: CadetRow): CadetRow => {
     // 1. Calculate Average Practice Mark
@@ -310,15 +330,15 @@ export default function OneMileResultForm({ initialData, onSubmit, onCancel, loa
 
     // 3. Convert Exam: (TestMark * Weight / 100)
     const conv_exam = (cadet.test_mark * convExamWeight) / 100;
-    
+
     // 4. Final Total
     let finalMark = conv_practice + conv_exam;
-    
+
     // Cap by conversationMark if defined
     if (conversationMark > 0 && finalMark > conversationMark) {
       finalMark = conversationMark;
     }
-    
+
     return {
       ...cadet,
       avg_practice: parseFloat(avgPractice.toFixed(2)),
@@ -353,21 +373,6 @@ export default function OneMileResultForm({ initialData, onSubmit, onCancel, loa
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
-  // const handleCadetChange = (cadetIndex: number, field: keyof CadetRow, value: any) => {
-  //   setCadetRows(prev => {
-  //     const updated = [...prev];
-  //     let finalValue = value;
-  //     if (field === "mark" && conversationMark > 0 && typeof value === "number" && value > conversationMark) {
-  //       finalValue = conversationMark;
-  //     }
-  //     updated[cadetIndex] = {
-  //       ...updated[cadetIndex],
-  //       [field]: finalValue
-  //     };
-  //     return updated;
-  //   });
-  // };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
@@ -381,7 +386,7 @@ export default function OneMileResultForm({ initialData, onSubmit, onCancel, loa
       const marks: any[] = [];
       cadetRows.filter(c => c.cadet_id > 0).forEach(c => {
         const details: any[] = [];
-        
+
         // Add each practice as a separate row in details
         Object.values(c.practices).forEach(val => {
           details.push({
@@ -392,7 +397,7 @@ export default function OneMileResultForm({ initialData, onSubmit, onCancel, loa
 
         marks.push({
           cadet_id: c.cadet_id,
-          achieved_mark: c.test_mark || 0, // Now storing raw exam mark here
+          achieved_mark: c.test_mark || 0,
           details: details
         });
       });
@@ -454,8 +459,16 @@ export default function OneMileResultForm({ initialData, onSubmit, onCancel, loa
 
             <div>
               <Label>Semester <span className="text-red-500">*</span></Label>
-              <select value={formData.semester_id} onChange={(e) => handleChange("semester_id", parseInt(e.target.value))} className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500" required>
-                <option value={0}>Select Semester</option>
+              <select
+                value={formData.semester_id}
+                onChange={(e) => handleChange("semester_id", parseInt(e.target.value))}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500"
+                required
+                disabled={!formData.course_id || loadingSemesters}
+              >
+                <option value={0}>
+                  {loadingSemesters ? "Loading..." : !formData.course_id ? "Select course first" : "Select Semester"}
+                </option>
                 {semesters.map(semester => (<option key={semester.id} value={semester.id}>{semester.name} ({semester.code})</option>))}
               </select>
             </div>
@@ -509,6 +522,11 @@ export default function OneMileResultForm({ initialData, onSubmit, onCancel, loa
                   );
                 })}
               </select>
+              {formData.course_id && formData.semester_id && !loadingEstimatedMarks && (
+                <p className="mt-1 text-xs text-gray-500">
+                  Only exam types with estimated marks for the selected course & semester are enabled
+                </p>
+              )}
             </div>
 
             <div className="md:col-span-2">
@@ -549,22 +567,22 @@ export default function OneMileResultForm({ initialData, onSubmit, onCancel, loa
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full border-collapse border border-black">
+              <table className="w-full border-collapse border border-black text-xs">
                 <thead>
                   <tr>
-                    <th className="border border-black px-3 py-2 text-center text-sm whitespace-nowrap" rowSpan={2}>SL</th>
-                    <th className="border border-black px-3 py-2 text-center text-sm whitespace-nowrap" rowSpan={2}>BD No.</th>
-                    <th className="border border-black px-3 py-2 text-center text-sm whitespace-nowrap" rowSpan={2}>Rank</th>
-                    <th className="border border-black px-3 py-2 text-left text-sm whitespace-nowrap" rowSpan={2}>Name</th>
-                    <th className="border border-black px-3 py-2 text-left text-sm whitespace-nowrap" rowSpan={2}>Branch</th>
+                    <th className="border border-black px-3 py-2 text-center whitespace-nowrap" rowSpan={2}>SL</th>
+                    <th className="border border-black px-3 py-2 text-center whitespace-nowrap" rowSpan={2}>BD No.</th>
+                    <th className="border border-black px-3 py-2 text-center whitespace-nowrap" rowSpan={2}>Rank</th>
+                    <th className="border border-black px-3 py-2 text-left whitespace-nowrap" rowSpan={2}>Name</th>
+                    <th className="border border-black px-3 py-2 text-left whitespace-nowrap" rowSpan={2}>Branch</th>
                     {practiceCount > 0 && (
-                      <th className="border border-black px-3 py-2 text-center text-sm" colSpan={practiceCount}>Practices</th>
+                      <th className="border border-black px-3 py-2 text-center" colSpan={practiceCount}>Practices</th>
                     )}
-                    <th className="border border-black px-3 py-2 text-center text-sm whitespace-nowrap" rowSpan={2}>Avg. <br/> Practice</th>
-                    <th className="border border-black px-3 py-2 text-center text-sm whitespace-nowrap" rowSpan={2}>Exam <br/> {maxTestMark > 0 ? `${maxTestMark}` : ""}</th>
-                    <th className="border border-black px-3 py-2 text-center text-sm whitespace-nowrap" rowSpan={2}>Prac <br/> ({convPracticeWeight}%)</th>
-                    <th className="border border-black px-3 py-2 text-center text-sm whitespace-nowrap" rowSpan={2}>Exam <br/> ({convExamWeight}%)</th>
-                    <th className="border border-black px-3 py-2 text-center text-sm whitespace-nowrap" rowSpan={2}>Total</th>
+                    <th className="border border-black px-3 py-2 text-center whitespace-nowrap" rowSpan={2}>Avg. <br/> Practice</th>
+                    <th className="border border-black px-3 py-2 text-center whitespace-nowrap" rowSpan={2}>Exam <br/> {maxTestMark > 0 ? `${maxTestMark}` : ""}</th>
+                    <th className="border border-black px-3 py-2 text-center whitespace-nowrap" rowSpan={2}>Prac <br/> ({convPracticeWeight}%)</th>
+                    <th className="border border-black px-3 py-2 text-center whitespace-nowrap" rowSpan={2}>Exam <br/> ({convExamWeight}%)</th>
+                    <th className="border border-black px-3 py-2 text-center whitespace-nowrap" rowSpan={2}>Total</th>
                   </tr>
                   {practiceCount > 0 && (
                     <tr>
@@ -577,11 +595,11 @@ export default function OneMileResultForm({ initialData, onSubmit, onCancel, loa
                 <tbody>
                   {cadetRows.map((cadet, index) => (
                     <tr key={cadet.cadet_id}>
-                      <td className="border border-black px-3 py-2 text-center font-medium">{index + 1}</td>
+                      <td className="border border-black px-3 py-2 text-center">{index + 1}</td>
                       <td className="border border-black px-3 py-2 text-center">{cadet.cadet_number}</td>
                       <td className="border border-black px-3 py-2 text-center">{cadet.cadet_rank}</td>
-                      <td className="border border-black px-3 py-2 font-medium">{cadet.cadet_name}</td>
-                      <td className="border border-black px-3 py-2 font-medium">{cadet.branch}</td>
+                      <td className="border border-black px-3 py-2">{cadet.cadet_name}</td>
+                      <td className="border border-black px-3 py-2">{cadet.branch}</td>
                       
                       {Array.from({ length: practiceCount }, (_, i) => i + 1).map(p => (
                         <td key={p} className="border border-black px-2 py-1 text-center">
@@ -591,14 +609,14 @@ export default function OneMileResultForm({ initialData, onSubmit, onCancel, loa
                             step={0.01}
                             value={cadet.practices[p] || 0}
                             onChange={(e) => handlePracticeChange(index, p, parseFloat(e.target.value) || 0)}
-                            className="w-16 px-1 py-1 border border-gray-300 rounded text-center text-sm focus:ring-2 focus:ring-blue-500 bg-white [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                            className="w-16 px-1 py-1 border border-gray-300 rounded text-center text-xs focus:ring-2 focus:ring-blue-500 bg-white [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                             placeholder="0"
                           />
                         </td>
                       ))}
 
                       {/* Avg Practice */}
-                      <td className="border border-black px-2 py-1 text-center font-medium">
+                      <td className="border border-black px-2 py-1 text-center">
                         {cadet.avg_practice}
                       </td>
 
@@ -610,29 +628,18 @@ export default function OneMileResultForm({ initialData, onSubmit, onCancel, loa
                           step={0.01}
                           value={cadet.test_mark || 0}
                           onChange={(e) => handleTestMarkChange(index, parseFloat(e.target.value) || 0)}
-                          className="w-16 px-1 py-1 border border-gray-300 rounded text-center text-sm focus:ring-2 focus:ring-blue-500 bg-white [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                          className="w-16 px-1 py-1 border border-gray-300 rounded text-center text-xs focus:ring-2 focus:ring-blue-500 bg-white [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                           placeholder="0"
                         />
                       </td>
-                      <td className="border border-black px-2 py-1 text-center font-semibold">
+                      <td className="border border-black px-2 py-1 text-center">
                         {cadet.conv_practice}
                       </td>
-                      <td className="border border-black px-2 py-1 text-center font-semibold">
+                      <td className="border border-black px-2 py-1 text-center">
                         {cadet.conv_exam}
                       </td>
-                      <td className="border border-black px-2 py-1 text-center font-semibold">
+                      <td className="border border-black px-2 py-1 text-center">
                         {cadet.mark}
-                        {/* <input
-                          type="number"
-                          min={0}
-                          max={conversationMark > 0 ? conversationMark : undefined}
-                          step={0.01}
-                          value={cadet.mark || 0}
-                          readOnly={practiceCount > 0}
-                          onChange={(e) => !practiceCount && handleCadetChange(index, "mark", parseFloat(e.target.value) || 0)}
-                          className={`w-20 px-2 py-1 border border-gray-300 rounded text-center text-sm font-bold focus:ring-2 focus:ring-blue-500 ${practiceCount > 0 ? 'bg-gray-100' : 'bg-white'}`}
-                          placeholder="0"
-                        /> */}
                       </td>
                     </tr>
                   ))}

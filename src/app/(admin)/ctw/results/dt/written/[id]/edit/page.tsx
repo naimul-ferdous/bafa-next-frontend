@@ -4,7 +4,8 @@
 import React, { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { ctwWrittenResultService } from "@/libs/services/ctwWrittenResultService";
-import { ctwResultsModuleService } from "@/libs/services/ctwResultsModuleService";
+import { ctwCommonService } from "@/libs/services/ctwCommonService";
+import { useAuth } from "@/libs/hooks/useAuth";
 import FullLogo from "@/components/ui/fulllogo";
 import WrittenResultForm from "@/components/ctw-written/WrittenResultForm";
 import { Icon } from "@iconify/react";
@@ -15,6 +16,7 @@ const WRITTEN_MODULE_CODE = "written";
 export default function EditWrittenResultPage() {
   const router = useRouter();
   const params = useParams();
+  const { user } = useAuth();
   const resultId = params?.id as string;
 
   const [loading, setLoading] = useState(false);
@@ -28,30 +30,30 @@ export default function EditWrittenResultPage() {
 
   // Fetch writtenModuleId
   useEffect(() => {
+    if (!user?.id) return;
     const fetchModuleId = async () => {
       try {
         setModuleLoading(true);
-        const modulesRes = await ctwResultsModuleService.getAllModules({ per_page: 100 });
-        const writtenModule = modulesRes.data.find((m: any) => m.code === WRITTEN_MODULE_CODE);
-        if (writtenModule) {
-          setWrittenModuleId(writtenModule.id);
+        const options = await ctwCommonService.getWrittenFormOptions(user?.id || 0);
+        if (options?.module) {
+          setWrittenModuleId(options.module.id);
         } else {
-          console.error(`Module with code ${WRITTEN_MODULE_CODE} not found.`);
-          setError(`Module with code ${WRITTEN_MODULE_CODE} not found.`);
+          setWrittenModuleId(null);
+          setError("Module not found.");
         }
       } catch (err) {
-        console.error("Failed to fetch module ID:", err);
+        setWrittenModuleId(null);
         setError("Failed to fetch module ID.");
       } finally {
         setModuleLoading(false);
       }
     };
-    fetchModuleId();
-  }, []);
+    if (user?.id) fetchModuleId();
+  }, [user?.id]);
 
   useEffect(() => {
     const loadResult = async () => {
-      if (writtenModuleId === null || !resultId) return;
+      if (writtenModuleId === null || !resultId) { setLoading(false); return; }
 
       try {
         setLoadingResult(true);

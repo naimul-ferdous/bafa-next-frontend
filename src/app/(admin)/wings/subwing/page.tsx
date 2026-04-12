@@ -135,7 +135,7 @@ function SubWingsPageContent() {
       key: "id",
       header: "SL.",
       className: "text-center text-gray-900",
-      render: (subWing, index) => (pagination.from || 0) + (index + 1),
+      render: (subWing, index) => (pagination.from || 0) + (index),
     },
     {
       key: "name",

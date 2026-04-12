@@ -1,13 +1,211 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
-import React, { useState, useEffect, useMemo, useRef } from "react";
+import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import Input from "@/components/form/input/InputField";
 import Label from "@/components/form/Label";
 import { Icon } from "@iconify/react";
-import type { AtwSubjectModule, AtwSubjectsModuleMarksheet, SystemUniversity } from "@/libs/types/system";
+import type { AtwSubjectModule, AtwSubjectsModuleMarksheet, SystemUniversity, SystemSemester, SystemProgram, AtwUniversityDepartment } from "@/libs/types/system";
 import { atwMarksheetService } from "@/libs/services/atwMarksheetService";
 import { universityService } from "@/libs/services/universityService";
+import { semesterService } from "@/libs/services/semesterService";
+import { programService } from "@/libs/services/programService";
+import { universitySemesterService, SystemUniversitySemester } from "@/libs/services/universitySemesterService";
+import { atwUniversityDepartmentService } from "@/libs/services/atwUniversityDepartmentService";
+
+function SearchableSelect({ label, value, onChange, options, placeholder, disabled, disabledText, required }: {
+  label: string;
+  value: number | "";
+  onChange: (val: number | "") => void;
+  options: { id: number; label: string }[];
+  placeholder?: string;
+  disabled?: boolean;
+  disabledText?: string;
+  required?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  const selected = options.find(o => o.id === value);
+  const filtered = options.filter(o => o.label.toLowerCase().includes(search.toLowerCase()));
+
+  return (
+    <div>
+      <Label>{label} {required && <span className="text-red-500">*</span>}</Label>
+      <div ref={ref} className="relative">
+        <button
+          type="button"
+          onClick={() => !disabled && setOpen(!open)}
+          className={`w-full px-3 py-2 border border-gray-200 rounded-lg bg-white text-left text-sm flex items-center justify-between ${disabled ? 'opacity-60 cursor-not-allowed' : 'focus:ring-2 focus:ring-blue-500'}`}
+        >
+          <span className={selected ? "text-gray-900" : "text-gray-400"}>
+            {disabled && disabledText ? disabledText : selected ? selected.label : `Select ${label}`}
+          </span>
+          <Icon icon="hugeicons:arrow-down-01" className={`w-4 h-4 text-gray-400 transition-transform ${open ? "rotate-180" : ""}`} />
+        </button>
+        {open && (
+          <div className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-64 flex flex-col">
+            <div className="p-2 border-b border-gray-100">
+              <div className="relative">
+                <Icon icon="hugeicons:search-01" className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <input
+                  type="text"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder={placeholder || `Search...`}
+                  className="w-full pl-8 pr-3 py-2 border border-gray-200 rounded text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  autoFocus
+                />
+              </div>
+            </div>
+            <div className="overflow-y-auto flex-1">
+              {value && (
+                <button
+                  type="button"
+                  onClick={() => { onChange(""); setOpen(false); setSearch(""); }}
+                  className="w-full px-3 py-2 text-left text-sm text-gray-400 hover:bg-gray-50 border-b border-gray-100"
+                >
+                  -- Clear --
+                </button>
+              )}
+              {filtered.length === 0 ? (
+                <div className="px-3 py-4 text-sm text-gray-400 text-center">No results found</div>
+              ) : (
+                filtered.map(o => (
+                  <button
+                    key={o.id}
+                    type="button"
+                    onClick={() => { onChange(o.id); setOpen(false); setSearch(""); }}
+                    className={`w-full px-3 py-2 text-left text-sm flex items-center justify-between ${o.id === value ? "bg-blue-50 text-blue-700 font-medium" : "text-gray-700 hover:bg-blue-50"}`}
+                  >
+                    <span>{o.label}</span>
+                    {o.id === value && <Icon icon="hugeicons:tick-02" className="w-4 h-4 text-blue-600" />}
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function SearchableSelectString({ label, value, onChange, options, selectedLabel, placeholder, disabled, disabledText, required }: {
+  label: string;
+  value: string;
+  onChange: (val: string) => void;
+  options: { id: string; label: string; group?: string }[];
+  selectedLabel?: string;
+  placeholder?: string;
+  disabled?: boolean;
+  disabledText?: string;
+  required?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  const filtered = options.filter(o => o.label.toLowerCase().includes(search.toLowerCase()));
+  const regularOptions = filtered.filter(o => !o.group);
+  const changeableOptions = filtered.filter(o => o.group);
+
+  return (
+    <div>
+      <Label>{label} {required && <span className="text-red-500">*</span>}</Label>
+      <div ref={ref} className="relative">
+        <button
+          type="button"
+          onClick={() => !disabled && setOpen(!open)}
+          className={`w-full px-3 py-2 border border-gray-200 rounded-lg bg-white text-left text-sm flex items-center justify-between ${disabled ? 'opacity-60 cursor-not-allowed' : 'focus:ring-2 focus:ring-blue-500'}`}
+        >
+          <span className={selectedLabel ? "text-gray-900" : "text-gray-400"}>
+            {disabled && disabledText ? disabledText : selectedLabel || `Select ${label}`}
+          </span>
+          <Icon icon="hugeicons:arrow-down-01" className={`w-4 h-4 text-gray-400 transition-transform ${open ? "rotate-180" : ""}`} />
+        </button>
+        {open && (
+          <div className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-72 flex flex-col">
+            <div className="p-2 border-b border-gray-100">
+              <div className="relative">
+                <Icon icon="hugeicons:search-01" className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <input
+                  type="text"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder={placeholder || "Search..."}
+                  className="w-full pl-8 pr-3 py-2 border border-gray-200 rounded text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  autoFocus
+                />
+              </div>
+            </div>
+            <div className="overflow-y-auto flex-1">
+              {value && (
+                <button
+                  type="button"
+                  onClick={() => { onChange(""); setOpen(false); setSearch(""); }}
+                  className="w-full px-3 py-2 text-left text-sm text-gray-400 hover:bg-gray-50 border-b border-gray-100"
+                >
+                  -- Clear --
+                </button>
+              )}
+              {regularOptions.length === 0 && changeableOptions.length === 0 ? (
+                <div className="px-3 py-4 text-sm text-gray-400 text-center">No results found</div>
+              ) : (
+                <>
+                  {regularOptions.map(o => (
+                    <button
+                      key={o.id}
+                      type="button"
+                      onClick={() => { onChange(o.id); setOpen(false); setSearch(""); }}
+                      className={`w-full px-3 py-2 text-left text-sm flex items-center justify-between ${o.id === value ? "bg-blue-50 text-blue-700 font-medium" : "text-gray-700 hover:bg-blue-50"}`}
+                    >
+                      <span>{o.label}</span>
+                      {o.id === value && <Icon icon="hugeicons:tick-02" className="w-4 h-4 text-blue-600" />}
+                    </button>
+                  ))}
+                  {changeableOptions.length > 0 && (
+                    <>
+                      <div className="px-3 py-1.5 text-[10px] font-bold text-gray-400 uppercase bg-gray-50 border-y border-gray-100">Changeable Programs</div>
+                      {changeableOptions.map(o => (
+                        <button
+                          key={o.id}
+                          type="button"
+                          onClick={() => { onChange(o.id); setOpen(false); setSearch(""); }}
+                          className={`w-full px-3 py-2 text-left text-sm flex items-center justify-between ${o.id === value ? "bg-purple-50 text-purple-700 font-medium" : "text-gray-700 hover:bg-purple-50"}`}
+                        >
+                          <span>{o.label}</span>
+                          {o.id === value && <Icon icon="hugeicons:tick-02" className="w-4 h-4 text-purple-600" />}
+                        </button>
+                      ))}
+                    </>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 interface SubjectFormProps {
   initialData?: AtwSubjectModule | null;
@@ -23,6 +221,11 @@ export default function SubjectModuleForm({ initialData, onSubmit, onCancel, loa
   const [formData, setFormData] = useState({
     atw_subjects_module_marksheet_id: "" as number | "",
     university_id: "" as number | "",
+    semester_id: "" as number | "",
+    program_id: "" as number | "",
+    system_programs_changeable_semester_id: "" as number | "",
+    university_semester_id: "" as number | "",
+    atw_university_department_id: "" as number | "",
     subject_name: "",
     subject_code: "",
     subject_legend: "",
@@ -37,6 +240,10 @@ export default function SubjectModuleForm({ initialData, onSubmit, onCancel, loa
 
   const [marksheets, setMarksheets] = useState<AtwSubjectsModuleMarksheet[]>([]);
   const [universities, setUniversities] = useState<SystemUniversity[]>([]);
+  const [semesters, setSemesters] = useState<SystemSemester[]>([]);
+  const [programs, setPrograms] = useState<SystemProgram[]>([]);
+  const [universitySemesters, setUniversitySemesters] = useState<SystemUniversitySemester[]>([]);
+  const [universityDepartments, setUniversityDepartments] = useState<AtwUniversityDepartment[]>([]);
   const [loadingMarksheets, setLoadingMarksheets] = useState(false);
   const [error, setError] = useState("");
 
@@ -45,12 +252,16 @@ export default function SubjectModuleForm({ initialData, onSubmit, onCancel, loa
     const fetchOptions = async () => {
       try {
         setLoadingMarksheets(true);
-        const [marksheetsRes, universitiesRes] = await Promise.all([
+        const [marksheetsRes, universitiesRes, semestersRes, programsRes] = await Promise.all([
           atwMarksheetService.getAllMarksheets({ per_page: 100 }),
           universityService.getAllUniversities({ per_page: 200 }),
+          semesterService.getAllSemesters({ per_page: 200 }),
+          programService.getAllPrograms({ per_page: 200 }),
         ]);
         setMarksheets(marksheetsRes.data || []);
         setUniversities(universitiesRes.data || []);
+        setSemesters(semestersRes.data || []);
+        setPrograms(programsRes.data || []);
       } catch (err) {
         console.error("Failed to load form options:", err);
       } finally {
@@ -66,6 +277,11 @@ export default function SubjectModuleForm({ initialData, onSubmit, onCancel, loa
       setFormData({
         atw_subjects_module_marksheet_id: initialData.atw_subjects_module_marksheet_id || "",
         university_id: initialData.university_id || "",
+        semester_id: initialData.semester_id || "",
+        program_id: initialData.program_id || "",
+        system_programs_changeable_semester_id: initialData.system_programs_changeable_semester_id || "",
+        university_semester_id: initialData.university_semester_id || "",
+        atw_university_department_id: initialData.atw_university_department_id || "",
         subject_name: initialData.subject_name || "",
         subject_code: initialData.subject_code || "",
         subject_legend: initialData.subject_legend || "",
@@ -83,6 +299,31 @@ export default function SubjectModuleForm({ initialData, onSubmit, onCancel, loa
   const handleChange = (field: string, value: any) => {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
+
+  // Load university semesters & departments when university changes
+  const loadUniversityData = useCallback(async (univId: number) => {
+    try {
+      const [semRes, deptRes] = await Promise.all([
+        universitySemesterService.getAll({ university_id: univId, per_page: 100 }),
+        atwUniversityDepartmentService.getAllDepartments({ university_id: univId, per_page: 100 }),
+      ]);
+      setUniversitySemesters(semRes.data || []);
+      setUniversityDepartments(deptRes.data || []);
+    } catch {
+      setUniversitySemesters([]);
+      setUniversityDepartments([]);
+    }
+  }, []);
+
+  // When university_id changes, fetch its semesters & departments
+  useEffect(() => {
+    if (formData.university_id) {
+      loadUniversityData(formData.university_id as number);
+    } else {
+      setUniversitySemesters([]);
+      setUniversityDepartments([]);
+    }
+  }, [formData.university_id, loadUniversityData]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
@@ -142,6 +383,11 @@ export default function SubjectModuleForm({ initialData, onSubmit, onCancel, loa
         subjects_credit: parseFloat(formData.subjects_credit) || 0,
         atw_subjects_module_marksheet_id: formData.atw_subjects_module_marksheet_id === "" ? null : formData.atw_subjects_module_marksheet_id,
         university_id: formData.university_id === "" ? null : formData.university_id,
+        semester_id: formData.semester_id === "" ? null : formData.semester_id,
+        program_id: formData.program_id === "" ? null : formData.program_id,
+        system_programs_changeable_semester_id: formData.system_programs_changeable_semester_id === "" ? null : formData.system_programs_changeable_semester_id,
+        university_semester_id: formData.university_semester_id === "" ? null : formData.university_semester_id,
+        atw_university_department_id: formData.atw_university_department_id === "" ? null : formData.atw_university_department_id,
       };
       await onSubmit(submitData);
     } catch (err: any) {
@@ -181,44 +427,114 @@ export default function SubjectModuleForm({ initialData, onSubmit, onCancel, loa
       <div className="space-y-6">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <div>
-            <Label>Select Marksheet <span className="text-red-500">*</span></Label>
-            <div className="relative">
-              <select
-                value={formData.atw_subjects_module_marksheet_id}
-                onChange={(e) => handleChange("atw_subjects_module_marksheet_id", e.target.value ? parseInt(e.target.value) : "")}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none appearance-none"
-                required
-              >
-                <option value="">Select a Marksheet</option>
-                {marksheets.map(m => (
-                  <option key={m.id} value={m.id}>{m.name} ({m.code})</option>
-                ))}
-              </select>
-              <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
-                {loadingMarksheets ? <Icon icon="hugeicons:fan-01" className="animate-spin" /> : <Icon icon="hugeicons:arrow-down-01" />}
-              </div>
-            </div>
+            <SearchableSelect
+              label="Select Marksheet"
+              required
+              value={formData.atw_subjects_module_marksheet_id}
+              onChange={(val) => handleChange("atw_subjects_module_marksheet_id", val)}
+              options={marksheets.map(m => ({ id: m.id, label: `${m.name} (${m.code})`.toUpperCase() }))}
+              placeholder="Search marksheet..."
+            />
             <p className="mt-1 text-[10px] text-gray-500 italic">Manage marksheets in the Marksheets section.</p>
           </div>
 
-          <div>
-            <Label>University</Label>
-            <div className="relative">
-              <select
-                value={formData.university_id}
-                onChange={(e) => handleChange("university_id", e.target.value ? parseInt(e.target.value) : "")}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none appearance-none"
-              >
-                <option value="">Select University</option>
-                {universities.map(u => (
-                  <option key={u.id} value={u.id}>{u.name} ({u.code})</option>
-                ))}
-              </select>
-              <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
-                <Icon icon="hugeicons:arrow-down-01" />
-              </div>
-            </div>
-          </div>
+          <SearchableSelect
+            label="University"
+            required
+            value={formData.university_id}
+            onChange={(val) => {
+              handleChange("university_id", val);
+              handleChange("university_semester_id", "");
+              handleChange("atw_university_department_id", "");
+            }}
+            options={universities.map(u => ({ id: u.id, label: `${u.short_name} (${u.code})`.toUpperCase() }))}
+            placeholder="Search university..."
+          />
+
+          <SearchableSelect
+            label="BAFA Semester"
+            required
+            value={formData.semester_id}
+            onChange={(val) => {
+              handleChange("semester_id", val);
+              handleChange("program_id", "");
+              handleChange("system_programs_changeable_semester_id", "");
+            }}
+            options={semesters.map(s => ({ id: s.id, label: s.name.toLocaleUpperCase() }))}
+            placeholder="Search semester..."
+          />
+
+          {(() => {
+            // Build combined program options: regular programs + changeable programs for selected semester
+            const programOptions: { id: string; label: string; group?: string }[] = [];
+            programs.forEach(p => {
+              programOptions.push({ id: String(p.id), label: `${p.name}`.toLocaleUpperCase() });
+            });
+            if (formData.semester_id) {
+              programs.forEach(p => {
+                p.changeable_semesters?.forEach(cs => {
+                  if (cs.semester_id === Number(formData.semester_id)) {
+                    programOptions.push({ id: `cs:${cs.id}:${p.id}`, label: `${cs.name}`.toLocaleUpperCase(), group: 'Changeable' });
+                  }
+                });
+              });
+            }
+
+            // Derive current select value
+            const currentVal = formData.system_programs_changeable_semester_id
+              ? `cs:${formData.system_programs_changeable_semester_id}:${formData.program_id}`
+              : formData.program_id ? String(formData.program_id) : "";
+
+            const selectedOption = programOptions.find(o => o.id === currentVal);
+
+            return (
+              <SearchableSelectString
+                label="Program"
+                required
+                value={currentVal}
+                onChange={(val) => {
+                  if (val.startsWith("cs:")) {
+                    const parts = val.split(":");
+                    handleChange("system_programs_changeable_semester_id", Number(parts[1]));
+                    handleChange("program_id", Number(parts[2]));
+                  } else if (val) {
+                    handleChange("program_id", Number(val));
+                    handleChange("system_programs_changeable_semester_id", "");
+                  } else {
+                    handleChange("program_id", "");
+                    handleChange("system_programs_changeable_semester_id", "");
+                  }
+                }}
+                options={programOptions}
+                selectedLabel={selectedOption?.label}
+                placeholder="Search program..."
+                disabled={!formData.semester_id}
+                disabledText="Select a semester first"
+              />
+            );
+          })()}
+
+          {formData.university_id && formData.system_programs_changeable_semester_id && universitySemesters.length > 0 && (
+            <SearchableSelect
+              label="University Semester"
+              required
+              value={formData.university_semester_id}
+              onChange={(val) => handleChange("university_semester_id", val)}
+              options={universitySemesters.map(s => ({ id: s.id, label: s.short_name || s.name }))}
+              placeholder="Search university semester..."
+            />
+          )}
+
+          {formData.university_id && formData.system_programs_changeable_semester_id && (
+            <SearchableSelect
+              label="University Department"
+              required
+              value={formData.atw_university_department_id}
+              onChange={(val) => handleChange("atw_university_department_id", val)}
+              options={universityDepartments.map(d => ({ id: d.id, label: `${d.name} (${d.code})` }))}
+              placeholder="Search department..."
+            />
+          )}
 
           <div>
             <Label>Subject Name <span className="text-red-500">*</span></Label>
@@ -228,23 +544,14 @@ export default function SubjectModuleForm({ initialData, onSubmit, onCancel, loa
             <Label>Subject Code <span className="text-red-500">*</span></Label>
             <Input value={formData.subject_code} onChange={(e) => handleChange("subject_code", e.target.value)} placeholder="Enter subject code" required />
           </div>
-          <div>
-            <Label>Subject Type <span className="text-red-500">*</span></Label>
-            <div className="relative">
-              <select
-                value={formData.subject_type}
-                onChange={(e) => handleChange("subject_type", e.target.value)}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none appearance-none"
-                required
-              >
-                <option value="academic">Academic</option>
-                <option value="professional">Professional</option>
-              </select>
-              <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
-                <Icon icon="hugeicons:arrow-down-01" />
-              </div>
-            </div>
-          </div>
+          <SearchableSelect
+            label="Subject Type"
+            required
+            value={formData.subject_type === "academic" ? 1 : formData.subject_type === "professional" ? 2 : ""}
+            onChange={(val) => handleChange("subject_type", val === 1 ? "academic" : val === 2 ? "professional" : "academic")}
+            options={[{ id: 1, label: "Academic" }, { id: 2, label: "Professional" }]}
+            placeholder="Search type..."
+          />
           <div>
             <Label>Subject Legend <span className="text-red-500">*</span></Label>
             <Input value={formData.subject_legend} onChange={(e) => handleChange("subject_legend", e.target.value)} placeholder="Enter legend" required />

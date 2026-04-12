@@ -3,41 +3,56 @@
 
 import React, { useState, useEffect, useMemo } from "react";
 import { Icon } from "@iconify/react";
+import { Modal } from "@/components/ui/modal";
 import { useAuth } from "@/libs/hooks/useAuth";
-import { commonService } from "@/libs/services/commonService";
 import { ftw11sqnFlyingExaminationMarkService } from "@/libs/services/ftw11sqnFlyingExaminationMarkService";
-import { cadetService } from "@/libs/services/cadetService";
-import instructorService from "@/libs/services/instructorService";
-import type { SystemCourse, SystemSemester, SystemExam, SystemProgram, SystemBranch, SystemGroup } from "@/libs/types/system";
+import type { SystemCourse, SystemSemester, SystemExam } from "@/libs/types/system";
 import type { User, CadetProfile } from "@/libs/types/user";
-import type { Ftw11sqnFlyingPhaseType, Ftw11sqnFlyingSyllabus, Ftw11sqnFlyingSyllabusExercise } from "@/libs/types/ftw11sqnFlying";
+import type {
+  Ftw11sqnFlyingPhaseType,
+  Ftw11sqnFlyingSyllabus,
+  Ftw11sqnFlyingSyllabusExercise,
+} from "@/libs/types/ftw11sqnFlying";
 import DatePicker from "@/components/form/input/DatePicker";
+import FullLogo from "@/components/ui/fulllogo";
+import EditMarkModal from "./EditMarkModal";
+import AddAdditionalMarkModal from "./AddAdditionalMarkModal";
 
 // Extended exercise with phase type info
 interface ExerciseWithPhaseType extends Ftw11sqnFlyingSyllabusExercise {
   phase_type_id: number;
   phase_type_name: string;
+  syllabus_id: number;
+  phase_sort?: number;
 }
 
-interface CadetRow {
-  cadet_id: number;
-  cadet_bd_no: string;
-  cadet_rank: string;
-  cadet_name: string;
-  cadet_branch: string;
+// Each row = one mission/exercise for the selected cadet
+interface MissionRow {
+  exercise_id: number;
+  exercise_shortname: string;
+  phase_type_id: number;
+  phase_type_name: string;
+  syllabus_id: number;
+  phase_sort?: number;
+  exercise_sort?: number;
+  take_time_hours?: string;
   is_active: boolean;
-  is_present: boolean;
-  mission_id: number;
   date: string;
   instructor_id: number;
-  phase_type_id: number;
   hrs_solo: string;
   hrs_dual: string;
   mark: string;
+  time: string;
   remark: string;
   existing_mark_info?: {
     exists: boolean;
+    id?: number;
     date?: string;
+    instructor_id?: number;
+    instructor_name?: string;
+    achieved_time?: string;
+    achieved_mark?: string;
+    remark?: string;
   };
 }
 
@@ -49,7 +64,13 @@ interface BulkFormProps {
   initialData?: any;
 }
 
-export default function Ftw11sqnFlyingExaminationMarkForm({ onSubmit, onCancel, loading, isEdit = false, initialData }: BulkFormProps) {
+export default function Ftw11sqnFlyingExaminationMarkForm({
+  onSubmit,
+  onCancel,
+  loading,
+  isEdit = false,
+  initialData,
+}: BulkFormProps) {
   const { user, userIsSuperAdmin, userIsSystemAdmin, userIsInstructor } = useAuth();
 
   const isInstructor = userIsInstructor;
@@ -63,11 +84,17 @@ export default function Ftw11sqnFlyingExaminationMarkForm({ onSubmit, onCancel, 
     group_id: isEdit ? (initialData?.group_id || 0) : 0,
     exam_type_id: isEdit ? (initialData?.exam_type_id || 0) : 0,
     syllabus_id: isEdit ? (initialData?.ftw_11sqn_flying_syllabus_id || 0) : 0,
+    // NEW: selected cadet for create-mode
+    selected_cadet_id: 0,
   });
+
+  // Selected phase IDs for checkboxes
+  const [selectedPhaseIds, setSelectedPhaseIds] = useState<number[]>([]);
 
   // Single record edit state
   const [editData, setEditData] = useState({
-    ftw_11sqn_flying_syllabus_exercise_id: initialData?.ftw_11sqn_flying_syllabus_exercise_id || 0,
+    ftw_11sqn_flying_syllabus_exercise_id:
+      initialData?.ftw_11sqn_flying_syllabus_exercise_id || 0,
     instructor_id: initialData?.instructor_id || defaultInstructorId,
     phase_type_id: initialData?.phase_type_id || 0,
     achieved_mark: initialData?.achieved_mark || "",
@@ -79,11 +106,18 @@ export default function Ftw11sqnFlyingExaminationMarkForm({ onSubmit, onCancel, 
     is_active: initialData?.is_active ?? true,
   });
 
-  const [cadetRows, setCadetRows] = useState<CadetRow[]>([]);
+  // Mission rows for the selected cadet (create mode)
+  const [missionRows, setMissionRows] = useState<MissionRow[]>([]);
   const [error, setError] = useState("");
   const [timeInputs, setTimeInputs] = useState<{ [key: string]: string }>({});
 
-  // Time conversion helpers
+  // Edit/Add modal state
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [selectedExerciseForEdit, setSelectedExerciseForEdit] = useState<MissionRow | null>(null);
+  const [selectedExerciseForAdd, setSelectedExerciseForAdd] = useState<MissionRow | null>(null);
+
+  // ── Time helpers ──────────────────────────────────────────────────────────
   const parseTimeToMinutes = (timeStr: string): number => {
     if (!timeStr || timeStr.trim() === "") return 0;
     const cleanStr = timeStr.replace(".", ":");
@@ -106,27 +140,28 @@ export default function Ftw11sqnFlyingExaminationMarkForm({ onSubmit, onCancel, 
   };
 
   const handleTimeInputChange = (key: string, value: string) => {
-    setTimeInputs(prev => ({ ...prev, [key]: value }));
+    setTimeInputs((prev) => ({ ...prev, [key]: value }));
   };
 
-  const handleTimeInputBlur = (key: string, index?: number, field?: "hrs_solo" | "hrs_dual" | "achieved_time", isEditMode: boolean = false) => {
+  const handleTimeInputBlur = (
+    key: string,
+    exerciseId?: number,
+    field?: "hrs_solo" | "hrs_dual" | "achieved_time",
+    isEditMode = false
+  ) => {
     const inputValue = timeInputs[key] || "";
     const totalMinutes = parseTimeToMinutes(inputValue);
     const timeStr = minutesToTimeString(totalMinutes);
 
     if (isEditMode) {
       if (field === "achieved_time") {
-        setEditData(prev => ({ ...prev, achieved_time: timeStr }));
+        setEditData((prev) => ({ ...prev, achieved_time: timeStr }));
       }
-    } else if (index !== undefined) {
-      if (field === "hrs_solo") {
-        handleCadetChange(index, "hrs_solo" as keyof CadetRow, timeStr);
-      } else if (field === "hrs_dual") {
-        handleCadetChange(index, "hrs_dual" as keyof CadetRow, timeStr);
-      }
+    } else if (exerciseId !== undefined) {
+      handleMissionRowChange(exerciseId, field as keyof MissionRow, timeStr);
     }
 
-    setTimeInputs(prev => ({ ...prev, [key]: timeStr }));
+    setTimeInputs((prev) => ({ ...prev, [key]: timeStr }));
   };
 
   const getTimeInputValue = (key: string, defaultValue: string): string => {
@@ -134,108 +169,106 @@ export default function Ftw11sqnFlyingExaminationMarkForm({ onSubmit, onCancel, 
     return defaultValue || "0:00";
   };
 
-  // Dropdown data
+  // ── Dropdown data ─────────────────────────────────────────────────────────
   const [courses, setCourses] = useState<SystemCourse[]>([]);
   const [semesters, setSemesters] = useState<SystemSemester[]>([]);
-  const [programs, setPrograms] = useState<SystemProgram[]>([]);
-  const [branches, setBranches] = useState<SystemBranch[]>([]);
-  const [groups, setGroups] = useState<SystemGroup[]>([]);
   const [exams, setExams] = useState<SystemExam[]>([]);
   const [instructors, setInstructors] = useState<User[]>([]);
   const [phaseTypes, setPhaseTypes] = useState<Ftw11sqnFlyingPhaseType[]>([]);
   const [syllabuses, setSyllabuses] = useState<Ftw11sqnFlyingSyllabus[]>([]);
   const [allCadets, setAllCadets] = useState<CadetProfile[]>([]);
   const [exercises, setExercises] = useState<ExerciseWithPhaseType[]>([]);
+  const [instructorAssignedExercises, setInstructorAssignedExercises] = useState<number[]>([]);
+  const [instructorAssignedPhases, setInstructorAssignedPhases] = useState<number[]>([]);
+  const [instructorAssignedCadets, setInstructorAssignedCadets] = useState<{ id: number; name: string; bd_no?: string; cadet_number?: string }[]>([]);
   const [loadingInitial, setLoadingInitial] = useState(true);
   const [loadingExercises, setLoadingExercises] = useState(false);
+  const [loadingExistingMarks, setLoadingExistingMarks] = useState(false);
 
-  // Load dropdown data
+  // ── Auto-select exam type when semester is selected ───────────────────────
   useEffect(() => {
-    const loadInitialData = async () => {
+    if (formData.semester_id > 0 && exams.length > 0 && formData.exam_type_id === 0) {
+      const selectedSem = semesters.find((s) => s.id === formData.semester_id);
+      if (selectedSem) {
+        const semName = selectedSem.name.toLowerCase();
+        const semCode = selectedSem.code?.toLowerCase() || "";
+        let selectedExamId = 0;
+
+        if (
+          semName.includes("5th") ||
+          semName.includes("5 semester") ||
+          semCode.includes("s5") ||
+          semCode.includes("sem5")
+        ) {
+          const midExam = exams.find(
+            (e) =>
+              e.name.toLowerCase().includes("mid") ||
+              e.code?.toLowerCase().includes("mid")
+          );
+          if (midExam) selectedExamId = midExam.id;
+        } else if (
+          semName.includes("6th") ||
+          semName.includes("6 semester") ||
+          semCode.includes("s6") ||
+          semCode.includes("sem6")
+        ) {
+          const endExam = exams.find(
+            (e) =>
+              e.name.toLowerCase().includes("end") ||
+              e.code?.toLowerCase().includes("end")
+          );
+          if (endExam) selectedExamId = endExam.id;
+        }
+
+        if (selectedExamId > 0) {
+          setFormData((prev) => ({ ...prev, exam_type_id: selectedExamId }));
+        }
+      }
+    }
+  }, [formData.semester_id, semesters, exams, formData.exam_type_id]);
+
+  // ── Load dropdown data from single API ────────────────────────────────────────────────────
+  useEffect(() => {
+    const loadFormData = async () => {
       try {
         setLoadingInitial(true);
 
-        // Fetch options and instructors in parallel
-        const [options, instructorsRes] = await Promise.all([
-          commonService.getResultOptions(),
-          instructorService.getAllInstructors({ per_page: 500 })
-        ]);
+        const formDataResponse = await ftw11sqnFlyingExaminationMarkService.getFormData({
+          instructor_id: isInstructor && user ? user.id : undefined,
+        });
 
-        if (options) {
-          setCourses(options.courses.filter(c => c.is_active));
-          setSemesters(options.semesters.filter(s => s.is_active && !!s.is_flying));
-          setPrograms((options.programs || []).filter(p => p.is_active && !!p.is_flying));
-          setBranches((options.branches || []).filter(b => b.is_active && !!b.is_flying));
-          setGroups(options.groups || []);
-          setExams(options.exams.filter(e => e.is_active));
-          setPhaseTypes(options.ftw11sqn_phase_types);
-          setSyllabuses(options.ftw11sqn_syllabuses);
-        }
+        if (formDataResponse) {
+          setCourses(formDataResponse.courses || []);
+          setSemesters(formDataResponse.semesters || []);
+          setExams(formDataResponse.exams || []);
+          setPhaseTypes(formDataResponse.phase_types || []);
+          setSyllabuses(formDataResponse.syllabuses || []);
 
-        // Process instructors from instructorService
-        const instructorsData = (instructorsRes as any)?.data?.data || (instructorsRes as any)?.data || [];
-        const mappedInstructors = instructorsData.map((inst: any) => ({
-          ...inst,
-          id: inst.user_id || inst.id,
-          name: inst.user?.name || inst.short_name || inst.name_bangla || `Instructor #${inst.id}`,
-          assigned_wings: inst.assign_wings || []
-        }));
-
-        if (isInstructor && user) {
-          setInstructors(mappedInstructors.filter((inst: any) => inst.id === user.id));
-        } else if (user) {
-          // Get current user's wing/subwing IDs from all sources
-          const userRoleWings = user?.roleAssignments?.map(ra => ra.wing_id).filter(id => id != null) || [];
-          const userRoleSubWings = user?.roleAssignments?.map(ra => ra.sub_wing_id).filter(id => id != null) || [];
-          const userAssignWings = (user as any)?.assign_wings?.map((aw: any) => aw.wing_id).filter((id: any) => id != null) || [];
-          const userAssignSubWings = (user as any)?.assign_wings?.map((aw: any) => aw.subwing_id).filter((id: any) => id != null) || [];
-
-          const userWingIds = [...new Set([...userRoleWings, ...userAssignWings])];
-          const userSubWingIds = [...new Set([...userRoleSubWings, ...userAssignSubWings])];
-
-          const isRestricted = !userIsSuperAdmin && !userIsSystemAdmin;
-
-          if (isRestricted && userWingIds.length > 0) {
-            const filteredInstructors = mappedInstructors.filter((inst: any) => {
-              const instWings = inst.assigned_wings;
-              if (instWings.length === 0) return false;
-
-              // Instructor must have at least one assignment matching the user's scope
-              return instWings.some((aw: any) => {
-                // ONLY consider approved and active assignments
-                const isApproved = aw.status === 'approved' && aw.is_active;
-                if (!isApproved) return false;
-
-                const matchesWing = userWingIds.includes(aw.wing_id);
-                const instSubWingId = aw.subwing_id || aw.sub_wing_id;
-
-                if (userSubWingIds.length > 0) {
-                  // User is restricted to a squadron: Match wing AND specific subwing
-                  return matchesWing && instSubWingId && userSubWingIds.includes(instSubWingId);
-                }
-                // User is Wing level: Match wing (Parent sees all subwings of that wing)
-                return matchesWing;
-              });
-            });
-            setInstructors(filteredInstructors);
-          } else {
-            setInstructors(mappedInstructors);
-          }
-        } else {
+          const mappedInstructors = (formDataResponse.instructors || []).map((inst: any) => ({
+            ...inst,
+            id: inst.id,
+            name: inst.name || inst.name_bangla || `Instructor #${inst.id}`,
+          }));
           setInstructors(mappedInstructors);
-        }
 
+          if (formDataResponse.instructor_assigned) {
+            setInstructorAssignedPhases(formDataResponse.instructor_assigned.phases?.map((p: any) => p.id) || []);
+            setInstructorAssignedExercises(formDataResponse.instructor_assigned.exercises || []);
+            setInstructorAssignedCadets(formDataResponse.instructor_assigned.cadets || []);
+          }
+        }
       } catch (err) {
-        console.error("Failed to load initial data:", err);
+        console.error("Failed to load form data:", err);
         setError("Failed to load required data. Please refresh the page.");
       } finally {
         setLoadingInitial(false);
       }
     };
 
-    loadInitialData();
-  }, [isInstructor, user, userIsSuperAdmin, userIsSystemAdmin]);
+    loadFormData();
+  }, [isInstructor, user]);
 
+  // ── Fetch cadets for course+semester from single API ────────────────────────────
   useEffect(() => {
     const fetchCadets = async () => {
       if (!formData.course_id || !formData.semester_id) {
@@ -243,128 +276,157 @@ export default function Ftw11sqnFlyingExaminationMarkForm({ onSubmit, onCancel, 
         return;
       }
       try {
-        const response = await cadetService.getAllCadets({
-          course_id: formData.course_id,
+        const formDataResponse = await ftw11sqnFlyingExaminationMarkService.getFormData({
+          instructor_id: isInstructor && user ? user.id : undefined,
           semester_id: formData.semester_id,
-          per_page: 200,
+          course_id: formData.course_id,
         });
 
-        const responseData = response as any;
-        const data = Array.isArray(responseData) ? responseData : (responseData?.data?.data || responseData?.data || []);
-        setAllCadets(Array.isArray(data) ? data : []);
+        if (formDataResponse?.cadets) {
+          setAllCadets(formDataResponse.cadets);
+        }
+
+        // Also update instructor assignments based on course/semester selection
+        if (formDataResponse?.instructor_assigned) {
+          setInstructorAssignedPhases(formDataResponse.instructor_assigned.phases?.map((p: any) => p.id) || []);
+          setInstructorAssignedExercises(formDataResponse.instructor_assigned.exercises || []);
+          setInstructorAssignedCadets(formDataResponse.instructor_assigned.cadets || []);
+        }
       } catch (err) {
         console.error("Failed to fetch cadets:", err);
       }
     };
-
     fetchCadets();
-  }, [formData.course_id, formData.semester_id]);
+  }, [formData.course_id, formData.semester_id, isInstructor, user]);
 
-  // Filtered cadets based on course, semester, and user's wing/subwing assignments
+  // ── Filtered cadets list (wing/subwing restriction + instructor assignment) ─────
   const filteredCadets = useMemo(() => {
     if (!formData.course_id || !formData.semester_id) return [];
-
-    // The backend API already handles course/semester filtering correctly for the list of cadets
     const isRestricted = !userIsSuperAdmin && !userIsSystemAdmin;
 
-    if (!isRestricted) {
-      return allCadets;
+    // For instructors, filter to only show assigned cadets
+    if (isInstructor && instructorAssignedCadets.length > 0) {
+      const cadetIds = new Set(instructorAssignedCadets.map(c => c.id));
+      return allCadets.filter(cadet => cadetIds.has(cadet.id));
     }
 
-    // Get user's assigned wings and subwings from both roleAssignments and assign_wings
-    const userRoleWings = user?.roleAssignments?.map(ra => ra.wing_id).filter(id => id != null) || [];
-    const userRoleSubWings = user?.roleAssignments?.map(ra => ra.sub_wing_id).filter(id => id != null) || [];
+    if (!isRestricted) return allCadets;
 
-    const userAssignWings = (user as any)?.assign_wings?.map((aw: any) => aw.wing_id).filter((id: any) => id != null) || [];
-    const userAssignSubWings = (user as any)?.assign_wings?.map((aw: any) => aw.subwing_id).filter((id: any) => id != null) || [];
+    const userRoleWings =
+      user?.roleAssignments?.map((ra) => ra.wing_id).filter((id) => id != null) || [];
+    const userRoleSubWings =
+      user?.roleAssignments?.map((ra) => ra.sub_wing_id).filter((id) => id != null) || [];
+    const userAssignWings =
+      (user as any)?.assign_wings
+        ?.map((aw: any) => aw.wing_id)
+        .filter((id: any) => id != null) || [];
+    const userAssignSubWings =
+      (user as any)?.assign_wings
+        ?.map((aw: any) => aw.subwing_id)
+        .filter((id: any) => id != null) || [];
 
     const userWingIds = [...new Set([...userRoleWings, ...userAssignWings])];
-    const userSubWingIds = [...new Set([...userRoleSubWings, ...userAssignSubWings])];
+    const userSubWingIds = [
+      ...new Set([...userRoleSubWings, ...userAssignSubWings]),
+    ];
 
-    if (userWingIds.length === 0) return allCadets; // fallback: return all if no wing data attached to user
+    if (userWingIds.length === 0) return allCadets;
 
-    return allCadets.filter(cadet => {
-      // Basic local filters
-      if (formData.program_id && !cadet.assigned_programs?.some(ap => ap.program_id === formData.program_id)) return false;
-      if (formData.branch_id && !cadet.assigned_branchs?.some(ab => ab.branch_id === formData.branch_id)) return false;
-      if (formData.group_id && !cadet.assigned_groups?.some(ag => ag.group_id === formData.group_id)) return false;
+    return allCadets.filter((cadet) => {
+      if (
+        formData.program_id &&
+        !cadet.assigned_programs?.some(
+          (ap) => ap.program_id === formData.program_id
+        )
+      )
+        return false;
+      if (
+        formData.branch_id &&
+        !cadet.assigned_branchs?.some(
+          (ab) => ab.branch_id === formData.branch_id
+        )
+      )
+        return false;
+      if (
+        formData.group_id &&
+        !cadet.assigned_groups?.some(
+          (ag) => ag.group_id === formData.group_id
+        )
+      )
+        return false;
 
-      // If the cadet has no wings assigned somehow, they wouldn't match. But let's allow if no wing data.
-      if (!cadet.assigned_wings || cadet.assigned_wings.length === 0) return true;
-
-      // Wing restriction
-      const matchesWing = cadet.assigned_wings.some(aw => userWingIds.includes(aw.wing_id));
-
-      // SubWing restriction
+      if (!cadet.assigned_wings || cadet.assigned_wings.length === 0)
+        return true;
+      const matchesWing = cadet.assigned_wings.some((aw) =>
+        userWingIds.includes(aw.wing_id)
+      );
       let matchesSubWing = true;
-      if (userSubWingIds.length > 0 && cadet.assigned_sub_wings && cadet.assigned_sub_wings.length > 0) {
-        matchesSubWing = cadet.assigned_sub_wings.some(asw => userSubWingIds.includes(asw.sub_wing_id));
+      if (
+        userSubWingIds.length > 0 &&
+        cadet.assigned_sub_wings &&
+        cadet.assigned_sub_wings.length > 0
+      ) {
+        matchesSubWing = cadet.assigned_sub_wings.some((asw) =>
+          userSubWingIds.includes(asw.sub_wing_id)
+        );
       }
-
       return matchesWing && matchesSubWing;
     });
-  }, [allCadets, formData.course_id, formData.semester_id, formData.program_id, formData.branch_id, formData.group_id, user, userIsSuperAdmin, userIsSystemAdmin]);
+  }, [
+    allCadets,
+    formData.course_id,
+    formData.semester_id,
+    formData.program_id,
+    formData.branch_id,
+    formData.group_id,
+    user,
+    userIsSuperAdmin,
+    userIsSystemAdmin,
+    isInstructor,
+    instructorAssignedCadets,
+  ]);
 
-  // Sync cadet rows when filtered cadets change
-  useEffect(() => {
-    if (isEdit) return;
-
-    const rows: CadetRow[] = filteredCadets.map(cadet => ({
-      cadet_id: cadet.id,
-      cadet_bd_no: cadet.bd_no || cadet.cadet_number || "",
-      cadet_rank: cadet.assigned_ranks?.[0]?.rank?.name || "",
-      cadet_name: cadet.name,
-      cadet_branch: cadet.assigned_branchs?.[0]?.branch?.code || cadet.assigned_branchs?.[0]?.branch?.name || "",
-      is_active: false,
-      is_present: true,
-      mission_id: 0,
-      date: "",
-      instructor_id: defaultInstructorId,
-      phase_type_id: 0,
-      hrs_solo: "0:00",
-      hrs_dual: "0:00",
-      mark: "",
-      remark: "",
-      existing_mark_info: undefined,
-    }));
-
-    setCadetRows(rows);
-  }, [filteredCadets, isEdit, defaultInstructorId]);
-
-  // Load exercises when syllabus is selected (all exercises from all phase types)
+  // ── Load exercises when selected phases change ──────────────────────────────
   useEffect(() => {
     const loadExercises = async () => {
-      if (!formData.syllabus_id) {
+      if (selectedPhaseIds.length === 0) {
         setExercises([]);
         return;
       }
-
       try {
         setLoadingExercises(true);
-        // Find the selected syllabus
-        const selectedSyllabus = syllabuses.find(s => s.id === formData.syllabus_id);
-
-        if (!selectedSyllabus) {
-          setExercises([]);
-          setLoadingExercises(false);
-          return;
-        }
-
-        // Extract ALL exercises from the selected syllabus with their phase type info
         const allExercises: ExerciseWithPhaseType[] = [];
-        selectedSyllabus.syllabus_types?.forEach(syllabusType => {
-          const phaseType = phaseTypes.find(pt => pt.id === syllabusType.ftw_11sqn_flying_phase_type_id);
-          const phaseTypeName = phaseType?.type_name || "";
 
-          syllabusType.exercises?.forEach(exercise => {
-            if (exercise.is_active) {
-              allExercises.push({
-                ...exercise,
-                phase_type_id: syllabusType.ftw_11sqn_flying_phase_type_id,
-                phase_type_name: phaseTypeName,
-              });
-            }
+        selectedPhaseIds.forEach((syllabusId) => {
+          const selectedSyllabus = syllabuses.find((s) => s.id === syllabusId);
+          if (!selectedSyllabus) return;
+
+          selectedSyllabus.syllabus_types?.forEach((syllabusType) => {
+            const phaseType = phaseTypes.find(
+              (pt) => pt.id === syllabusType.ftw_11sqn_flying_phase_type_id
+            );
+            const phaseTypeName = phaseType?.type_name || "";
+            syllabusType.exercises?.forEach((exercise) => {
+              if (exercise.is_active) {
+                allExercises.push({
+                  ...exercise,
+                  phase_type_id: syllabusType.ftw_11sqn_flying_phase_type_id,
+                  phase_type_name: phaseTypeName,
+                  syllabus_id: syllabusId,
+                  phase_sort: selectedSyllabus.phase_sort || 0,
+                });
+              }
+            });
           });
+        });
+
+        // Sort by phase_sort first, then by syllabus_id for consistent ordering, then by exercise_sort
+        allExercises.sort((a, b) => {
+          const aSort = a.phase_sort || 0;
+          const bSort = b.phase_sort || 0;
+          if (aSort !== bSort) return aSort - bSort;
+          if (a.syllabus_id !== b.syllabus_id) return a.syllabus_id - b.syllabus_id;
+          return (a.exercise_sort || 0) - (b.exercise_sort || 0);
         });
 
         setExercises(allExercises);
@@ -375,158 +437,325 @@ export default function Ftw11sqnFlyingExaminationMarkForm({ onSubmit, onCancel, 
         setLoadingExercises(false);
       }
     };
-
     loadExercises();
-  }, [formData.syllabus_id, syllabuses, phaseTypes]);
+  }, [selectedPhaseIds, syllabuses, phaseTypes]);
 
-  const handleChange = (field: string, value: any) => {
-    setFormData(prev => {
-      const updated = { ...prev, [field]: value };
+  // ── Exercises filtered to instructor assignments ───────────────────────────
+  const filteredExercises = useMemo(() => {
+    if (!isInstructor || instructorAssignedExercises.length === 0)
+      return exercises;
+    return exercises.filter((ex) =>
+      instructorAssignedExercises.includes(ex.id)
+    );
+  }, [exercises, isInstructor, instructorAssignedExercises]);
 
-      // Auto-select exam type based on semester
-      if (field === "semester_id" && value > 0) {
-        const selectedSem = semesters.find(s => s.id === value);
-        if (selectedSem) {
-          const semName = selectedSem.name.toLowerCase();
-          const semCode = selectedSem.code?.toLowerCase() || "";
+  // ── Build mission rows when cadet + exercises are ready ───────────────────
+  // When the selected cadet or exercises list changes, rebuild the mission rows
+  // and check for existing marks for each exercise.
+  useEffect(() => {
+    if (isEdit) return;
+    if (!formData.selected_cadet_id || filteredExercises.length === 0) {
+      setMissionRows([]);
+      return;
+    }
 
-          // Check for 5th semester (Mid)
-          if (semName.includes("5th") || semName.includes("5 semester") || semCode.includes("s5") || semCode.includes("sem5")) {
-            const midExam = exams.find(e =>
-              e.name.toLowerCase().includes("mid") ||
-              e.code?.toLowerCase().includes("mid")
-            );
-            if (midExam) {
-              updated.exam_type_id = midExam.id;
-            }
-          }
-          // Check for 6th semester (End)
-          else if (semName.includes("6th") || semName.includes("6 semester") || semCode.includes("s6") || semCode.includes("sem6")) {
-            const endExam = exams.find(e =>
-              e.name.toLowerCase().includes("end") ||
-              e.code?.toLowerCase().includes("end")
-            );
-            if (endExam) {
-              updated.exam_type_id = endExam.id;
-            }
-          }
-        }
-      }
+    // Filter exercises by selected phases
+    const exercisesToShow = selectedPhaseIds.length > 0
+      ? filteredExercises.filter((ex) => selectedPhaseIds.includes(ex.syllabus_id))
+      : filteredExercises;
 
-      return updated;
-    });
-  };
+    if (exercisesToShow.length === 0) {
+      setMissionRows([]);
+      return;
+    }
 
-  const handleCadetChange = async (cadetIndex: number, field: keyof CadetRow, value: any) => {
-    setCadetRows(prev => {
-      const updated = [...prev];
+    // Get today's date in dd/mm/yyyy format
+    const today = new Date();
+    const dd = String(today.getDate()).padStart(2, '0');
+    const mm = String(today.getMonth() + 1).padStart(2, '0');
+    const yyyy = today.getFullYear();
+    const todayStr = `${dd}/${mm}/${yyyy}`;
 
-      // If mission is changing, update phase_type_id and reset the disabled hrs field
-      if (field === "mission_id") {
-        const exercise = exercises.find(ex => ex.id === value);
-        const phaseTypeName = exercise?.phase_type_name?.toLowerCase() || "";
-        const isDual = phaseTypeName.includes("dual");
-        const isSolo = phaseTypeName.includes("solo");
+    const rows: MissionRow[] = exercisesToShow.map((ex) => ({
+      exercise_id: ex.id,
+      exercise_shortname: ex.exercise_shortname,
+      phase_type_id: ex.phase_type_id,
+      phase_type_name: ex.phase_type_name,
+      syllabus_id: ex.syllabus_id,
+      phase_sort: ex.phase_sort,
+      exercise_sort: ex.exercise_sort,
+      take_time_hours: ex.take_time_hours ? String(ex.take_time_hours) : undefined,
+      is_active: false,
+      date: todayStr,
+      instructor_id: defaultInstructorId,
+      hrs_solo: "0:00",
+      hrs_dual: "0:00",
+      mark: "",
+      time: "0:00",
+      remark: "",
+      existing_mark_info: undefined,
+    }));
 
-        updated[cadetIndex] = {
-          ...updated[cadetIndex],
-          mission_id: value,
-          phase_type_id: exercise?.phase_type_id || 0,
-          // Reset the disabled field to default
-          hrs_solo: isDual ? "0:00" : updated[cadetIndex].hrs_solo,
-          hrs_dual: isSolo ? "0:00" : updated[cadetIndex].hrs_dual,
-          existing_mark_info: undefined, // Reset existing mark info when mission changes
-        };
-      } else {
-        updated[cadetIndex] = {
-          ...updated[cadetIndex],
-          [field]: value
-        };
-      }
-      return updated;
-    });
+    setMissionRows(rows);
 
-    // Check for existing mark when mission is selected
-    if (field === "mission_id" && value > 0 && formData.course_id && formData.semester_id && formData.exam_type_id && formData.syllabus_id) {
-      const cadet = cadetRows[cadetIndex];
-      const exercise = exercises.find(ex => ex.id === value);
-
-      if (cadet && exercise) {
+    // After building rows, fetch all existing marks in one call
+    if (formData.course_id && formData.semester_id && formData.exam_type_id) {
+      const fetchExistingMarks = async () => {
+        setLoadingExistingMarks(true);
         try {
-          const result = await ftw11sqnFlyingExaminationMarkService.checkExistingMark({
-            cadet_id: cadet.cadet_id,
+          const result = await ftw11sqnFlyingExaminationMarkService.getCadetMarks({
+            cadet_id: formData.selected_cadet_id,
             course_id: formData.course_id,
             semester_id: formData.semester_id,
             exam_type_id: formData.exam_type_id,
-            syllabus_id: formData.syllabus_id,
-            exercise_id: value,
           });
 
-          if (result.exists) {
-            setCadetRows(prev => {
-              const updated = [...prev];
-              updated[cadetIndex] = {
-                ...updated[cadetIndex],
-                existing_mark_info: {
-                  exists: true,
-                  date: result.date,
-                },
-              };
-              return updated;
+          if (result.marks && result.marks.length > 0) {
+            const marksMap = new Map();
+            result.marks.forEach((m) => {
+              marksMap.set(m.ftw_11sqn_flying_syllabus_exercise_id, m);
             });
+
+            const updated = rows.map((row) => {
+              const existingMark = marksMap.get(row.exercise_id);
+              if (existingMark) {
+                return {
+                  ...row,
+                  existing_mark_info: {
+                    exists: true,
+                    id: existingMark.id,
+                    date: existingMark.participate_date || existingMark.created_at,
+                    instructor_id: existingMark.instructor_id,
+                    achieved_time: existingMark.achieved_time,
+                    achieved_mark: existingMark.achieved_mark,
+                    remark: existingMark.remark,
+                  },
+                };
+              }
+              return row;
+            });
+            setMissionRows(updated);
           }
-        } catch (err) {
-          console.error("Failed to check existing mark:", err);
+        } catch (error) {
+          console.error('Failed to fetch existing marks:', error);
+        } finally {
+          setLoadingExistingMarks(false);
         }
+      };
+      fetchExistingMarks();
+    }
+    // Reset time inputs when cadet changes
+    setTimeInputs({});
+  }, [
+    formData.selected_cadet_id,
+    filteredExercises,
+    selectedPhaseIds,
+    formData.course_id,
+    formData.semester_id,
+    formData.exam_type_id,
+    formData.syllabus_id,
+    isEdit,
+    defaultInstructorId,
+  ]);
+
+  // ── Handlers ──────────────────────────────────────────────────────────────
+  const handleChange = (field: string, value: any) => {
+    setFormData((prev) => {
+      const updated = { ...prev, [field]: value };
+      // Reset syllabus and cadet when semester changes
+      if (field === "semester_id") {
+        updated.syllabus_id = 0;
+        updated.selected_cadet_id = 0;
       }
+      // Reset cadet when syllabus changes
+      if (field === "syllabus_id") {
+        updated.selected_cadet_id = 0;
+      }
+      return updated;
+    });
+  };
+
+  const handlePhaseCheckboxChange = (phaseId: number, checked: boolean) => {
+    setSelectedPhaseIds((prev) => {
+      if (checked) {
+        return [...prev, phaseId];
+      } else {
+        return prev.filter((id) => id !== phaseId);
+      }
+    });
+  };
+
+  const handleSelectAllPhases = (checked: boolean) => {
+    if (checked) {
+      const availablePhaseIds = syllabuses
+        .filter((s) => {
+          if (formData.semester_id && s.semester_id !== formData.semester_id) return false;
+          if (isInstructor && instructorAssignedPhases.length > 0 && !instructorAssignedPhases.includes(s.id)) return false;
+          return true;
+        })
+        .map((s) => s.id);
+      setSelectedPhaseIds(availablePhaseIds);
+    } else {
+      setSelectedPhaseIds([]);
     }
   };
 
-  const toggleCadetActive = (cadetIndex: number) => {
-    setCadetRows(prev => {
+  const handleMissionRowChange = (
+    exerciseId: number,
+    field: keyof MissionRow,
+    value: any
+  ) => {
+    setMissionRows((prev) => {
       const updated = [...prev];
-      const newState = !updated[cadetIndex].is_active;
-      updated[cadetIndex] = {
-        ...updated[cadetIndex],
-        is_active: newState,
-        is_present: newState // Selected means present
+      const idx = updated.findIndex((r) => r.exercise_id === exerciseId);
+      if (idx === -1) return prev;
+      updated[idx] = { ...updated[idx], [field]: value };
+      return updated;
+    });
+  };
+
+  const toggleMissionActive = (exerciseId: number) => {
+    setMissionRows((prev) => {
+      const updated = [...prev];
+      const idx = updated.findIndex((r) => r.exercise_id === exerciseId);
+      if (idx === -1) return prev;
+      updated[idx] = {
+        ...updated[idx],
+        is_active: !updated[idx].is_active,
       };
       return updated;
     });
   };
 
-  const handleEditChange = (field: string, value: any) => {
-    setEditData(prev => {
-      const updated = { ...prev, [field]: value };
-      // If exercise changes, update phase_type_id
-      if (field === "ftw_11sqn_flying_syllabus_exercise_id") {
-        const exercise = exercises.find(ex => ex.id === value);
-        if (exercise) {
-          updated.phase_type_id = exercise.phase_type_id;
+  const handleUpdateExistingMark = async (row: MissionRow) => {
+    if (!row.existing_mark_info?.exists || !row.existing_mark_info.id) return;
+
+    try {
+      const submitData = {
+        ftw_11sqn_flying_syllabus_id: row.syllabus_id,
+        ftw_11sqn_flying_syllabus_exercise_id: row.exercise_id,
+        course_id: formData.course_id,
+        semester_id: formData.semester_id,
+        instructor_id: row.existing_mark_info.instructor_id || row.instructor_id,
+        cadet_id: formData.selected_cadet_id,
+        exam_type_id: formData.exam_type_id || null,
+        phase_type_id: row.phase_type_id,
+        achieved_mark: row.existing_mark_info.achieved_mark,
+        achieved_time: row.existing_mark_info.achieved_time,
+        participate_date: row.existing_mark_info.date,
+        is_present: true,
+        remark: row.existing_mark_info.remark || "",
+        is_active: true,
+      };
+
+      await ftw11sqnFlyingExaminationMarkService.updateMark(row.existing_mark_info.id, submitData);
+
+      // Refresh the mission rows to get updated data
+      setMissionRows((prev) => prev.map((r) => {
+        if (r.exercise_id === row.exercise_id) {
+          return {
+            ...r,
+            existing_mark_info: {
+              exists: true,
+              id: row.existing_mark_info?.id,
+              date: row.existing_mark_info?.date,
+              achieved_mark: row.existing_mark_info?.achieved_mark,
+              achieved_time: row.existing_mark_info?.achieved_time,
+              instructor_id: row.existing_mark_info?.instructor_id,
+            },
+          };
         }
+        return r;
+      }));
+
+      setError("");
+    } catch (err: any) {
+      // If it's a success message in error, it's actually successful
+      const msg = err?.message || "";
+      if (!msg.toLowerCase().includes("success")) {
+        console.error("Failed to update mark:", err);
+        setError(msg || "Failed to update mark");
+      } else {
+        setError("");
+      }
+    }
+  };
+
+  const handleAddAdditionalMark = async (row: MissionRow) => {
+    try {
+      const submitData = {
+        ftw_11sqn_flying_syllabus_id: row.syllabus_id,
+        ftw_11sqn_flying_syllabus_exercise_id: row.exercise_id,
+        course_id: formData.course_id,
+        semester_id: formData.semester_id,
+        instructor_id: row.instructor_id,
+        cadet_id: formData.selected_cadet_id,
+        exam_type_id: formData.exam_type_id || null,
+        phase_type_id: row.phase_type_id,
+        achieved_mark: row.mark,
+        achieved_time: row.time || row.hrs_dual,
+        participate_date: row.date,
+        is_present: true,
+        remark: row.remark,
+        is_active: true,
+      };
+
+      await ftw11sqnFlyingExaminationMarkService.createAdditionalMark(submitData);
+
+      setError("");
+    } catch (err: any) {
+      const msg = err?.message || "";
+      if (!msg.toLowerCase().includes("success")) {
+        console.error("Failed to add additional mark:", err);
+        setError(msg || "Failed to add additional mark");
+      } else {
+        setError("");
+      }
+    }
+  };
+
+  const handleEditChange = (field: string, value: any) => {
+    setEditData((prev) => {
+      const updated = { ...prev, [field]: value };
+      if (field === "ftw_11sqn_flying_syllabus_exercise_id") {
+        const exercise = exercises.find((ex) => ex.id === value);
+        if (exercise) updated.phase_type_id = exercise.phase_type_id;
       }
       return updated;
     });
   };
 
+  const getExercisePhaseType = (
+    phaseTypeName: string
+  ): { isDual: boolean; isSolo: boolean } => {
+    const name = phaseTypeName?.toLowerCase() || "";
+    return { isDual: name.includes("dual"), isSolo: name.includes("solo") };
+  };
+
+  // ── Submit ────────────────────────────────────────────────────────────────
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
 
-    // Validation
     if (!formData.course_id) { setError("Please select a course"); return; }
     if (!formData.semester_id) { setError("Please select a semester"); return; }
-    if (!formData.syllabus_id) { setError("Please select a phase"); return; }
+    if (selectedPhaseIds.length === 0) { setError("Please select at least one phase"); return; }
 
     try {
       if (isEdit) {
-        // Edit mode - submit single record
-        if (!editData.ftw_11sqn_flying_syllabus_exercise_id) { setError("Please select an exercise"); return; }
-        if (!editData.instructor_id) { setError("Please select an instructor"); return; }
+        if (!editData.ftw_11sqn_flying_syllabus_exercise_id) {
+          setError("Please select an exercise");
+          return;
+        }
+        if (!editData.instructor_id) {
+          setError("Please select an instructor");
+          return;
+        }
 
         const submitData = {
           ftw_11sqn_flying_syllabus_id: formData.syllabus_id,
-          ftw_11sqn_flying_syllabus_exercise_id: editData.ftw_11sqn_flying_syllabus_exercise_id,
+          ftw_11sqn_flying_syllabus_exercise_id:
+            editData.ftw_11sqn_flying_syllabus_exercise_id,
           course_id: formData.course_id,
           semester_id: formData.semester_id,
           program_id: initialData?.program_id || null,
@@ -544,38 +773,43 @@ export default function Ftw11sqnFlyingExaminationMarkForm({ onSubmit, onCancel, 
           remark: editData.remark,
           is_active: editData.is_active,
         };
-
         await onSubmit(submitData);
       } else {
-        // Create mode - submit bulk records
-        const marks: any[] = [];
+        // Create mode — build marks from selected mission rows
+        if (!formData.selected_cadet_id) {
+          setError("Please select a cadet");
+          return;
+        }
 
-        cadetRows
-          .filter(c =>
-            c.is_active &&
-            c.cadet_id > 0 &&
-            c.mission_id > 0 &&
-            !c.existing_mark_info?.exists
+        const marks: any[] = missionRows
+          .filter(
+            (r) =>
+              r.is_active &&
+              r.exercise_id > 0 &&
+              !r.existing_mark_info?.exists
           )
-          .forEach(c => {
-            const selectedExercise = exercises.find(ex => ex.id === c.mission_id);
-            const exercisePhaseTypeId = selectedExercise?.phase_type_id || c.phase_type_id;
+          .map((r) => ({
+            cadet_id: formData.selected_cadet_id,
+            ftw_11sqn_flying_syllabus_id: r.syllabus_id,
+            ftw_11sqn_flying_syllabus_exercise_id: r.exercise_id,
+            instructor_id: r.instructor_id,
+            exam_type_id: formData.exam_type_id || null,
+            phase_type_id: r.phase_type_id,
+            achieved_mark: r.mark,
+            achieved_time:
+              r.hrs_solo && r.hrs_solo !== "0:00" ? r.hrs_solo : r.hrs_dual,
+            participate_date: r.date,
+            is_present: true,
+            remark: r.remark,
+            is_active: true,
+          }));
 
-            marks.push({
-              cadet_id: c.cadet_id,
-              ftw_11sqn_flying_syllabus_id: formData.syllabus_id,
-              ftw_11sqn_flying_syllabus_exercise_id: c.mission_id,
-              instructor_id: c.instructor_id,
-              exam_type_id: formData.exam_type_id || null,
-              phase_type_id: exercisePhaseTypeId,
-              achieved_mark: c.mark,
-              achieved_time: c.hrs_solo && c.hrs_solo !== "0:00" ? c.hrs_solo : c.hrs_dual,
-              participate_date: c.date,
-              is_present: true, // Selected means present
-              remark: c.remark,
-              is_active: true,
-            });
-          });
+        if (marks.length === 0) {
+          setError(
+            "Please select at least one mission row (checkbox) to submit"
+          );
+          return;
+        }
 
         const submitData = {
           course_id: formData.course_id,
@@ -583,512 +817,888 @@ export default function Ftw11sqnFlyingExaminationMarkForm({ onSubmit, onCancel, 
           program_id: formData.program_id || undefined,
           branch_id: formData.branch_id || undefined,
           group_id: formData.group_id || undefined,
-          marks: marks,
+          marks,
         };
-
         await onSubmit(submitData);
       }
     } catch (err: any) {
-      const defaultMessage = isEdit ? "Failed to update mark" : "Failed to create marks";
-      const errorMessage = err?.response?.data?.message || err?.message || defaultMessage;
-
-      if (!errorMessage.toLowerCase().includes('success')) {
+      const defaultMessage = isEdit
+        ? "Failed to update mark"
+        : "Failed to create marks";
+      const errorMessage =
+        err?.response?.data?.message || err?.message || defaultMessage;
+      if (!errorMessage.toLowerCase().includes("success")) {
         setError(errorMessage);
       }
     }
   };
 
-  const filtersSelected = formData.course_id && formData.semester_id;
+  const filtersSelected =
+    formData.course_id && formData.semester_id && selectedPhaseIds.length > 0;
 
-  // Helper to get phase type name for a specific mission/exercise
-  const getExercisePhaseType = (missionId: number): { isDual: boolean; isSolo: boolean } => {
-    if (!missionId) return { isDual: false, isSolo: false };
-    const exercise = exercises.find(ex => ex.id === missionId);
-    const phaseTypeName = exercise?.phase_type_name?.toLowerCase() || "";
-    return {
-      isDual: phaseTypeName.includes("dual"),
-      isSolo: phaseTypeName.includes("solo"),
-    };
-  };
+  const selectedCadet = filteredCadets.find(
+    (c) => c.id === formData.selected_cadet_id
+  );
 
+  // ── Render ────────────────────────────────────────────────────────────────
   if (loadingInitial) {
     return (
       <div className="w-full min-h-[20vh] flex items-center justify-center">
-        <div><Icon icon="hugeicons:fan-01" className="w-10 h-10 animate-spin mx-auto my-10 text-blue-500" /></div>
+        <Icon
+          icon="hugeicons:fan-01"
+          className="w-10 h-10 animate-spin mx-auto my-10 text-blue-500"
+        />
       </div>
     );
   }
 
   return (
-    <form onSubmit={handleSubmit}>
-      {error && (
-        <div className="p-4 mb-6 bg-red-50 border border-red-200 rounded-lg text-red-600 flex items-center gap-2">
-          <Icon icon="hugeicons:alert-circle" className="w-5 h-5" />
-          {error}
-        </div>
-      )}
+    <>
+      <form onSubmit={handleSubmit}>
+        {error && (
+          <div className="p-4 mb-6 bg-red-50 border border-red-200 rounded-lg text-red-600 flex items-center gap-2">
+            <Icon icon="hugeicons:alert-circle" className="w-5 h-5" />
+            {error}
+          </div>
+        )}
 
-      <div className="space-y-6">
-        {/* Basic Filters */}
-        <div className="border border-gray-200 rounded-lg p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-            <Icon icon="hugeicons:filter" className="w-5 h-5 text-blue-500" />
-            Selection Filters
-          </h3>
+        <div className="space-y-6">
+          {/* ── Selection Filters ── */}
+          <div className="border border-gray-200 rounded-lg p-6">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+              <Icon icon="hugeicons:filter" className="w-5 h-5 text-blue-500" />
+              Selection Filters
+            </h3>
 
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div>
-              <label className="block font-medium text-gray-700 mb-2">
-                Course <span className="text-red-500">*</span>
-              </label>
-              <select
-                value={formData.course_id}
-                onChange={(e) => handleChange("course_id", parseInt(e.target.value))}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500"
-                required
-              >
-                <option value={0}>Select Course</option>
-                {courses.map(course => (
-                  <option key={course.id} value={course.id}>{course.name} ({course.code})</option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block font-medium text-gray-700 mb-2">
-                Semester <span className="text-red-500">*</span>
-              </label>
-              <select
-                value={formData.semester_id}
-                onChange={(e) => handleChange("semester_id", parseInt(e.target.value))}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500"
-                required
-              >
-                <option value={0}>Select Semester</option>
-                {semesters.map(semester => (
-                  <option key={semester.id} value={semester.id}>{semester.name} ({semester.code})</option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block font-medium text-gray-700 mb-2">Group</label>
-              <select
-                value={formData.group_id}
-                onChange={(e) => handleChange("group_id", parseInt(e.target.value))}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500"
-              >
-                <option value={0}>Select Group</option>
-                {groups.map(g => (<option key={g.id} value={g.id}>{g.name}</option>))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block font-medium text-gray-700 mb-2">
-                Phase (Syllabus) <span className="text-red-500">*</span>
-              </label>
-              <select
-                value={formData.syllabus_id}
-                onChange={(e) => handleChange("syllabus_id", parseInt(e.target.value))}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500"
-                required
-              >
-                <option value={0}>Select Phase</option>
-                {syllabuses
-                  .filter(s =>
-                    (!formData.course_id || s.course_id === formData.course_id) &&
-                    (!formData.semester_id || s.semester_id === formData.semester_id)
-                  )
-                  .map(syllabus => (
-                    <option key={syllabus.id} value={syllabus.id}>
-                      {syllabus.phase_full_name} ({syllabus.phase_shortname})
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              {/* Course */}
+              <div>
+                <label className="block font-medium text-gray-700 mb-2">
+                  Course <span className="text-red-500">*</span>
+                </label>
+                <select
+                  value={formData.course_id}
+                  onChange={(e) =>
+                    handleChange("course_id", parseInt(e.target.value))
+                  }
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500"
+                  required
+                >
+                  <option value={0}>Select Course</option>
+                  {courses.map((course) => (
+                    <option key={course.id} value={course.id}>
+                      {course.name} ({course.code})
                     </option>
                   ))}
-              </select>
-              {loadingExercises && formData.syllabus_id > 0 && (
-                <p className="mt-1 text-blue-500 flex items-center gap-1">
-                  <Icon icon="hugeicons:fan-01" className="w-3 h-3 animate-spin" />
+                </select>
+              </div>
+
+              {/* Semester */}
+              <div>
+                <label className="block font-medium text-gray-700 mb-2">
+                  Semester <span className="text-red-500">*</span>
+                </label>
+                <select
+                  value={formData.semester_id}
+                  onChange={(e) =>
+                    handleChange("semester_id", parseInt(e.target.value))
+                  }
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500"
+                  required
+                >
+                  <option value={0}>Select Semester</option>
+                  {semesters.map((semester) => (
+                    <option key={semester.id} value={semester.id}>
+                      {semester.name} ({semester.code})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+
+              {loadingExercises && (
+                <p className="mb-2 text-blue-500 flex items-center gap-1 text-sm">
+                  <Icon
+                    icon="hugeicons:fan-01"
+                    className="w-3 h-3 animate-spin"
+                  />
                   Loading exercises...
                 </p>
               )}
-            </div>
-          </div>
-        </div>
-
-        {/* Edit Mode - Single Record */}
-        {isEdit ? (
-          <div className="space-y-6">
-            {/* Cadet Info (Read-only) */}
-            <div className="border border-gray-200 rounded-lg p-6 bg-gray-50">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                <Icon icon="hugeicons:user" className="w-5 h-5 text-blue-500" />
-                Cadet Information
-              </h3>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div>
-                  <label className="block font-medium text-gray-700 mb-1">Cadet</label>
-                  <p className="text-gray-900">{initialData?.cadet?.name || `Cadet #${initialData?.cadet_id}`}</p>
-                </div>
-                <div>
-                  <label className="block font-medium text-gray-700 mb-1">Course</label>
-                  <p className="text-gray-900">{initialData?.course?.name || `Course #${initialData?.course_id}`}</p>
-                </div>
-                <div>
-                  <label className="block font-medium text-gray-700 mb-1">Semester</label>
-                  <p className="text-gray-900">{initialData?.semester?.name || `Semester #${initialData?.semester_id}`}</p>
-                </div>
+              {/* Select All checkbox */}
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={
+                    selectedPhaseIds.length > 0 &&
+                    selectedPhaseIds.length >= syllabuses.filter((s) => {
+                      if (formData.semester_id && s.semester_id !== formData.semester_id) return false;
+                      if (isInstructor && instructorAssignedPhases.length > 0 && !instructorAssignedPhases.includes(s.id)) return false;
+                      return true;
+                    }).length
+                  }
+                  onChange={(e) => handleSelectAllPhases(e.target.checked)}
+                  className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                />
+                <span className="font-medium text-gray-700 text-sm">Select All Exercises</span>
               </div>
-            </div>
 
-            {/* Examination Details */}
-            <div className="border border-gray-200 rounded-lg p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                <Icon icon="hugeicons:airplane-take-off-01" className="w-5 h-5 text-blue-500" />
-                Examination Details
-              </h3>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block font-medium text-gray-700 mb-2">
-                    Exercise (Mission) <span className="text-red-500">*</span>
-                  </label>
-                  <select
-                    value={editData.ftw_11sqn_flying_syllabus_exercise_id}
-                    onChange={(e) => handleEditChange("ftw_11sqn_flying_syllabus_exercise_id", parseInt(e.target.value))}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500"
-                    required
-                    disabled={!formData.syllabus_id}
-                  >
-                    <option value={0}>Select Exercise</option>
-                    {exercises.map(exercise => (
-                      <option key={exercise.id} value={exercise.id}>
-                        {exercise.exercise_shortname} - ({exercise.phase_type_name})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block font-medium text-gray-700 mb-2">
-                    Instructor <span className="text-red-500">*</span>
-                  </label>
-                  <select
-                    value={editData.instructor_id}
-                    onChange={(e) => handleEditChange("instructor_id", parseInt(e.target.value))}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500"
-                    required
-                  >
-                    <option value={0}>Select Instructor</option>
-                    {instructors.map(instructor => (
-                      <option key={instructor.id} value={instructor.id}>
-                        {instructor.name || (instructor as any).instructor_biodata?.name || `Instructor #${instructor.id}`}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block font-medium text-gray-700 mb-2">
-                    Phase Type
-                  </label>
-                  <select
-                    value={editData.phase_type_id}
-                    onChange={(e) => handleEditChange("phase_type_id", parseInt(e.target.value))}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value={0}>Select Phase Type</option>
-                    {phaseTypes.map(pt => (
-                      <option key={pt.id} value={pt.id}>{pt.type_name}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block font-medium text-gray-700 mb-2">Date</label>
-                  <DatePicker
-                    value={editData.participate_date}
-                    onChange={(e) => handleEditChange("participate_date", e.target.value)}
-                    placeholder="dd/mm/yyyy"
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Marks & Results */}
-            <div className="border border-gray-200 rounded-lg p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                <Icon icon="hugeicons:chart-line-data-01" className="w-5 h-5 text-blue-500" />
-                Marks & Results
-              </h3>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div>
-                  <label className="block font-medium text-gray-700 mb-2">Achieved Mark</label>
-                  <input
-                    type="text"
-                    value={editData.achieved_mark}
-                    onChange={(e) => handleEditChange("achieved_mark", e.target.value)}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500"
-                    placeholder="Enter mark"
-                  />
-                </div>
-
-                <div>
-                  <label className="block font-medium text-gray-700 mb-2">Time (H:MM)</label>
-                  <input
-                    type="text"
-                    value={getTimeInputValue("edit-time", editData.achieved_time)}
-                    onChange={(e) => handleTimeInputChange("edit-time", e.target.value)}
-                    onBlur={() => handleTimeInputBlur("edit-time", undefined, "achieved_time", true)}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500"
-                    placeholder="0:00"
-                  />
-                </div>
-
-                <div>
-                  <label className="block font-medium text-gray-700 mb-2">Present</label>
-                  <select
-                    value={editData.is_present ? "true" : "false"}
-                    onChange={(e) => handleEditChange("is_present", e.target.value === "true")}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="true">Yes</option>
-                    <option value="false">No</option>
-                  </select>
-                </div>
-
-                {!editData.is_present && (
-                  <div className="md:col-span-3">
-                    <label className="block font-medium text-gray-700 mb-2">Absent Reason</label>
+              {syllabuses
+                .filter((s) => {
+                  if (formData.semester_id && s.semester_id !== formData.semester_id)
+                    return false;
+                  if (
+                    isInstructor &&
+                    instructorAssignedPhases.length > 0 &&
+                    !instructorAssignedPhases.includes(s.id)
+                  )
+                    return false;
+                  return true;
+                })
+                .map((syllabus) => (
+                  <div key={syllabus.id} className="flex items-center gap-2">
                     <input
-                      type="text"
-                      value={editData.absent_reason}
-                      onChange={(e) => handleEditChange("absent_reason", e.target.value)}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500"
-                      placeholder="Enter reason for absence"
+                      type="checkbox"
+                      checked={selectedPhaseIds.includes(syllabus.id)}
+                      onChange={(e) =>
+                        handlePhaseCheckboxChange(syllabus.id, e.target.checked)
+                      }
+                      className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
                     />
+                    <span className="text-gray-700 text-sm">
+                      {syllabus.phase_full_name} ({syllabus.phase_shortname})
+                    </span>
                   </div>
+                ))}
+              {syllabuses.filter((s) => {
+                if (formData.semester_id && s.semester_id !== formData.semester_id) return false;
+                if (isInstructor && instructorAssignedPhases.length > 0 && !instructorAssignedPhases.includes(s.id)) return false;
+                return true;
+              }).length === 0 && (
+                  <p className="text-gray-500 text-sm py-2">No phases available</p>
                 )}
 
-                <div className="md:col-span-3">
-                  <label className="block font-medium text-gray-700 mb-2">Remark</label>
-                  <textarea
-                    value={editData.remark}
-                    onChange={(e) => handleEditChange("remark", e.target.value)}
-                    rows={3}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500"
-                    placeholder="Enter any remarks"
-                  />
-                </div>
-
+              {/* Cadet Selector — NEW (create mode only) */}
+              {!isEdit && (
                 <div>
-                  <label className="block font-medium text-gray-700 mb-2">Status</label>
+                  <label className="block font-medium text-gray-700 mb-2">
+                    Cadet <span className="text-red-500">*</span>
+                  </label>
                   <select
-                    value={editData.is_active ? "true" : "false"}
-                    onChange={(e) => handleEditChange("is_active", e.target.value === "true")}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500"
+                    value={formData.selected_cadet_id}
+                    onChange={(e) =>
+                      handleChange("selected_cadet_id", parseInt(e.target.value))
+                    }
+                    disabled={!filtersSelected}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
                   >
-                    <option value="true">Active</option>
-                    <option value="false">Inactive</option>
+                    <option value={0}>
+                      {!filtersSelected
+                        ? "Select Course, Semester & Phase first"
+                        : "Select Cadet"}
+                    </option>
+                    {filteredCadets.map((cadet) => (
+                      <option key={cadet.id} value={cadet.id}>
+                        {cadet.bd_no || cadet.cadet_number
+                          ? `${cadet.bd_no || cadet.cadet_number} — `
+                          : ""}
+                        {cadet.name}
+                      </option>
+                    ))}
                   </select>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* ── Edit Mode — Single Record ── */}
+          {isEdit ? (
+            <div className="space-y-6">
+              {/* Cadet Info (read-only) */}
+              <div className="border border-gray-200 rounded-lg p-6 bg-gray-50">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                  <Icon
+                    icon="hugeicons:user"
+                    className="w-5 h-5 text-blue-500"
+                  />
+                  Cadet Information
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block font-medium text-gray-700 mb-1">
+                      Cadet
+                    </label>
+                    <p className="text-gray-900">
+                      {initialData?.cadet?.name ||
+                        `Cadet #${initialData?.cadet_id}`}
+                    </p>
+                  </div>
+                  <div>
+                    <label className="block font-medium text-gray-700 mb-1">
+                      Course
+                    </label>
+                    <p className="text-gray-900">
+                      {initialData?.course?.name ||
+                        `Course #${initialData?.course_id}`}
+                    </p>
+                  </div>
+                  <div>
+                    <label className="block font-medium text-gray-700 mb-1">
+                      Semester
+                    </label>
+                    <p className="text-gray-900">
+                      {initialData?.semester?.name ||
+                        `Semester #${initialData?.semester_id}`}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Examination Details */}
+              <div className="border border-gray-200 rounded-lg p-6">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                  <Icon
+                    icon="hugeicons:airplane-take-off-01"
+                    className="w-5 h-5 text-blue-500"
+                  />
+                  Examination Details
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block font-medium text-gray-700 mb-2">
+                      Exercise (Mission){" "}
+                      <span className="text-red-500">*</span>
+                    </label>
+                    <select
+                      value={editData.ftw_11sqn_flying_syllabus_exercise_id}
+                      onChange={(e) =>
+                        handleEditChange(
+                          "ftw_11sqn_flying_syllabus_exercise_id",
+                          parseInt(e.target.value)
+                        )
+                      }
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500"
+                      required
+                      disabled={!formData.syllabus_id}
+                    >
+                      <option value={0}>Select Exercise</option>
+                      {filteredExercises.map((exercise) => (
+                        <option key={exercise.id} value={exercise.id}>
+                          {exercise.exercise_shortname} -{" "}
+                          ({exercise.phase_type_name})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block font-medium text-gray-700 mb-2">
+                      Instructor <span className="text-red-500">*</span>
+                    </label>
+                    <select
+                      value={editData.instructor_id}
+                      onChange={(e) =>
+                        handleEditChange(
+                          "instructor_id",
+                          parseInt(e.target.value)
+                        )
+                      }
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500"
+                      required
+                    >
+                      <option value={0}>Select Instructor</option>
+                      {instructors.map((instructor) => (
+                        <option key={instructor.id} value={instructor.id}>
+                          {instructor.name ||
+                            (instructor as any).instructor_biodata?.name ||
+                            `Instructor #${instructor.id}`}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block font-medium text-gray-700 mb-2">
+                      Phase Type
+                    </label>
+                    <select
+                      value={editData.phase_type_id}
+                      onChange={(e) =>
+                        handleEditChange(
+                          "phase_type_id",
+                          parseInt(e.target.value)
+                        )
+                      }
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value={0}>Select Phase Type</option>
+                      {phaseTypes.map((pt) => (
+                        <option key={pt.id} value={pt.id}>
+                          {pt.type_name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block font-medium text-gray-700 mb-2">
+                      Date
+                    </label>
+                    <DatePicker
+                      value={editData.participate_date}
+                      onChange={(e) =>
+                        handleEditChange("participate_date", e.target.value)
+                      }
+                      placeholder="dd/mm/yyyy"
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Marks & Results */}
+              <div className="border border-gray-200 rounded-lg p-6">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                  <Icon
+                    icon="hugeicons:chart-line-data-01"
+                    className="w-5 h-5 text-blue-500"
+                  />
+                  Marks &amp; Results
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block font-medium text-gray-700 mb-2">
+                      Achieved Mark
+                    </label>
+                    <input
+                      type="text"
+                      value={editData.achieved_mark}
+                      onChange={(e) =>
+                        handleEditChange("achieved_mark", e.target.value)
+                      }
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500"
+                      placeholder="Enter mark"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-medium text-gray-700 mb-2">
+                      Time (H:MM)
+                    </label>
+                    <input
+                      type="text"
+                      value={getTimeInputValue("edit-time", editData.achieved_time)}
+                      onChange={(e) =>
+                        handleTimeInputChange("edit-time", e.target.value)
+                      }
+                      onBlur={() =>
+                        handleTimeInputBlur(
+                          "edit-time",
+                          undefined,
+                          "achieved_time",
+                          true
+                        )
+                      }
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500"
+                      placeholder="0:00"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-medium text-gray-700 mb-2">
+                      Present
+                    </label>
+                    <select
+                      value={editData.is_present ? "true" : "false"}
+                      onChange={(e) =>
+                        handleEditChange(
+                          "is_present",
+                          e.target.value === "true"
+                        )
+                      }
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="true">Yes</option>
+                      <option value="false">No</option>
+                    </select>
+                  </div>
+
+                  {!editData.is_present && (
+                    <div className="md:col-span-3">
+                      <label className="block font-medium text-gray-700 mb-2">
+                        Absent Reason
+                      </label>
+                      <input
+                        type="text"
+                        value={editData.absent_reason}
+                        onChange={(e) =>
+                          handleEditChange("absent_reason", e.target.value)
+                        }
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500"
+                        placeholder="Enter reason for absence"
+                      />
+                    </div>
+                  )}
+
+                  <div className="md:col-span-3">
+                    <label className="block font-medium text-gray-700 mb-2">
+                      Remark
+                    </label>
+                    <textarea
+                      value={editData.remark}
+                      onChange={(e) =>
+                        handleEditChange("remark", e.target.value)
+                      }
+                      rows={3}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500"
+                      placeholder="Enter any remarks"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-medium text-gray-700 mb-2">
+                      Status
+                    </label>
+                    <select
+                      value={editData.is_active ? "true" : "false"}
+                      onChange={(e) =>
+                        handleEditChange("is_active", e.target.value === "true")
+                      }
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="true">Active</option>
+                      <option value="false">Inactive</option>
+                    </select>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-        ) : (
-          /* Create Mode - Cadets List */
-          <div>
-            {!filtersSelected ? (
-              <div className="text-center py-12 text-gray-500">
-                <Icon icon="hugeicons:filter" className="w-10 h-10 mx-auto mb-2" />
-                <p>Please select Course and Semester to load cadets</p>
-              </div>
-            ) : cadetRows.length === 0 ? (
-              <div className="text-center py-12 text-gray-500">
-                <Icon icon="hugeicons:user-group" className="w-10 h-10 mx-auto mb-2" />
-                <p>No cadets found for the selected filters</p>
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full border-collapse border border-black">
-                  <thead>
-                    <tr>
-                      <th className="border border-black px-3 py-2 text-center" rowSpan={2}>SEL</th>
-                      <th className="border border-black px-3 py-2 text-center" rowSpan={2}>BD/No</th>
-                      <th className="border border-black px-3 py-2 text-center" rowSpan={2}>Name</th>
-                      <th className="border border-black px-3 py-2 text-center" rowSpan={2}>Branch</th>
-                      <th className="border border-black px-3 py-2 text-center" rowSpan={2}>
-                        Mission<span className="text-red-500">*</span>
-                      </th>
-                      <th className="border border-black px-3 py-2 text-center" rowSpan={2}>
-                        Date<span className="text-red-500">*</span>
-                      </th>
-                      <th className="border border-black px-3 py-2 text-center" rowSpan={2}>
-                        Instructor<span className="text-red-500">*</span>
-                      </th>
-                      <th className="border border-black px-3 py-2 text-center" rowSpan={2}>Syl Hrs</th>
-                      <th className="border border-black px-3 py-2 text-center" colSpan={2}>Hrs Flown</th>
-                      <th className="border border-black px-3 py-2 text-center" rowSpan={2}>Mark</th>
-                      <th className="border border-black px-3 py-2 text-center" rowSpan={2}>Remark</th>
-                    </tr>
-                    <tr>
-                      <th className="border border-black px-2 py-2 text-center">Solo</th>
-                      <th className="border border-black px-2 py-2 text-center">Dual</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {cadetRows.map((cadet, index) => (
-                      <tr key={cadet.cadet_id} className={!cadet.is_active ? "bg-gray-100 opacity-50" : ""}>
-                        <td className="border border-black px-3 py-2 text-center">
-                          <input
-                            type="checkbox"
-                            checked={cadet.is_active}
-                            onChange={() => toggleCadetActive(index)}
-                            className="w-4 h-4 text-blue-600 border-black rounded focus:ring-blue-500 cursor-pointer mx-auto block"
-                          />
-                        </td>
-                        <td className="border border-black px-3 py-2 whitespace-nowrap text-gray-900 text-center">
-                          {cadet.cadet_bd_no}
-                        </td>
-                        <td className="border border-black px-3 py-2 whitespace-nowrap font-medium text-gray-900">
-                          {cadet.cadet_name}
-                        </td>
-                        <td className="border border-black px-3 py-2 whitespace-nowrap text-gray-900 text-center">
-                          {cadet.cadet_branch}
-                        </td>
-                        <td className="border border-black px-2 py-1">
-                          <select
-                            value={cadet.mission_id}
-                            onChange={(e) => handleCadetChange(index, "mission_id", parseInt(e.target.value))}
-                            disabled={!cadet.is_active || !formData.syllabus_id}
-                            className="w-full px-2 py-1 border border-black rounded focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
-                          >
-                            <option value={0}>
-                              {!formData.syllabus_id ? "Select Phase first" : "Select Exercise"}
-                            </option>
-                            {exercises.map(exercise => (
-                              <option key={exercise.id} value={exercise.id}>
-                                {exercise.exercise_shortname} - ({exercise.phase_type_name})
-                              </option>
-                            ))}
-                          </select>
-                        </td>
-                        {cadet.existing_mark_info?.exists ? (
-                          <td className="border border-black px-4 py-3 text-center bg-red-50" colSpan={6}>
-                            <span className="text-red-600 font-medium">
-                              Already checked on {cadet.existing_mark_info.date ? new Date(cadet.existing_mark_info.date).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : "N/A"}
-                            </span>
-                          </td>
-                        ) : (
-                          <>
-                            <td className="border border-black px-2 py-1">
-                              <DatePicker
-                                value={cadet.date}
-                                onChange={(e) => handleCadetChange(index, "date", e.target.value)}
-                                disabled={!cadet.is_active}
-                                placeholder="dd/mm/yyyy"
-                                className="w-full px-2 py-1 border border-black rounded focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
-                              />
-                            </td>
-                            <td className="border border-black px-2 py-1">
-                              <select
-                                value={cadet.instructor_id}
-                                onChange={(e) => handleCadetChange(index, "instructor_id", parseInt(e.target.value))}
-                                disabled={!cadet.is_active}
-                                className="w-full px-2 py-1 border border-black rounded focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
-                              >
-                                <option value={0}>Select</option>
-                                {instructors.map(instructor => (
-                                  <option key={instructor.id} value={instructor.id}>
-                                    {instructor.name || (instructor as any).instructor_biodata?.name || `Instructor #${instructor.id}`}
-                                  </option>
-                                ))}
-                              </select>
-                            </td>
-                            <td className="border border-black px-3 py-2 text-center">
-                              {cadet.mission_id ? (exercises.find(ex => ex.id === cadet.mission_id)?.take_time_hours || "-") : "-"}
-                            </td>
-                            <td className="border border-black px-2 py-1">
-                              {(() => {
-                                const { isDual } = getExercisePhaseType(cadet.mission_id);
-                                return (
-                                  <input
-                                    type="text"
-                                    value={getTimeInputValue(`cadet-solo-${index}`, cadet.hrs_solo)}
-                                    onChange={(e) => handleTimeInputChange(`cadet-solo-${index}`, e.target.value)}
-                                    onBlur={() => handleTimeInputBlur(`cadet-solo-${index}`, index, "hrs_solo")}
-                                    disabled={!cadet.is_active || !cadet.mission_id || isDual}
-                                    placeholder="0:00"
-                                    className="w-20 px-2 py-1 border border-black rounded text-center focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
-                                  />
-                                );
-                              })()}
-                            </td>
-                            <td className="border border-black px-2 py-1">
-                              {(() => {
-                                const { isSolo } = getExercisePhaseType(cadet.mission_id);
-                                return (
-                                  <input
-                                    type="text"
-                                    value={getTimeInputValue(`cadet-dual-${index}`, cadet.hrs_dual)}
-                                    onChange={(e) => handleTimeInputChange(`cadet-dual-${index}`, e.target.value)}
-                                    onBlur={() => handleTimeInputBlur(`cadet-dual-${index}`, index, "hrs_dual")}
-                                    disabled={!cadet.is_active || !cadet.mission_id || isSolo}
-                                    placeholder="0:00"
-                                    className="w-20 px-2 py-1 border border-black rounded text-center focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
-                                  />
-                                );
-                              })()}
-                            </td>
-                            <td className="border border-black px-2 py-1">
-                              <input
-                                type="text"
-                                value={cadet.mark}
-                                onChange={(e) => handleCadetChange(index, "mark", e.target.value)}
-                                disabled={!cadet.is_active}
-                                className="w-24 px-2 py-1 border border-black rounded text-center focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
-                              />
-                            </td>
-                            <td className="border border-black px-2 py-1">
-                              <input
-                                type="text"
-                                value={cadet.remark}
-                                onChange={(e) => handleCadetChange(index, "remark", e.target.value)}
-                                disabled={!cadet.is_active}
-                                className="w-full px-2 py-1 border border-black rounded focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
-                              />
-                            </td>
-                          </>
-                        )}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
+          ) : (
+            /* ── Create Mode — Mission rows for selected cadet ── */
+            <div>
+              {!filtersSelected ? (
+                <div className="text-center py-12 text-gray-500">
+                  <Icon
+                    icon="hugeicons:filter"
+                    className="w-10 h-10 mx-auto mb-2"
+                  />
+                  <p>
+                    Please select Course, Semester and Phase to load missions
+                  </p>
+                </div>
+              ) : !formData.selected_cadet_id ? (
+                <div className="text-center py-12 text-gray-500">
+                  <Icon
+                    icon="hugeicons:user"
+                    className="w-10 h-10 mx-auto mb-2"
+                  />
+                  <p>Please select a cadet to view their assigned missions</p>
+                </div>
+              ) : loadingExistingMarks ? (
+                <div className="text-center py-8 text-blue-500">
+                  <Icon
+                    icon="hugeicons:fan-01"
+                    className="w-8 h-8 animate-spin mx-auto mb-2"
+                  />
+                  <p className="text-sm">Checking existing marks…</p>
+                </div>
+              ) : missionRows.length === 0 ? (
+                <div className="text-center py-12 text-gray-500">
+                  <Icon
+                    icon="hugeicons:airplane-take-off-01"
+                    className="w-10 h-10 mx-auto mb-2"
+                  />
+                  <p>No missions found for the selected phase</p>
+                </div>
+              ) : (
+                <>
+                  {/* Cadet summary bar */}
+                  <div className="mb-4 flex items-center gap-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                    <Icon
+                      icon="hugeicons:user-circle"
+                      className="w-5 h-5 text-blue-600"
+                    />
+                    <span className="font-medium text-blue-900">
+                      {selectedCadet?.name}
+                    </span>
+                    {(selectedCadet?.bd_no || selectedCadet?.cadet_number) && (
+                      <span className="text-blue-600 text-sm">
+                        BD:{" "}
+                        {selectedCadet?.bd_no || selectedCadet?.cadet_number}
+                      </span>
+                    )}
+                    <span className="ml-auto text-blue-700 text-sm">
+                      {missionRows.length} mission(s) in this phase
+                    </span>
+                  </div>
 
-      <div className="flex items-center justify-end gap-3 mt-8 pt-6 border-t border-gray-200">
-        <button
-          type="button"
-          onClick={onCancel}
-          className="px-6 py-2 border border-gray-300 text-black rounded-xl hover:bg-gray-50"
-          disabled={loading}
-        >
-          Cancel
-        </button>
-        <button
-          type="submit"
-          className="px-6 py-2 bg-blue-500 text-white rounded-xl hover:bg-blue-600 flex items-center gap-2"
-          disabled={loading}
-        >
-          {loading && <Icon icon="hugeicons:loading-03" className="w-4 h-4 animate-spin" />}
-          {loading ? "Saving..." : isEdit ? "Update Mark" : "Submit All Marks"}
-        </button>
-      </div>
-    </form>
+                  {/* Mission rows table */}
+                  <div className="overflow-x-auto">
+                    <table className="w-full border-collapse border border-black text-sm">
+                      <thead>
+                        <tr className="bg-gray-50">
+                          <th
+                            className="border border-black px-3 py-2 text-center"
+                            rowSpan={2}
+                          >
+                            SEL
+                          </th>
+                          <th
+                            className="border border-black px-3 py-2 text-left"
+                            rowSpan={2}
+                          >
+                            Mission / Exercise
+                          </th>
+                          <th
+                            className="border border-black px-3 py-2 text-center"
+                            rowSpan={2}
+                          >
+                            Phase Type
+                          </th>
+                          <th
+                            className="border border-black px-3 py-2 text-center"
+                            rowSpan={2}
+                          >
+                            Date
+                            <span className="text-red-500">*</span>
+                          </th>
+                          <th
+                            className="border border-black px-3 py-2 text-center"
+                            rowSpan={2}
+                          >
+                            Instructor
+                            <span className="text-red-500">*</span>
+                          </th>
+                          <th
+                            className="border border-black px-3 py-2 text-center"
+                            rowSpan={2}
+                          >
+                            Syl Hrs
+                          </th>
+                          <th
+                            className="border border-black px-3 py-2 text-center"
+                            colSpan={2}
+                          >
+                            Hrs Flown
+                          </th>
+                          <th
+                            className="border border-black px-3 py-2 text-center"
+                            rowSpan={2}
+                          >
+                            Mark
+                          </th>
+                          <th
+                            className="border border-black px-3 py-2 text-center"
+                            rowSpan={2}
+                          >
+                            Remark
+                          </th>
+                        </tr>
+                        <tr className="bg-gray-50">
+                          <th className="border border-black px-2 py-2 text-center">
+                            Solo
+                          </th>
+                          <th className="border border-black px-2 py-2 text-center">
+                            Dual
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {missionRows.map((row) => {
+                          const { isDual, isSolo } = getExercisePhaseType(
+                            row.phase_type_name
+                          );
+                          const soloKey = `mission-solo-${row.exercise_id}`;
+                          const dualKey = `mission-dual-${row.exercise_id}`;
+                          const isDisabled = !row.is_active;
+
+                          return (
+                            <tr
+                              key={row.exercise_id}
+                              className={
+                                isDisabled ? "bg-gray-100 opacity-50" : ""
+                              }
+                            >
+                              {/* Checkbox */}
+                              <td className="border border-black px-3 py-2 text-center">
+                                {!row.existing_mark_info?.exists && (
+                                  <input
+                                    type="checkbox"
+                                    checked={row.is_active}
+                                    onChange={() =>
+                                      toggleMissionActive(row.exercise_id)
+                                    }
+                                    className="w-4 h-4 text-blue-600 border-black rounded focus:ring-blue-500 cursor-pointer mx-auto block"
+                                  />
+                                )}
+                              </td>
+
+                              {/* Mission name */}
+                              <td className="border border-black px-3 py-2 font-medium text-gray-900 whitespace-nowrap">
+                                {row.exercise_shortname}
+                              </td>
+
+                              {/* Phase type */}
+                              <td className="border border-black px-3 py-2 text-center whitespace-nowrap text-gray-600">
+                                {row.phase_type_name}
+                              </td>
+
+                              {/* Existing mark spans remaining columns */}
+                              {row.existing_mark_info?.exists ? (
+                                <td
+                                  className="border border-black px-4 py-3 text-center bg-yellow-50"
+                                  colSpan={7}
+                                >
+                                  <div className="text-amber-700 font-medium text-sm">
+                                    <p>
+                                      Mark already stored on{" "}
+                                      {row.existing_mark_info.date
+                                        ? new Date(
+                                          row.existing_mark_info.date
+                                        ).toLocaleDateString("en-GB", {
+                                          day: "2-digit",
+                                          month: "short",
+                                          year: "numeric",
+                                        })
+                                        : "N/A"}
+                                    </p>
+                                    {row.existing_mark_info.achieved_mark && (
+                                      <p className="mt-0.5 text-xs text-amber-600">
+                                        Mark:{" "}
+                                        {row.existing_mark_info.achieved_mark}
+                                        {row.existing_mark_info.achieved_time &&
+                                          ` · Time: ${row.existing_mark_info.achieved_time}`}
+                                      </p>
+                                    )}
+                                    <div className="flex justify-center gap-2 mt-2">
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setSelectedExerciseForEdit(row);
+                                          setShowEditModal(true);
+                                        }}
+                                        className="px-3 py-1 text-xs bg-blue-500 text-white rounded hover:bg-blue-600"
+                                      >
+                                        Edit
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setSelectedExerciseForAdd(row);
+                                          setShowAddModal(true);
+                                        }}
+                                        className="px-3 py-1 text-xs bg-green-500 text-white rounded hover:bg-green-600"
+                                      >
+                                        Add Additional
+                                      </button>
+                                    </div>
+                                  </div>
+                                </td>
+                              ) : (
+                                <>
+                                  {/* Date */}
+                                  <td className="border border-black px-2 py-1">
+                                    <DatePicker
+                                      value={row.date}
+                                      onChange={(e) =>
+                                        handleMissionRowChange(
+                                          row.exercise_id,
+                                          "date",
+                                          e.target.value
+                                        )
+                                      }
+                                      disabled={isDisabled}
+                                      placeholder="dd/mm/yyyy"
+                                      className="w-full px-2 py-1 border border-black rounded focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
+                                    />
+                                  </td>
+
+                                  {/* Instructor */}
+                                  <td className="border border-black px-2 py-1">
+                                    <select
+                                      value={row.instructor_id}
+                                      onChange={(e) =>
+                                        handleMissionRowChange(
+                                          row.exercise_id,
+                                          "instructor_id",
+                                          parseInt(e.target.value)
+                                        )
+                                      }
+                                      disabled={isDisabled}
+                                      className="w-full px-2 py-1 border border-black rounded focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
+                                    >
+                                      <option value={0}>Select</option>
+                                      {instructors.map((instructor) => (
+                                        <option
+                                          key={instructor.id}
+                                          value={instructor.id}
+                                        >
+                                          {instructor.name ||
+                                            (instructor as any)
+                                              .instructor_biodata?.name ||
+                                            `Instructor #${instructor.id}`}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </td>
+
+                                  {/* Syl Hrs */}
+                                  <td className="border border-black px-3 py-2 text-center">
+                                    {row.take_time_hours || "-"}
+                                  </td>
+
+                                  {/* Solo */}
+                                  <td className="border border-black px-2 py-1">
+                                    <input
+                                      type="text"
+                                      value={getTimeInputValue(
+                                        soloKey,
+                                        row.hrs_solo
+                                      )}
+                                      onChange={(e) =>
+                                        handleTimeInputChange(
+                                          soloKey,
+                                          e.target.value
+                                        )
+                                      }
+                                      onBlur={() =>
+                                        handleTimeInputBlur(
+                                          soloKey,
+                                          row.exercise_id,
+                                          "hrs_solo"
+                                        )
+                                      }
+                                      disabled={isDisabled || isDual}
+                                      placeholder="0:00"
+                                      className="w-20 px-2 py-1 border border-black rounded text-center focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
+                                    />
+                                  </td>
+
+                                  {/* Dual */}
+                                  <td className="border border-black px-2 py-1">
+                                    <input
+                                      type="text"
+                                      value={getTimeInputValue(
+                                        dualKey,
+                                        row.hrs_dual
+                                      )}
+                                      onChange={(e) =>
+                                        handleTimeInputChange(
+                                          dualKey,
+                                          e.target.value
+                                        )
+                                      }
+                                      onBlur={() =>
+                                        handleTimeInputBlur(
+                                          dualKey,
+                                          row.exercise_id,
+                                          "hrs_dual"
+                                        )
+                                      }
+                                      disabled={isDisabled || isSolo}
+                                      placeholder="0:00"
+                                      className="w-20 px-2 py-1 border border-black rounded text-center focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
+                                    />
+                                  </td>
+
+                                  {/* Mark */}
+                                  <td className="border border-black px-2 py-1">
+                                    <input
+                                      type="text"
+                                      value={row.mark}
+                                      onChange={(e) =>
+                                        handleMissionRowChange(
+                                          row.exercise_id,
+                                          "mark",
+                                          e.target.value
+                                        )
+                                      }
+                                      disabled={isDisabled}
+                                      className="w-24 px-2 py-1 border border-black rounded text-center focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
+                                    />
+                                  </td>
+
+                                  {/* Remark */}
+                                  <td className="border border-black px-2 py-1">
+                                    <input
+                                      type="text"
+                                      value={row.remark}
+                                      onChange={(e) =>
+                                        handleMissionRowChange(
+                                          row.exercise_id,
+                                          "remark",
+                                          e.target.value
+                                        )
+                                      }
+                                      disabled={isDisabled}
+                                      className="w-full px-2 py-1 border border-black rounded focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
+                                    />
+                                  </td>
+                                </>
+                              )}
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* ── Footer actions ── */}
+        <div className="flex items-center justify-end gap-3 mt-8 pt-6 border-t border-gray-200">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="px-6 py-2 border border-gray-300 text-black rounded-xl hover:bg-gray-50"
+            disabled={loading}
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            className="px-6 py-2 bg-blue-500 text-white rounded-xl hover:bg-blue-600 flex items-center gap-2"
+            disabled={loading}
+          >
+            {loading && (
+              <Icon
+                icon="hugeicons:loading-03"
+                className="w-4 h-4 animate-spin"
+              />
+            )}
+            {loading
+              ? "Saving..."
+              : isEdit
+                ? "Update Mark"
+                : "Submit All Marks"}
+          </button>
+        </div>
+      </form>
+
+      <EditMarkModal
+        isOpen={showEditModal}
+        onClose={() => { setShowEditModal(false); setSelectedExerciseForEdit(null); }}
+        selectedExercise={selectedExerciseForEdit}
+        onUpdate={(row) => {
+          handleUpdateExistingMark(row);
+          setShowEditModal(false);
+          setSelectedExerciseForEdit(null);
+        }}
+      />
+
+      <AddAdditionalMarkModal
+        isOpen={showAddModal}
+        onClose={() => { setShowAddModal(false); setSelectedExerciseForAdd(null); }}
+        selectedExercise={selectedExerciseForAdd}
+        onAdd={(row) => {
+          handleAddAdditionalMark(row);
+          setShowAddModal(false);
+          setSelectedExerciseForAdd(null);
+        }}
+      />
+    </>
   );
 }

@@ -4,7 +4,8 @@
 import React, { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { ctwOneMileResultService } from "@/libs/services/ctwOneMileResultService";
-import { ctwResultsModuleService } from "@/libs/services/ctwResultsModuleService";
+import { ctwCommonService } from "@/libs/services/ctwCommonService";
+import { useAuth } from "@/libs/hooks/useAuth";
 import FullLogo from "@/components/ui/fulllogo";
 import TwoKmFiveStationResultForm from "@/components/ctw-2km5station/TwoKmFiveStationResultForm";
 import { Icon } from "@iconify/react";
@@ -16,23 +17,48 @@ export default function EditTwoKmFiveStationResultPage() {
   const router = useRouter();
   const params = useParams();
   const resultId = params?.id as string;
+  const { user } = useAuth();
 
   const [loading, setLoading] = useState(false);
   const [loadingResult, setLoadingResult] = useState(true);
   const [result, setResult] = useState<CtwOneMileResult | null>(null);
   const [error, setError] = useState("");
   const [twoKmModuleId, setTwoKmModuleId] = useState<number | null>(null);
+  const [moduleLoading, setModuleLoading] = useState(true);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    const fetchModuleId = async () => {
+      try {
+        setModuleLoading(true);
+        const options = await ctwCommonService.getTwoKmFiveStationFormOptions(user?.id || 0);
+        if (options?.module) {
+          setTwoKmModuleId(options.module.id);
+        } else {
+          setTwoKmModuleId(null);
+          setLoading(false);
+          setError("Module not found.");
+        }
+      } catch (err) {
+        setTwoKmModuleId(null);
+        setLoading(false);
+        setError("Failed to fetch module ID.");
+      } finally {
+        setModuleLoading(false);
+      }
+    };
+    fetchModuleId();
+  }, [user?.id]);
 
   useEffect(() => {
     const fetchModuleAndResult = async () => {
       try {
         setLoadingResult(true);
-        const modulesRes = await ctwResultsModuleService.getAllModules({ per_page: 100 });
-        const twoKmModule = modulesRes.data.find((m: any) => m.code === TWO_KM_5_STATION_MODULE_CODE);
+        const options = await ctwCommonService.getTwoKmFiveStationFormOptions(user?.id || 0);
 
-        if (twoKmModule) {
-          setTwoKmModuleId(twoKmModule.id);
-          const resultData = await ctwOneMileResultService.getResult(twoKmModule.id, parseInt(resultId));
+        if (options?.module) {
+          setTwoKmModuleId(options.module.id);
+          const resultData = await ctwOneMileResultService.getResult(options.module.id, parseInt(resultId));
           if (resultData) {
             setResult(resultData);
           } else {

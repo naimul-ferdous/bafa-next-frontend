@@ -149,6 +149,22 @@ export const ctw2kmResultService = {
     }
   },
 
+  async getInitialFetchData(params: { module_code: string; course_id: number; semester_id: number }): Promise<any> {
+    try {
+      const query = new URLSearchParams();
+      query.append('module_code', params.module_code);
+      query.append('course_id', params.course_id.toString());
+      query.append('semester_id', params.semester_id.toString());
+      const endpoint = `/ctw-results/initial-fetch?${query.toString()}`;
+      const token = getToken();
+      const result = await apiClient.get<any>(endpoint, token);
+      return result?.data || null;
+    } catch (error) {
+      console.error('Failed to fetch initial module data:', error);
+      return null;
+    }
+  },
+
   async deleteResult(id: number): Promise<boolean> {
     try {
       const token = getToken();

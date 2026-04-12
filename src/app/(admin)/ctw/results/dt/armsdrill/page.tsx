@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { CtwArmsDrillResult } from "@/libs/types/ctwArmsDrill";
 import { Icon } from "@iconify/react";
 import { ctwArmsDrillResultService } from "@/libs/services/ctwArmsDrillResultService";
-import { ctwResultsModuleService } from "@/libs/services/ctwResultsModuleService";
+import { ctwCommonService } from "@/libs/services/ctwCommonService";
 import { useAuth } from "@/libs/hooks/useAuth";
 import FullLogo from "@/components/ui/fulllogo";
 import DataTable, { Column } from "@/components/ui/DataTable";
@@ -44,29 +44,30 @@ export default function CtwArmsDrillResultsPage() {
   const [armsDrillModuleId, setArmsDrillModuleId] = useState<number | null>(null);
   const [moduleLoading, setModuleLoading] = useState(true);
 
-  // Fetch armsDrillModuleId
   useEffect(() => {
+    if (!user?.id) return;
     const fetchModuleId = async () => {
       try {
         setModuleLoading(true);
-        const modulesRes = await ctwResultsModuleService.getAllModules({ per_page: 100 });
-        const armsDrillModule = modulesRes.data.find((m: any) => m.code === ARMS_DRILL_MODULE_CODE);
-        if (armsDrillModule) {
-          setArmsDrillModuleId(armsDrillModule.id);
+        const options = await ctwCommonService.getArmsDrillFormOptions(user?.id || 0);
+        if (options?.module) {
+          setArmsDrillModuleId(options.module.id);
         } else {
-          console.error(`Module with code ${ARMS_DRILL_MODULE_CODE} not found.`);
+          setArmsDrillModuleId(null);
+          setLoading(false);
         }
       } catch (err) {
-        console.error("Failed to fetch module ID:", err);
+        setArmsDrillModuleId(null);
+        setLoading(false);
       } finally {
         setModuleLoading(false);
       }
     };
     fetchModuleId();
-  }, []);
+  }, [user?.id]);
 
   const loadResults = useCallback(async () => {
-    if (armsDrillModuleId === null || !user?.id) return;
+    if (armsDrillModuleId === null || !user?.id) { setLoading(false); return; }
 
     try {
       setLoading(true);
@@ -342,7 +343,7 @@ export default function CtwArmsDrillResultsPage() {
 
 
       {isInstructor ? (
-        (loading || moduleLoading) ? <TableLoading /> : (
+        (loading) ? <TableLoading /> : (
           <>
             <DataTable columns={columns} data={results} keyExtractor={(result) => result.id.toString()} emptyMessage="No results found" />
 

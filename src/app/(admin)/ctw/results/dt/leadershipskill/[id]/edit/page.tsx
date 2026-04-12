@@ -4,7 +4,8 @@
 import React, { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { ctwLeadershipSkillResultService } from "@/libs/services/ctwLeadershipSkillResultService";
-import { ctwResultsModuleService } from "@/libs/services/ctwResultsModuleService";
+import { ctwCommonService } from "@/libs/services/ctwCommonService";
+import { useAuth } from "@/libs/hooks/useAuth";
 import FullLogo from "@/components/ui/fulllogo";
 import LeadershipSkillResultForm from "@/components/ctw-leadership-skill/LeadershipSkillResultForm";
 import { Icon } from "@iconify/react";
@@ -15,6 +16,7 @@ const LEADERSHIP_SKILL_MODULE_CODE = "leadership_skill";
 export default function EditLeadershipSkillResultPage() {
   const router = useRouter();
   const params = useParams();
+  const { user } = useAuth();
   const resultId = params?.id as string;
 
   const [loading, setLoading] = useState(false);
@@ -26,26 +28,26 @@ export default function EditLeadershipSkillResultPage() {
   const [moduleLoading, setModuleLoading] = useState(true);
 
   useEffect(() => {
+    if (!user?.id) return;
     const fetchModuleId = async () => {
       try {
         setModuleLoading(true);
-        const modulesRes = await ctwResultsModuleService.getAllModules({ per_page: 100 });
-        const leadershipSkillModule = modulesRes.data.find((m: any) => m.code === LEADERSHIP_SKILL_MODULE_CODE);
-        if (leadershipSkillModule) {
-          setLeadershipSkillModuleId(leadershipSkillModule.id);
+        const options = await ctwCommonService.getLeadershipSkillFormOptions(user?.id || 0);
+        if (options?.module) {
+          setLeadershipSkillModuleId(options.module.id);
         } else {
-          console.error(`Module with code ${LEADERSHIP_SKILL_MODULE_CODE} not found.`);
-          setError(`Module with code ${LEADERSHIP_SKILL_MODULE_CODE} not found.`);
+          setLeadershipSkillModuleId(null);
+          setError("Module not found.");
         }
       } catch (err) {
-        console.error("Failed to fetch module ID:", err);
+        setLeadershipSkillModuleId(null);
         setError("Failed to fetch module ID.");
       } finally {
         setModuleLoading(false);
       }
     };
-    fetchModuleId();
-  }, []);
+    if (user?.id) fetchModuleId();
+  }, [user?.id]);
 
   useEffect(() => {
     const loadResult = async () => {

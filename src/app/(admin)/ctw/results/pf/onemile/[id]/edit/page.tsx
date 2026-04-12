@@ -4,7 +4,8 @@
 import React, { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { ctwOneMileResultService } from "@/libs/services/ctwOneMileResultService";
-import { ctwResultsModuleService } from "@/libs/services/ctwResultsModuleService";
+import { ctwCommonService } from "@/libs/services/ctwCommonService";
+import { useAuth } from "@/libs/hooks/useAuth";
 import FullLogo from "@/components/ui/fulllogo";
 import OneMileResultForm from "@/components/ctw-one-mile/OneMileResultForm";
 import { Icon } from "@iconify/react";
@@ -16,23 +17,48 @@ export default function EditOneMileResultPage() {
   const router = useRouter();
   const params = useParams();
   const resultId = params?.id as string;
+  const { user } = useAuth();
 
   const [loading, setLoading] = useState(false);
   const [loadingResult, setLoadingResult] = useState(true);
   const [result, setResult] = useState<CtwOneMileResult | null>(null);
   const [error, setError] = useState("");
   const [oneMileModuleId, setOneMileModuleId] = useState<number | null>(null);
+  const [moduleLoading, setModuleLoading] = useState(true);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    const fetchModuleId = async () => {
+      try {
+        setModuleLoading(true);
+        const options = await ctwCommonService.getOneMileFormOptions(user?.id || 0);
+        if (options?.module) {
+          setOneMileModuleId(options.module.id);
+        } else {
+          setOneMileModuleId(null);
+          setLoading(false);
+          setError("Module not found.");
+        }
+      } catch (err) {
+        setOneMileModuleId(null);
+        setLoading(false);
+        setError("Failed to fetch module ID.");
+      } finally {
+        setModuleLoading(false);
+      }
+    };
+    fetchModuleId();
+  }, [user?.id]);
 
   useEffect(() => {
     const fetchModuleAndResult = async () => {
       try {
         setLoadingResult(true);
-        const modulesRes = await ctwResultsModuleService.getAllModules({ per_page: 100 });
-        const oneMileModule = modulesRes.data.find((m: any) => m.code === ONE_MILE_MODULE_CODE);
-        
-        if (oneMileModule) {
-          setOneMileModuleId(oneMileModule.id);
-          const resultData = await ctwOneMileResultService.getResult(oneMileModule.id, parseInt(resultId));
+        const options = await ctwCommonService.getOneMileFormOptions(user?.id || 0);
+
+        if (options?.module) {
+          setOneMileModuleId(options.module.id);
+          const resultData = await ctwOneMileResultService.getResult(options.module.id, parseInt(resultId));
           if (resultData) {
             setResult(resultData);
           } else {

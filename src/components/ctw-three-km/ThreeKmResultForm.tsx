@@ -4,8 +4,9 @@
 import React, { useState, useEffect } from "react";
 import Label from "@/components/form/Label";
 import { commonService } from "@/libs/services/commonService";
+import { ctwCommonService } from "@/libs/services/ctwCommonService";
 import { ctwResultsModuleService } from "@/libs/services/ctwResultsModuleService";
-import { ctwInstructorAssignCadetService } from "@/libs/services/ctwInstructorAssignCadetService";
+import { cadetService } from "@/libs/services/cadetService";
 import { ctwInstructorAssignModuleService } from "@/libs/services/ctwInstructorAssignModuleService";
 import { useAuth } from "@/libs/hooks/useAuth";
 import { Icon } from "@iconify/react";
@@ -63,37 +64,34 @@ export default function ThreeKmResultForm({ initialData, onSubmit, onCancel, loa
   const [groups, setGroups] = useState<SystemGroup[]>([]);
   const [exams, setExams] = useState<SystemExam[]>([]);
   const [estimatedMarks, setEstimatedMarks] = useState<any[]>([]);
-  const [threeKmModule, setThreeKmModule] = useState<any>(null);
   const [threeKmModuleId, setThreeKmModuleId] = useState<number>(0);
+  const [threeKmModule, setThreeKmModule] = useState<any>(null);
   const [loadingDropdowns, setLoadingDropdowns] = useState(true);
   const [loadingCadets, setLoadingCadets] = useState(false);
   const [loadingEstimatedMarks, setLoadingEstimatedMarks] = useState(false);
+  const [loadingSemesters, setLoadingSemesters] = useState(false);
   const [moduleAssigned, setModuleAssigned] = useState(false);
 
-  // Load dropdown data + find 3km module
+  // Load all form options in a single API call
   useEffect(() => {
+    if (!user?.id) return;
+
     const loadDropdownData = async () => {
       try {
         setLoadingDropdowns(true);
-        const [options, modulesRes] = await Promise.all([
-          commonService.getResultOptions(),
-          ctwResultsModuleService.getAllModules({ per_page: 100 }),
-        ]);
+        const options = await ctwCommonService.getThreeKmFormOptions(user.id);
 
         if (options) {
           setCourses(options.courses);
-          setSemesters(options.semesters);
           setPrograms(options.programs);
           setBranches(options.branches);
           setGroups(options.groups);
           setExams(options.exams);
-        }
 
-        // Find 3km module
-        const moduleData = modulesRes.data.find((m: any) => m.code === THREE_KM_MODULE_CODE);
-        if (moduleData) {
-          setThreeKmModule(moduleData);
-          setThreeKmModuleId(moduleData.id);
+          if (options.module) {
+            setThreeKmModuleId(options.module.id);
+            setThreeKmModule(options.module);
+          }
         }
       } catch (err) {
         console.error("Failed to load dropdown data:", err);
@@ -104,7 +102,32 @@ export default function ThreeKmResultForm({ initialData, onSubmit, onCancel, loa
     };
 
     loadDropdownData();
-  }, []);
+  }, [user?.id]);
+
+  // Load semesters dynamically when course is selected
+  useEffect(() => {
+    if (!formData.course_id) {
+      setSemesters([]);
+      if (!initialData) setFormData(prev => ({ ...prev, semester_id: 0 }));
+      return;
+    }
+
+    const loadSemesters = async () => {
+      try {
+        setLoadingSemesters(true);
+        if (!initialData) setFormData(prev => ({ ...prev, semester_id: 0 }));
+        const result = await commonService.getSemestersByCourse(formData.course_id);
+        setSemesters(result);
+      } catch (err) {
+        console.error("Failed to load semesters:", err);
+        setSemesters([]);
+      } finally {
+        setLoadingSemesters(false);
+      }
+    };
+
+    loadSemesters();
+  }, [formData.course_id, initialData]);
 
   // Load estimated marks from DB when course + semester are selected
   useEffect(() => {
@@ -117,7 +140,6 @@ export default function ThreeKmResultForm({ initialData, onSubmit, onCancel, loa
       try {
         setLoadingEstimatedMarks(true);
         const response = await ctwResultsModuleService.getEstimatedMarks(threeKmModuleId, {
-          course_id: formData.course_id,
           semester_id: formData.semester_id,
         });
         setEstimatedMarks(response);
@@ -137,7 +159,7 @@ export default function ThreeKmResultForm({ initialData, onSubmit, onCancel, loa
     return estimatedMarks.some((em: any) => em.exam_type_id === examTypeId);
   };
 
-  // Get estimated mark value for the selected exam type
+  // Get estimated mark info for the selected exam type
   const getEstimatedMarkInfo = () => {
     if (!formData.exam_type_id) return null;
     return estimatedMarks.find((em: any) => em.exam_type_id === formData.exam_type_id);
@@ -146,10 +168,15 @@ export default function ThreeKmResultForm({ initialData, onSubmit, onCancel, loa
   const estimatedMarkInfo = getEstimatedMarkInfo();
   const maxTestMark = estimatedMarkInfo ? parseFloat(estimatedMarkInfo.estimated_mark_per_instructor || estimatedMarkInfo.mark || 0) : 0;
   const conversationMark = estimatedMarkInfo ? parseFloat(estimatedMarkInfo.conversation_mark || 0) : 0;
+  const practiceCount = estimatedMarkInfo ? parseInt(estimatedMarkInfo.practice_count || 0) : 0;
+  const convPracticeWeight = estimatedMarkInfo ? parseFloat(estimatedMarkInfo.convert_of_practice || 0) : 0;
+  const convExamWeight = estimatedMarkInfo ? parseFloat(estimatedMarkInfo.convert_of_exam || 0) : 0;
 
-  // Auto-load cadets from ctw_instructor_assign_cadets after exam type selected
+  // Auto-load cadets after exam type selected
+  // First check if instructor is assigned to this module via ctw_instructor_assign_modules
   useEffect(() => {
     const loadCadets = async () => {
+      // Required: user, module, course, semester, exam_type
       if (!user?.id || !threeKmModuleId || !formData.course_id || !formData.semester_id || !formData.exam_type_id) {
         setCadetRows([]);
         setModuleAssigned(false);
@@ -159,6 +186,7 @@ export default function ThreeKmResultForm({ initialData, onSubmit, onCancel, loa
       try {
         setLoadingCadets(true);
 
+        // First check if instructor is assigned to this 3_km module
         const moduleAssignRes = await ctwInstructorAssignModuleService.getAll({
           instructor_id: user.id,
           module_code: THREE_KM_MODULE_CODE,
@@ -168,6 +196,7 @@ export default function ThreeKmResultForm({ initialData, onSubmit, onCancel, loa
         });
 
         if (!moduleAssignRes.data || moduleAssignRes.data.length === 0) {
+          // Instructor is NOT assigned to this module
           setModuleAssigned(false);
           setCadetRows([]);
           return;
@@ -175,41 +204,37 @@ export default function ThreeKmResultForm({ initialData, onSubmit, onCancel, loa
 
         setModuleAssigned(true);
 
-        const params: any = {
+        // Fetch cadets directly by course + semester
+        const cadetParams: any = {
           per_page: 500,
-          instructor_id: user.id,
-          ctw_results_module_id: threeKmModuleId,
           course_id: formData.course_id,
           semester_id: formData.semester_id,
-          is_active: true,
+          is_current: 1,
         };
-        if (formData.program_id) params.program_id = formData.program_id;
-        if (formData.branch_id) params.branch_id = formData.branch_id;
-        if (formData.group_id) params.group_id = formData.group_id;
+        if (formData.program_id) cadetParams.program_id = formData.program_id;
+        if (formData.branch_id) cadetParams.branch_id = formData.branch_id;
+        if (formData.group_id) cadetParams.group_id = formData.group_id;
 
-        const assignedCadetsRes = await ctwInstructorAssignCadetService.getAll(params);
+        const cadetsRes = await cadetService.getAllCadets(cadetParams);
 
-        const rows: CadetRow[] = assignedCadetsRes.data
-          .filter((ac: any) => ac.cadet)
-          .map((ac: any) => {
-            const cadet = ac.cadet;
-            const currentRank = cadet.assigned_ranks?.find((ar: any) => ar.rank)?.rank;
-            return {
-              cadet_id: cadet.id,
-              cadet_number: cadet.cadet_number || "",
-              cadet_name: cadet.name,
-              cadet_rank: currentRank?.short_name || currentRank?.name || "-",
-              cadet_gender: cadet.gender,
-              branch: cadet.assigned_branchs?.find((ab: any) => ab.is_current)?.branch?.name || cadet.assigned_branchs?.[0]?.branch?.name || "N/A",
-              practices: {},
-              avg_practice: 0,
-              conv_practice: 0,
-              test_mark: 0,
-              conv_exam: 0,
-              mark: 0,
-              is_active: true,
-            };
-          });
+        const rows: CadetRow[] = cadetsRes.data.map((cadet: any) => {
+          const currentRank = cadet.assigned_ranks?.find((ar: any) => ar.rank)?.rank;
+          return {
+            cadet_id: cadet.id,
+            cadet_number: cadet.cadet_number || "",
+            cadet_name: cadet.name,
+            cadet_rank: currentRank?.short_name || currentRank?.name || "Officer Cadet",
+            cadet_gender: cadet.gender,
+            branch: cadet.assigned_branchs?.find((ab: any) => ab.is_current)?.branch?.name || cadet.assigned_branchs?.[0]?.branch?.name || "N/A",
+            practices: {},
+            avg_practice: 0,
+            conv_practice: 0,
+            test_mark: 0,
+            conv_exam: 0,
+            mark: 0,
+            is_active: true,
+          };
+        });
 
         setCadetRows(rows);
       } catch (err) {
@@ -239,7 +264,7 @@ export default function ThreeKmResultForm({ initialData, onSubmit, onCancel, loa
       });
 
       if (initialData.achieved_marks && initialData.achieved_marks.length > 0) {
-        setModuleAssigned(true);
+        setModuleAssigned(true); // Module is assigned if initial data exists
         const uniqueCadets = Array.from(new Set(initialData.achieved_marks.map(m => m.cadet_id)));
         const rows: CadetRow[] = uniqueCadets.map(cadetId => {
           const mark = initialData.achieved_marks?.find(m => m.cadet_id === cadetId);
@@ -272,10 +297,10 @@ export default function ThreeKmResultForm({ initialData, onSubmit, onCancel, loa
             cadet_rank: currentRank?.short_name || currentRank?.name || "-",
             cadet_gender: mark?.cadet?.gender,
             branch: initialData.branch?.name || "N/A",
-            practices: practices,
-            avg_practice: avg_practice,
+            practices,
+            avg_practice,
             conv_practice: 0,
-            test_mark: test_mark,
+            test_mark,
             conv_exam: 0,
             mark: 0,
             is_active: mark?.is_active || true,
@@ -289,12 +314,6 @@ export default function ThreeKmResultForm({ initialData, onSubmit, onCancel, loa
   }, [initialData, threeKmModule]);
 
   const updateCalculatedMarks = (cadet: CadetRow): CadetRow => {
-    if (!threeKmModule) return cadet;
-
-    const practiceCount = parseInt(threeKmModule.practice_count || 0);
-    const convPracticeWeight = parseFloat(threeKmModule.convert_of_practice || 0);
-    const convExamWeight = parseFloat(threeKmModule.convert_of_exam || 0);
-
     // 1. Calculate Average Practice Mark
     let totalPracticeMark = 0;
     let actualCount = 0;
@@ -404,9 +423,6 @@ export default function ThreeKmResultForm({ initialData, onSubmit, onCancel, loa
   };
 
   const filtersSelected = formData.course_id && formData.semester_id && formData.exam_type_id;
-  const practiceCount = threeKmModule ? parseInt(threeKmModule.practice_count || 0) : 0;
-  const convPracticeWeight = threeKmModule ? parseFloat(threeKmModule.convert_of_practice || 0) : 0;
-  const convExamWeight = threeKmModule ? parseFloat(threeKmModule.convert_of_exam || 0) : 0;
 
   if (loadingDropdowns) {
     return (
@@ -443,8 +459,16 @@ export default function ThreeKmResultForm({ initialData, onSubmit, onCancel, loa
 
             <div>
               <Label>Semester <span className="text-red-500">*</span></Label>
-              <select value={formData.semester_id} onChange={(e) => handleChange("semester_id", parseInt(e.target.value))} className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500" required>
-                <option value={0}>Select Semester</option>
+              <select
+                value={formData.semester_id}
+                onChange={(e) => handleChange("semester_id", parseInt(e.target.value))}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500"
+                required
+                disabled={!formData.course_id || loadingSemesters}
+              >
+                <option value={0}>
+                  {loadingSemesters ? "Loading..." : !formData.course_id ? "Select course first" : "Select Semester"}
+                </option>
                 {semesters.map(semester => (<option key={semester.id} value={semester.id}>{semester.name} ({semester.code})</option>))}
               </select>
             </div>
@@ -498,6 +522,11 @@ export default function ThreeKmResultForm({ initialData, onSubmit, onCancel, loa
                   );
                 })}
               </select>
+              {formData.course_id && formData.semester_id && !loadingEstimatedMarks && (
+                <p className="mt-1 text-xs text-gray-500">
+                  Only exam types with estimated marks for the selected course & semester are enabled
+                </p>
+              )}
             </div>
 
             <div className="md:col-span-2">
@@ -538,22 +567,22 @@ export default function ThreeKmResultForm({ initialData, onSubmit, onCancel, loa
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full border-collapse border border-black">
+              <table className="w-full border-collapse border border-black text-xs">
                 <thead>
                   <tr>
-                    <th className="border border-black px-3 py-2 text-center text-sm whitespace-nowrap" rowSpan={2}>SL</th>
-                    <th className="border border-black px-3 py-2 text-center text-sm whitespace-nowrap" rowSpan={2}>BD No.</th>
-                    <th className="border border-black px-3 py-2 text-center text-sm whitespace-nowrap" rowSpan={2}>Rank</th>
-                    <th className="border border-black px-3 py-2 text-left text-sm whitespace-nowrap" rowSpan={2}>Name</th>
-                    <th className="border border-black px-3 py-2 text-left text-sm whitespace-nowrap" rowSpan={2}>Branch</th>
+                    <th className="border border-black px-3 py-2 text-center whitespace-nowrap" rowSpan={2}>SL</th>
+                    <th className="border border-black px-3 py-2 text-center whitespace-nowrap" rowSpan={2}>BD No.</th>
+                    <th className="border border-black px-3 py-2 text-center whitespace-nowrap" rowSpan={2}>Rank</th>
+                    <th className="border border-black px-3 py-2 text-left whitespace-nowrap" rowSpan={2}>Name</th>
+                    <th className="border border-black px-3 py-2 text-left whitespace-nowrap" rowSpan={2}>Branch</th>
                     {practiceCount > 0 && (
-                      <th className="border border-black px-3 py-2 text-center text-sm" colSpan={practiceCount}>Practices</th>
+                      <th className="border border-black px-3 py-2 text-center" colSpan={practiceCount}>Practices</th>
                     )}
-                    <th className="border border-black px-3 py-2 text-center text-sm whitespace-nowrap" rowSpan={2}>Avg. <br/> Practice</th>
-                    <th className="border border-black px-3 py-2 text-center text-sm whitespace-nowrap" rowSpan={2}>Exam <br/> {maxTestMark > 0 ? `${maxTestMark}` : ""}</th>
-                    <th className="border border-black px-3 py-2 text-center text-sm whitespace-nowrap" rowSpan={2}>Prac <br/> ({convPracticeWeight}%)</th>
-                    <th className="border border-black px-3 py-2 text-center text-sm whitespace-nowrap" rowSpan={2}>Exam <br/> ({convExamWeight}%)</th>
-                    <th className="border border-black px-3 py-2 text-center text-sm whitespace-nowrap" rowSpan={2}>Total</th>
+                    <th className="border border-black px-3 py-2 text-center whitespace-nowrap" rowSpan={2}>Avg. <br/> Practice</th>
+                    <th className="border border-black px-3 py-2 text-center whitespace-nowrap" rowSpan={2}>Exam <br/> {maxTestMark > 0 ? `${maxTestMark}` : ""}</th>
+                    <th className="border border-black px-3 py-2 text-center whitespace-nowrap" rowSpan={2}>Prac <br/> ({convPracticeWeight}%)</th>
+                    <th className="border border-black px-3 py-2 text-center whitespace-nowrap" rowSpan={2}>Exam <br/> ({convExamWeight}%)</th>
+                    <th className="border border-black px-3 py-2 text-center whitespace-nowrap" rowSpan={2}>Total</th>
                   </tr>
                   {practiceCount > 0 && (
                     <tr>
@@ -566,11 +595,11 @@ export default function ThreeKmResultForm({ initialData, onSubmit, onCancel, loa
                 <tbody>
                   {cadetRows.map((cadet, index) => (
                     <tr key={cadet.cadet_id}>
-                      <td className="border border-black px-3 py-2 text-center font-medium">{index + 1}</td>
+                      <td className="border border-black px-3 py-2 text-center">{index + 1}</td>
                       <td className="border border-black px-3 py-2 text-center">{cadet.cadet_number}</td>
                       <td className="border border-black px-3 py-2 text-center">{cadet.cadet_rank}</td>
-                      <td className="border border-black px-3 py-2 font-medium">{cadet.cadet_name}</td>
-                      <td className="border border-black px-3 py-2 font-medium">{cadet.branch}</td>
+                      <td className="border border-black px-3 py-2">{cadet.cadet_name}</td>
+                      <td className="border border-black px-3 py-2">{cadet.branch}</td>
 
                       {Array.from({ length: practiceCount }, (_, i) => i + 1).map(p => (
                         <td key={p} className="border border-black px-2 py-1 text-center">
@@ -580,14 +609,14 @@ export default function ThreeKmResultForm({ initialData, onSubmit, onCancel, loa
                             step={0.01}
                             value={cadet.practices[p] || 0}
                             onChange={(e) => handlePracticeChange(index, p, parseFloat(e.target.value) || 0)}
-                            className="w-16 px-1 py-1 border border-gray-300 rounded text-center text-sm focus:ring-2 focus:ring-blue-500 bg-white [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                            className="w-16 px-1 py-1 border border-gray-300 rounded text-center text-xs focus:ring-2 focus:ring-blue-500 bg-white [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                             placeholder="0"
                           />
                         </td>
                       ))}
 
                       {/* Avg Practice */}
-                      <td className="border border-black px-2 py-1 text-center font-medium">
+                      <td className="border border-black px-2 py-1 text-center">
                         {cadet.avg_practice}
                       </td>
 
@@ -599,17 +628,17 @@ export default function ThreeKmResultForm({ initialData, onSubmit, onCancel, loa
                           step={0.01}
                           value={cadet.test_mark || 0}
                           onChange={(e) => handleTestMarkChange(index, parseFloat(e.target.value) || 0)}
-                          className="w-16 px-1 py-1 border border-gray-300 rounded text-center text-sm focus:ring-2 focus:ring-blue-500 bg-white [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                          className="w-16 px-1 py-1 border border-gray-300 rounded text-center text-xs focus:ring-2 focus:ring-blue-500 bg-white [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                           placeholder="0"
                         />
                       </td>
-                      <td className="border border-black px-2 py-1 text-center font-semibold">
+                      <td className="border border-black px-2 py-1 text-center">
                         {cadet.conv_practice}
                       </td>
-                      <td className="border border-black px-2 py-1 text-center font-semibold">
+                      <td className="border border-black px-2 py-1 text-center">
                         {cadet.conv_exam}
                       </td>
-                      <td className="border border-black px-2 py-1 text-center font-semibold">
+                      <td className="border border-black px-2 py-1 text-center">
                         {cadet.mark}
                       </td>
                     </tr>

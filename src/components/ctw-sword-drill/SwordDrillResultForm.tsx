@@ -3,19 +3,15 @@
 
 import React, { useState, useEffect } from "react";
 import Label from "@/components/form/Label";
-import { courseService } from "@/libs/services/courseService";
-import { semesterService } from "@/libs/services/semesterService";
-import { programService } from "@/libs/services/programService";
-import { branchService } from "@/libs/services/branchService";
-import { groupService } from "@/libs/services/groupService";
-import { examService } from "@/libs/services/examService";
+import { commonService } from "@/libs/services/commonService";
+import { ctwCommonService } from "@/libs/services/ctwCommonService";
+import { ctwResultsModuleService } from "@/libs/services/ctwResultsModuleService";
 import { cadetService } from "@/libs/services/cadetService";
-import { instructorService } from "@/libs/services/instructorService";
-import { ctwSwordDrillAssessmentEstimatedMarkService } from "@/libs/services/ctwSwordDrillAssessmentEstimatedMarkService";
+import { ctwInstructorAssignModuleService } from "@/libs/services/ctwInstructorAssignModuleService";
+import { useAuth } from "@/libs/hooks/useAuth";
 import { Icon } from "@iconify/react";
 import type { SystemCourse, SystemSemester, SystemProgram, SystemBranch, SystemGroup, SystemExam } from "@/libs/types/system";
-import type { CtwSwordDrillResult, CtwSwordDrillAssessmentEstimatedMark } from "@/libs/types/ctwSwordDrill";
-import type { InstructorBiodata } from "@/libs/types/user";
+import type { CtwSwordDrillResult } from "@/libs/types/ctwSwordDrill";
 
 interface ResultFormProps {
   initialData?: CtwSwordDrillResult | null;
@@ -28,16 +24,20 @@ interface ResultFormProps {
 interface CadetRow {
   id?: number;
   cadet_id: number;
-  cadet_bd_no: string;
+  cadet_number: string;
   cadet_name: string;
   cadet_rank: string;
   branch: string;
-  instructor_1_mark: number;
-  instructor_2_mark: number;
+  mark: number;
+  currentInstructorMark: number;
+  marksByInstructor: { [instructorId: number]: number };
   is_active: boolean;
 }
 
+const SWORD_DRILL_MODULE_CODE = "sword_drill";
+
 export default function SwordDrillResultForm({ initialData, onSubmit, onCancel, loading, isEdit = false }: ResultFormProps) {
+  const { user } = useAuth();
   const [formData, setFormData] = useState({
     course_id: 0,
     semester_id: 0,
@@ -45,8 +45,6 @@ export default function SwordDrillResultForm({ initialData, onSubmit, onCancel, 
     branch_id: 0,
     group_id: 0,
     exam_type_id: 0,
-    instructor_1_id: 0,
-    instructor_2_id: 0,
     remarks: "",
     is_active: true,
   });
@@ -61,34 +59,39 @@ export default function SwordDrillResultForm({ initialData, onSubmit, onCancel, 
   const [branches, setBranches] = useState<SystemBranch[]>([]);
   const [groups, setGroups] = useState<SystemGroup[]>([]);
   const [exams, setExams] = useState<SystemExam[]>([]);
-  const [instructors, setInstructors] = useState<InstructorBiodata[]>([]);
-  const [assessments, setAssessments] = useState<CtwSwordDrillAssessmentEstimatedMark[]>([]);
+  const [estimatedMarks, setEstimatedMarks] = useState<any[]>([]);
+  const [footDrillModuleId, setSwordDrillModuleId] = useState<number>(0);
+  const [footDrillModule, setSwordDrillModule] = useState<any>(null);
   const [loadingDropdowns, setLoadingDropdowns] = useState(true);
   const [loadingCadets, setLoadingCadets] = useState(false);
-  const [loadingAssessments, setLoadingAssessments] = useState(false);
+  const [loadingEstimatedMarks, setLoadingEstimatedMarks] = useState(false);
+  const [loadingSemesters, setLoadingSemesters] = useState(false);
+  const [moduleAssigned, setModuleAssigned] = useState(false);
+  const [moduleInstructors, setModuleInstructors] = useState<any[]>([]);
+  const [allExistingMarks, setAllExistingMarks] = useState<any[]>([]);
 
-  // Load dropdown data
+
+  // Load all form options in a single API call
   useEffect(() => {
+    if (!user?.id) return;
+
     const loadDropdownData = async () => {
       try {
         setLoadingDropdowns(true);
-        const [coursesRes, semestersRes, programsRes, branchesRes, groupsRes, examsRes, instructorsRes] = await Promise.all([
-          courseService.getAllCourses({ per_page: 100 }),
-          semesterService.getAllSemesters({ per_page: 100 }),
-          programService.getAllPrograms({ per_page: 100 }),
-          branchService.getAllBranches({ per_page: 100 }),
-          groupService.getAllGroups({ per_page: 100 }),
-          examService.getAllExams({ per_page: 100 }),
-          instructorService.getAllInstructors({ per_page: 200 }),
-        ]);
+        const options = await ctwCommonService.getSwordDrillFormOptions(user.id);
 
-        setCourses(coursesRes.data.filter(c => c.is_active));
-        setSemesters(semestersRes.data.filter(s => s.is_active));
-        setPrograms(programsRes.data.filter(p => p.is_active));
-        setBranches(branchesRes.data.filter(b => b.is_active));
-        setGroups(groupsRes.data.filter(g => g.is_active));
-        setExams(examsRes.data.filter(e => e.is_active));
-        setInstructors(instructorsRes.data);
+        if (options) {
+          setCourses(options.courses);
+          setPrograms(options.programs);
+          setBranches(options.branches);
+          setGroups(options.groups);
+          setExams(options.exams);
+
+          if (options.module) {
+            setSwordDrillModuleId(options.module.id);
+            setSwordDrillModule(options.module);
+          }
+        }
       } catch (err) {
         console.error("Failed to load dropdown data:", err);
         setError("Failed to load required data. Please refresh the page.");
@@ -98,72 +101,129 @@ export default function SwordDrillResultForm({ initialData, onSubmit, onCancel, 
     };
 
     loadDropdownData();
-  }, []);
+  }, [user?.id]);
 
-  // Load assessments when semester changes
+  // Load semesters dynamically when course is selected
   useEffect(() => {
-    const loadAssessments = async () => {
-      if (!formData.semester_id) {
-        setAssessments([]);
+    if (!formData.course_id) {
+      setSemesters([]);
+      if (!initialData) setFormData(prev => ({ ...prev, semester_id: 0 }));
+      return;
+    }
+
+    const loadSemesters = async () => {
+      try {
+        setLoadingSemesters(true);
+        if (!initialData) setFormData(prev => ({ ...prev, semester_id: 0 }));
+        const result = await commonService.getSemestersByCourse(formData.course_id);
+        setSemesters(result);
+      } catch (err) {
+        console.error("Failed to load semesters:", err);
+        setSemesters([]);
+      } finally {
+        setLoadingSemesters(false);
+      }
+    };
+
+    loadSemesters();
+  }, [formData.course_id, initialData]);
+
+  // Load estimated marks from DB when course + semester are selected
+  useEffect(() => {
+    const loadEstimatedMarks = async () => {
+      if (!footDrillModuleId || !formData.course_id || !formData.semester_id) {
+        setEstimatedMarks([]);
         return;
       }
 
       try {
-        setLoadingAssessments(true);
-        const response = await ctwSwordDrillAssessmentEstimatedMarkService.getAllEstimatedMarks({
+        setLoadingEstimatedMarks(true);
+        const response = await ctwResultsModuleService.getEstimatedMarks(footDrillModuleId, {
           semester_id: formData.semester_id,
-          per_page: 100,
         });
-        setAssessments(response.data.filter(a => a.is_active));
+        setEstimatedMarks(response);
       } catch (err) {
-        console.error("Failed to load assessments:", err);
-        setAssessments([]);
+        console.error("Failed to load estimated marks:", err);
+        setEstimatedMarks([]);
       } finally {
-        setLoadingAssessments(false);
+        setLoadingEstimatedMarks(false);
       }
     };
 
-    loadAssessments();
-  }, [formData.semester_id]);
+    loadEstimatedMarks();
+  }, [footDrillModuleId, formData.course_id, formData.semester_id]);
 
-  // Check if exam type has assessment
-  const hasAssessment = (examTypeId: number): boolean => {
-    return assessments.some(a => a.exam_type_id === examTypeId);
+  // Check if exam type exists in the fetched estimated marks
+  const hasEstimatedMark = (examTypeId: number): boolean => {
+    return estimatedMarks.some((em: any) => em.exam_type_id === examTypeId);
   };
 
-  // Auto-load cadets when filters change
+  // Get estimated mark info for the selected exam type
+  const getEstimatedMarkInfo = () => {
+    if (!formData.exam_type_id) return null;
+    return estimatedMarks.find((em: any) => em.exam_type_id === formData.exam_type_id);
+  };
+
+  const estimatedMarkInfo = getEstimatedMarkInfo();
+  const maxMark = estimatedMarkInfo ? parseFloat(estimatedMarkInfo.estimated_mark_per_instructor || estimatedMarkInfo.mark || 0) : 0;
+  const conversationMark = estimatedMarkInfo ? parseFloat(estimatedMarkInfo.conversation_mark || 0) : 0;
+
+  // Auto-load cadets from ctw_instructor_assign_cadets after exam type selected
+  // First check if instructor is assigned to this module via ctw_instructor_assign_modules
   useEffect(() => {
     const loadCadets = async () => {
-      // Only load if required filters are selected
-      if (!formData.course_id || !formData.semester_id || !formData.program_id || !formData.branch_id || !formData.exam_type_id) {
+      // Required: user, module, course, semester, exam_type
+      if (!user?.id || !footDrillModuleId || !formData.course_id || !formData.semester_id || !formData.exam_type_id) {
         setCadetRows([]);
+        setModuleAssigned(false);
         return;
       }
 
       try {
         setLoadingCadets(true);
-        const cadetsRes = await cadetService.getAllCadets({
+
+        // First check if instructor is assigned to this foot_drill module
+        const moduleAssignRes = await ctwInstructorAssignModuleService.getAll({
+          instructor_id: user.id,
+          module_code: SWORD_DRILL_MODULE_CODE,
+          course_id: formData.course_id,
+          semester_id: formData.semester_id,
+          is_active: true,
+        });
+
+        if (!moduleAssignRes.data || moduleAssignRes.data.length === 0) {
+          // Instructor is NOT assigned to this module
+          setModuleAssigned(false);
+          setCadetRows([]);
+          return;
+        }
+
+        setModuleAssigned(true);
+
+        // Fetch cadets directly by course + semester
+        const cadetParams: any = {
           per_page: 500,
           course_id: formData.course_id,
           semester_id: formData.semester_id,
-          program_id: formData.program_id,
-          branch_id: formData.branch_id,
-          group_id: formData.group_id || undefined,
-        });
+          is_current: 1,
+        };
+        if (formData.program_id) cadetParams.program_id = formData.program_id;
+        if (formData.branch_id) cadetParams.branch_id = formData.branch_id;
+        if (formData.group_id) cadetParams.group_id = formData.group_id;
 
-        // Create cadet rows
-        const selectedBranch = branches.find(b => b.id === formData.branch_id);
-        const rows: CadetRow[] = cadetsRes.data.filter(c => c.is_active).map(cadet => {
-          // Get current rank from assigned_ranks (first active or latest)
-          const currentRank = cadet.assigned_ranks?.find(ar => ar.rank)?.rank;
+        const cadetsRes = await cadetService.getAllCadets(cadetParams);
+
+        const rows: CadetRow[] = cadetsRes.data.map((cadet: any) => {
+          const currentRank = cadet.assigned_ranks?.find((ar: any) => ar.rank)?.rank;
           return {
             cadet_id: cadet.id,
-            cadet_bd_no: cadet.bd_no || cadet.cadet_number || "",
+            cadet_number: cadet.cadet_number || "",
             cadet_name: cadet.name,
             cadet_rank: currentRank?.short_name || currentRank?.name || "Officer Cadet",
-            branch: selectedBranch?.name || "N/A",
-            instructor_1_mark: 0,
-            instructor_2_mark: 0,
+            branch: cadet.assigned_branchs?.find((ab: any) => ab.is_current)?.branch?.name || cadet.assigned_branchs?.[0]?.branch?.name || "N/A",
+            mark: 0,
+            currentInstructorMark: 0,
+            marksByInstructor: {},
             is_active: true,
           };
         });
@@ -176,20 +236,14 @@ export default function SwordDrillResultForm({ initialData, onSubmit, onCancel, 
       }
     };
 
-    // Don't reload cadets if we have initial data (edit mode)
     if (!initialData) {
       loadCadets();
     }
-  }, [formData.course_id, formData.semester_id, formData.program_id, formData.branch_id, formData.group_id, formData.exam_type_id, initialData, branches]);
+  }, [user?.id, footDrillModuleId, formData.course_id, formData.semester_id, formData.program_id, formData.branch_id, formData.group_id, formData.exam_type_id, initialData]);
 
   // Populate form with initial data
   useEffect(() => {
     if (initialData) {
-      // Get instructors from result marks (assuming first two unique instructors)
-      const instructorIds = initialData.result_marks
-        ? Array.from(new Set(initialData.result_marks.map(m => m.instructor_id)))
-        : [];
-
       setFormData({
         course_id: initialData.course_id,
         semester_id: initialData.semester_id,
@@ -197,51 +251,33 @@ export default function SwordDrillResultForm({ initialData, onSubmit, onCancel, 
         branch_id: initialData.branch_id || 0,
         group_id: initialData.group_id || 0,
         exam_type_id: initialData.exam_type_id,
-        instructor_1_id: instructorIds[0] || 0,
-        instructor_2_id: instructorIds[1] || 0,
         remarks: initialData.remarks || "",
         is_active: initialData.is_active,
       });
 
-      // Load cadet rows from initial data
-      if (initialData.result_marks && initialData.result_marks.length > 0) {
-        // Group marks by cadet_id
-        const cadetMarks = new Map<number, { instructor_1_mark: number; instructor_2_mark: number }>();
-
-        initialData.result_marks.forEach(m => {
-          if (!cadetMarks.has(m.cadet_id)) {
-            cadetMarks.set(m.cadet_id, { instructor_1_mark: 0, instructor_2_mark: 0 });
-          }
-          const marks = cadetMarks.get(m.cadet_id)!;
-          if (m.instructor_id === instructorIds[0]) {
-            marks.instructor_1_mark = m.achieved_mark;
-          } else if (m.instructor_id === instructorIds[1]) {
-            marks.instructor_2_mark = m.achieved_mark;
-          }
-        });
-
-        // Get unique cadets
-        const uniqueCadets = Array.from(new Set(initialData.result_marks.map(m => m.cadet_id)));
+      if (initialData.achieved_marks && initialData.achieved_marks.length > 0) {
+        setModuleAssigned(true); // Module is assigned if initial data exists
+        const uniqueCadets = Array.from(new Set(initialData.achieved_marks.map(m => m.cadet_id)));
         const rows: CadetRow[] = uniqueCadets.map(cadetId => {
-          const mark = initialData.result_marks?.find(m => m.cadet_id === cadetId);
-          const currentRank = mark?.cadet?.assigned_ranks?.find(ar => ar.rank)?.rank;
-          const marks = cadetMarks.get(cadetId) || { instructor_1_mark: 0, instructor_2_mark: 0 };
+          const mark = initialData.achieved_marks?.find(m => m.cadet_id === cadetId);
+          const currentRank = mark?.cadet?.assigned_ranks?.find((ar: any) => ar.rank)?.rank;
 
           return {
             cadet_id: cadetId,
-            cadet_bd_no: mark?.cadet?.bd_no || mark?.cadet?.cadet_number || "",
+            cadet_number: mark?.cadet?.cadet_number || "",
             cadet_name: mark?.cadet?.name || "Unknown",
-            cadet_rank: currentRank?.short_name || currentRank?.name || "Officer Cadet",
-            branch: initialData.branch?.name || "N/A",
-            instructor_1_mark: marks.instructor_1_mark,
-            instructor_2_mark: marks.instructor_2_mark,
+            cadet_rank: currentRank?.short_name || currentRank?.name || "-",
+            branch: mark?.cadet?.assigned_branchs?.find((ab: any) => ab.is_current)?.branch?.name || mark?.cadet?.assigned_branchs?.[0]?.branch?.name || "N/A",
+            mark: mark?.achieved_mark || 0,
+            currentInstructorMark: 0,
+            marksByInstructor: {},
             is_active: mark?.is_active || true,
           };
         });
         setCadetRows(rows);
       }
     }
-  }, [initialData, branches]);
+  }, [initialData]);
 
   const handleChange = (field: string, value: any) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -250,9 +286,13 @@ export default function SwordDrillResultForm({ initialData, onSubmit, onCancel, 
   const handleCadetChange = (cadetIndex: number, field: keyof CadetRow, value: any) => {
     setCadetRows(prev => {
       const updated = [...prev];
+      let finalValue = value;
+      if (field === "mark" && maxMark > 0 && typeof value === "number" && value > maxMark) {
+        finalValue = maxMark;
+      }
       updated[cadetIndex] = {
         ...updated[cadetIndex],
-        [field]: value
+        [field]: finalValue
       };
       return updated;
     });
@@ -262,40 +302,29 @@ export default function SwordDrillResultForm({ initialData, onSubmit, onCancel, 
     e.preventDefault();
     setError("");
 
-    // Validation
     if (!formData.course_id) { setError("Please select a course"); return; }
     if (!formData.semester_id) { setError("Please select a semester"); return; }
-    if (!formData.program_id) { setError("Please select a program"); return; }
-    if (!formData.branch_id) { setError("Please select a branch"); return; }
     if (!formData.exam_type_id) { setError("Please select an exam type"); return; }
-    if (!formData.instructor_1_id) { setError("Please select Instructor 1"); return; }
-    if (!formData.instructor_2_id) { setError("Please select Instructor 2"); return; }
+    if (!user?.id) { setError("User session error: Instructor ID not found. Please re-login."); return; }
 
     try {
-      // Create marks array with both instructor marks for each cadet
       const marks: any[] = [];
       cadetRows.filter(c => c.cadet_id > 0).forEach(c => {
-        // Add mark for instructor 1
         marks.push({
           cadet_id: c.cadet_id,
-          instructor_id: formData.instructor_1_id,
-          achieved_mark: c.instructor_1_mark || 0,
-        });
-        // Add mark for instructor 2
-        marks.push({
-          cadet_id: c.cadet_id,
-          instructor_id: formData.instructor_2_id,
-          achieved_mark: c.instructor_2_mark || 0,
+          achieved_mark: c.mark || 0,
         });
       });
 
       const submitData = {
         course_id: formData.course_id,
         semester_id: formData.semester_id,
-        program_id: formData.program_id,
-        branch_id: formData.branch_id,
+        program_id: formData.program_id || undefined,
+        branch_id: formData.branch_id || undefined,
         group_id: formData.group_id || undefined,
         exam_type_id: formData.exam_type_id,
+        instructor_id: user.id,
+        ctw_results_module_id: footDrillModuleId,
         remarks: formData.remarks || undefined,
         is_active: formData.is_active,
         marks: marks,
@@ -306,8 +335,7 @@ export default function SwordDrillResultForm({ initialData, onSubmit, onCancel, 
     }
   };
 
-  // Check if all required filters are selected
-  const filtersSelected = formData.course_id && formData.semester_id && formData.program_id && formData.branch_id && formData.exam_type_id;
+  const filtersSelected = formData.course_id && formData.semester_id && formData.exam_type_id;
 
   if (loadingDropdowns) {
     return (
@@ -345,24 +373,32 @@ export default function SwordDrillResultForm({ initialData, onSubmit, onCancel, 
 
             <div>
               <Label>Semester <span className="text-red-500">*</span></Label>
-              <select value={formData.semester_id} onChange={(e) => handleChange("semester_id", parseInt(e.target.value))} className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500" required>
-                <option value={0}>Select Semester</option>
+              <select
+                value={formData.semester_id}
+                onChange={(e) => handleChange("semester_id", parseInt(e.target.value))}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500"
+                required
+                disabled={!formData.course_id || loadingSemesters}
+              >
+                <option value={0}>
+                  {loadingSemesters ? "Loading..." : !formData.course_id ? "Select course first" : "Select Semester"}
+                </option>
                 {semesters.map(semester => (<option key={semester.id} value={semester.id}>{semester.name} ({semester.code})</option>))}
               </select>
             </div>
 
             <div>
-              <Label>Program <span className="text-red-500">*</span></Label>
-              <select value={formData.program_id} onChange={(e) => handleChange("program_id", parseInt(e.target.value))} className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500" required>
-                <option value={0}>Select Program</option>
+              <Label>Program</Label>
+              <select value={formData.program_id} onChange={(e) => handleChange("program_id", parseInt(e.target.value))} className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500">
+                <option value={0}>Select Program (Optional)</option>
                 {programs.map(program => (<option key={program.id} value={program.id}>{program.name} ({program.code})</option>))}
               </select>
             </div>
 
             <div>
-              <Label>Branch <span className="text-red-500">*</span></Label>
-              <select value={formData.branch_id} onChange={(e) => handleChange("branch_id", parseInt(e.target.value))} className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500" required>
-                <option value={0}>Select Branch</option>
+              <Label>Branch</Label>
+              <select value={formData.branch_id} onChange={(e) => handleChange("branch_id", parseInt(e.target.value))} className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500">
+                <option value={0}>Select Branch (Optional)</option>
                 {branches.map(branch => (<option key={branch.id} value={branch.id}>{branch.name} ({branch.code})</option>))}
               </select>
             </div>
@@ -382,66 +418,32 @@ export default function SwordDrillResultForm({ initialData, onSubmit, onCancel, 
                 onChange={(e) => handleChange("exam_type_id", parseInt(e.target.value))}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500"
                 required
-                disabled={!formData.semester_id || loadingAssessments}
+                disabled={!formData.course_id || !formData.semester_id || loadingEstimatedMarks}
               >
                 <option value={0}>
-                  {loadingAssessments ? "Loading assessments..." : !formData.semester_id ? "Select semester first" : "Select Exam Type"}
+                  {loadingEstimatedMarks ? "Loading..." : (!formData.course_id || !formData.semester_id) ? "Select course & semester first" : "Select Exam Type"}
                 </option>
                 {exams.map(exam => {
-                  const hasExamAssessment = hasAssessment(exam.id);
+                  const hasEM = hasEstimatedMark(exam.id);
                   return (
                     <option
                       key={exam.id}
                       value={exam.id}
-                      disabled={!hasExamAssessment}
+                      disabled={!hasEM}
                     >
-                      {exam.name} ({exam.code}) {!hasExamAssessment ? "- No Assessment" : ""}
+                      {exam.name} ({exam.code}) {!hasEM ? "- No Estimated Mark" : ""}
                     </option>
                   );
                 })}
               </select>
-              {formData.semester_id && !loadingAssessments && (
+              {formData.course_id && formData.semester_id && !loadingEstimatedMarks && (
                 <p className="mt-1 text-xs text-gray-500">
-                  Only exam types with assessments for this semester are enabled
+                  Only exam types with estimated marks for the selected course & semester are enabled
                 </p>
               )}
             </div>
 
-            <div>
-              <Label>Instructor 1 <span className="text-red-500">*</span></Label>
-              <select
-                value={formData.instructor_1_id}
-                onChange={(e) => handleChange("instructor_1_id", parseInt(e.target.value))}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500"
-                required
-              >
-                <option value={0}>Select Instructor 1</option>
-                {instructors.map(instructor => (
-                  <option key={instructor.id} value={instructor.user_id}>
-                    {instructor.user?.name || instructor.short_name || `Instructor #${instructor.id}`} ({instructor.user?.service_number || "N/A"})
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <Label>Instructor 2 <span className="text-red-500">*</span></Label>
-              <select
-                value={formData.instructor_2_id}
-                onChange={(e) => handleChange("instructor_2_id", parseInt(e.target.value))}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500"
-                required
-              >
-                <option value={0}>Select Instructor 2</option>
-                {instructors.map(instructor => (
-                  <option key={instructor.id} value={instructor.user_id}>
-                    {instructor.user?.name || instructor.short_name || `Instructor #${instructor.id}`} ({instructor.user?.service_number || "N/A"})
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="md:col-span-4">
+            <div className="md:col-span-2">
               <Label>Remarks</Label>
               <textarea value={formData.remarks} onChange={(e) => handleChange("remarks", e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500" rows={3} placeholder="Enter any remarks (optional)"></textarea>
             </div>
@@ -461,73 +463,78 @@ export default function SwordDrillResultForm({ initialData, onSubmit, onCancel, 
           {!filtersSelected ? (
             <div className="text-center py-12 text-gray-500">
               <Icon icon="hugeicons:filter" className="w-10 h-10 mx-auto mb-2" />
-              <p>Please select Course, Semester, Program, Branch, and Exam Type to load cadets</p>
+              <p>Please select Course, Semester, and Exam Type to load cadets</p>
             </div>
           ) : loadingCadets ? (
             <div className="w-full min-h-[20vh] flex items-center justify-center">
               <div><Icon icon="hugeicons:fan-01" className="w-10 h-10 animate-spin mx-auto my-10 text-blue-500" /></div>
             </div>
+          ) : !moduleAssigned ? (
+            <div className="text-center py-12 text-red-500">
+              <Icon icon="hugeicons:alert-circle" className="w-10 h-10 mx-auto mb-2" />
+              <p className="font-medium">You are not assigned to the Sword Drill module for the selected course & semester.</p>
+              <p className="text-sm text-gray-500 mt-1">Please contact admin to assign you to this module.</p>
+            </div>
           ) : cadetRows.length === 0 ? (
             <div className="text-center py-12 text-gray-500">
               <Icon icon="hugeicons:user-group" className="w-10 h-10 mx-auto mb-2" />
-              <p>No cadets found for the selected filters</p>
+              <p>No cadets assigned to you for the selected filters</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full border-collapse border border-black">
                 <thead>
                   <tr>
-                    <th className="border border-black px-3 py-2 text-center uppercase" rowSpan={2}>SL</th>
-                    <th className="border border-black px-3 py-2 text-center uppercase" rowSpan={2}>BD NO.</th>
-                    <th className="border border-black px-3 py-2 text-center uppercase" rowSpan={2}>RANK</th>
-                    <th className="border border-black px-3 py-2 text-left uppercase" rowSpan={2}>NAME</th>
-                    <th className="border border-black px-3 py-2 text-left uppercase" rowSpan={2}>Branch</th>
-                    <th className="border border-black px-3 py-2 text-center uppercase" colSpan={2}>INSTRUCTORS</th>
-                    <th className="border border-black px-3 py-2 text-center uppercase" rowSpan={2}>TOTAL</th>
+                    <th className="border border-black px-3 py-2 text-center" rowSpan={2}>SL</th>
+                    <th className="border border-black px-3 py-2 text-center" rowSpan={2}>BD No.</th>
+                    <th className="border border-black px-3 py-2 text-center" rowSpan={2}>Rank</th>
+                    <th className="border border-black px-3 py-2 text-left" rowSpan={2}>Name</th>
+                    <th className="border border-black px-3 py-2 text-left" rowSpan={2}>Branch</th>
+                    {footDrillModule && footDrillModule.instructor_count > 0 && (
+                      <th className="border border-black px-3 py-2 text-center" colSpan={footDrillModule.instructor_count}>Instructors</th>
+                    )}
+                    <th className="border border-black px-3 py-2 text-center" rowSpan={2}>Total</th>
+                    <th className="border border-black px-3 py-2 text-center" rowSpan={2}>Conv - {conversationMark.toFixed(2)}</th>
                   </tr>
-                  <tr>
-                    <th className="border border-black px-2 py-2 text-center">Instr-01</th>
-                    <th className="border border-black px-2 py-2 text-center">Instr-02</th>
-                  </tr>
+                  {footDrillModule && footDrillModule.instructor_count > 0 && (
+                    <tr>
+                      {Array.from({ length: footDrillModule.instructor_count }, (_, i) => i + 1).map(instrNum => (
+                        <th key={instrNum} className="border border-black px-3 py-2 text-center">Inst {instrNum}</th>
+                      ))}
+                    </tr>
+                  )}
                 </thead>
                 <tbody>
-                  {cadetRows.map((cadet, index) => {
-                    const total = (cadet.instructor_1_mark || 0) + (cadet.instructor_2_mark || 0);
-                    return (
-                      <tr key={cadet.cadet_id}>
-                        <td className="border border-black px-3 py-2 text-center font-medium">{index + 1}</td>
-                        <td className="border border-black px-3 py-2 text-center">{cadet.cadet_bd_no}</td>
-                        <td className="border border-black px-3 py-2 text-center">{cadet.cadet_rank}</td>
-                        <td className="border border-black px-3 py-2 font-medium">{cadet.cadet_name}</td>
-                        <td className="border border-black px-3 py-2 font-medium">{cadet.branch}</td>
-                        <td className="border border-black px-2 py-1 text-center">
-                          <input
-                            type="number"
-                            min={0}
-                            step={0.01}
-                            value={cadet.instructor_1_mark || 0}
-                            onChange={(e) => handleCadetChange(index, "instructor_1_mark", parseFloat(e.target.value) || 0)}
-                            className="w-full px-2 py-1 border border-gray-300 rounded text-center text-sm focus:ring-2 focus:ring-blue-500 bg-white"
-                            placeholder="0"
-                          />
-                        </td>
-                        <td className="border border-black px-2 py-1 text-center">
-                          <input
-                            type="number"
-                            min={0}
-                            step={0.01}
-                            value={cadet.instructor_2_mark || 0}
-                            onChange={(e) => handleCadetChange(index, "instructor_2_mark", parseFloat(e.target.value) || 0)}
-                            className="w-full px-2 py-1 border border-gray-300 rounded text-center text-sm focus:ring-2 focus:ring-blue-500 bg-white"
-                            placeholder="0"
-                          />
-                        </td>
-                        <td className="border border-black px-3 py-2 text-center font-bold text-blue-700">
-                          {total.toFixed(2)}
-                        </td>
-                      </tr>
-                    );
-                  })}
+                  {cadetRows.map((cadet, index) => (
+                    <tr key={cadet.cadet_id}>
+                      <td className="border border-black px-3 py-2 text-center font-medium">{index + 1}</td>
+                      <td className="border border-black px-3 py-2 text-center">{cadet.cadet_number}</td>
+                      <td className="border border-black px-3 py-2 text-center">{cadet.cadet_rank}</td>
+                      <td className="border border-black px-3 py-2">{cadet.cadet_name}</td>
+                      <td className="border border-black px-3 py-2">{cadet.branch}</td>
+                      
+                      {footDrillModule && footDrillModule.instructor_count > 0 && (
+                        Array.from({ length: footDrillModule.instructor_count }, (_, i) => (
+                          <td key={i} className="border border-black px-2 py-1 text-center">
+                            {i === 0 ? ( // Only show input for the first instructor
+                              <input
+                                type="number"
+                                min={0}
+                                max={maxMark > 0 ? maxMark : undefined}
+                                step={0.01}
+                                value={cadet.mark || 0}
+                                onChange={(e) => handleCadetChange(index, "mark", parseFloat(e.target.value) || 0)}
+                                className="w-full px-2 py-1 border border-gray-300 rounded text-center text-sm focus:ring-2 focus:ring-blue-500 bg-white"
+                                placeholder="0"
+                              />
+                            ) : (
+                              "-" // Placeholder for other instructors
+                            )}
+                          </td>
+                        ))
+                      )}
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>

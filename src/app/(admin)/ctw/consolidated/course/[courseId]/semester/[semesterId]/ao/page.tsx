@@ -65,20 +65,34 @@ export default function CtwCourseSemesterAoConsolidatedPage() {
         return midResult.modules.ao;
     }, [consolidatedData]);
 
+    const getEffectiveConvMark = (mod: any): number => {
+        const convMark = parseFloat(mod.conversation_mark) || 0;
+        if (convMark > 0) return convMark;
+        const isPercentageBased = (parseFloat(mod.convert_of_practice) || 0) + (parseFloat(mod.convert_of_exam) || 0) > 0;
+        const isDetailBased = !isPercentageBased && (mod.estimated_mark_config?.details?.length > 0);
+        if (isDetailBased) {
+            return (mod.estimated_mark_config?.details || []).reduce(
+                (sum: number, d: any) => sum + (parseFloat(d.male_marks) || 0), 0
+            );
+        }
+        return convMark;
+    };
+
     const totalPossibleMarkEND = useMemo(() =>
-        endAoModules.reduce((sum: number, mod: any) => sum + (parseFloat(mod.conversation_mark) || 0), 0)
+        endAoModules.reduce((sum: number, mod: any) => sum + getEffectiveConvMark(mod), 0)
+        // eslint-disable-next-line react-hooks/exhaustive-deps
         , [endAoModules]);
 
     const breakdownPossibleTotal = useMemo(() =>
         endAoModules.reduce((sum: number, mod: any) => {
             const details = mod.estimated_mark_config?.details || [];
             const isDetailBased = (parseFloat(mod.convert_of_practice) || 0) + (parseFloat(mod.convert_of_exam) || 0) === 0 && details.length > 0;
-            return isDetailBased ? sum + (parseFloat(mod.conversation_mark) || 0) : sum;
+            return isDetailBased ? sum + getEffectiveConvMark(mod) : sum;
         }, 0)
+        // eslint-disable-next-line react-hooks/exhaustive-deps
         , [endAoModules]);
 
     const computeConvertedMark = (mod: any, instructorMarks: any[]): number => {
-        const instCount = parseInt(mod.instructor_count) || 1;
         const convMarkLimit = parseFloat(mod.conversation_mark) || 0;
 
         const isPercentageBased = (parseFloat(mod.convert_of_practice) || 0) + (parseFloat(mod.convert_of_exam) || 0) > 0;
@@ -104,11 +118,16 @@ export default function CtwCourseSemesterAoConsolidatedPage() {
             const details: any[] = mod.estimated_mark_config?.details || [];
             const detailEstTotal = details.reduce((sum: number, d: any) => sum + (parseFloat(d.male_marks) || 0), 0);
             const totalAchieved = instructorMarks.reduce((s: number, im: any) => s + (parseFloat(im.achieved_mark) || 0), 0);
-            return detailEstTotal > 0 ? (totalAchieved / detailEstTotal) * convMarkLimit : 0;
+            const markCount = instructorMarks.length || 1;
+            const avgAchieved = totalAchieved / markCount;
+            const effectiveConvMark = convMarkLimit > 0 ? convMarkLimit : detailEstTotal;
+            return detailEstTotal > 0 ? (avgAchieved / detailEstTotal) * effectiveConvMark : 0;
         } else {
-            const totalEst = (parseFloat(mod.estimated_mark) || 1) * instCount;
+            const totalEst = parseFloat(mod.estimated_mark) || 1;
             const totalAchieved = instructorMarks.reduce((s: number, im: any) => s + (parseFloat(im.achieved_mark) || 0), 0);
-            return totalEst > 0 ? (totalAchieved / totalEst) * convMarkLimit : 0;
+            const markCount = instructorMarks.length || 1;
+            const avgAchieved = totalAchieved / markCount;
+            return totalEst > 0 ? (avgAchieved / totalEst) * convMarkLimit : 0;
         }
     };
 
@@ -183,22 +202,12 @@ export default function CtwCourseSemesterAoConsolidatedPage() {
                 <div className="mb-8">
                     <div className="flex justify-center mb-4"><FullLogo /></div>
                     <h1 className="text-center text-xl font-bold text-gray-900 uppercase tracking-wider">Bangladesh Air Force Academy</h1>
-                    <p className="text-center font-medium text-gray-900 uppercase tracking-wider pb-2 inline-block w-full text-blue-700">CTW AO Consolidated Result Sheet</p>
+                     <p className="text-center font-medium text-gray-900 uppercase tracking-wider inline-block w-full text-blue-700">Breakdown of AO Result : {course?.name}</p>
+                    <p className="text-center font-medium text-gray-900 uppercase tracking-wider pb-2 inline-block w-full text-blue-700">{semester?.name}</p>
                 </div>
 
                 <div className="mb-6">
-                    <h2 className="text-lg font-bold text-gray-900 mb-4 pb-1 border-b border-dashed border-gray-400 uppercase text-base">Course Information</h2>
-                    <div className="grid grid-cols-2 gap-x-12 gap-y-3">
-                        <div className="flex"><span className="w-64 text-gray-900 font-bold uppercase">Course</span><span className="mr-4">:</span><span className="text-gray-900 flex-1">{course?.name || "N/A"}</span></div>
-                        <div className="flex"><span className="w-64 text-gray-900 font-bold uppercase">Semester</span><span className="mr-4">:</span><span className="text-gray-900 flex-1">{semester?.name || "N/A"}</span></div>
-                        <div className="flex"><span className="w-64 text-gray-900 font-bold uppercase">Assessment Category</span><span className="mr-4">:</span><span className="text-gray-900 flex-1 font-bold text-blue-600">AO (Assessment Observation)</span></div>
-                        <div className="flex"><span className="w-64 text-gray-900 font-bold uppercase">Exam Type</span><span className="mr-4">:</span><span className="text-gray-900 flex-1 font-bold uppercase">End Final Examination</span></div>
-                    </div>
-                </div>
-
-                <div className="mb-6">
-                    <div className="flex justify-between items-center gap-4 border-b border-dashed border-gray-400 mb-4 no-print">
-                        <h2 className="text-lg font-bold text-gray-900 pb-1 uppercase text-base">Performance Matrix</h2>
+                    <div className="flex justify-end items-center gap-4 mb-4 no-print">
                         <div className="flex items-center gap-1 p-1 rounded-full border border-gray-200 text-xs mb-2">
                             <button onClick={() => setConsolidateTab("main")} className={`px-4 py-1 rounded-full transition-all ${consolidateTab === "main" ? "bg-blue-600 text-white" : "hover:bg-gray-100"}`}>
                                 Summary
@@ -232,7 +241,7 @@ export default function CtwCourseSemesterAoConsolidatedPage() {
                                             <th key={`mod-head-${mod.id}`} className="border border-black px-1 py-1 text-start align-bottom" style={{ minWidth: '35px', maxWidth: '60px' }}>
                                                 <div className="flex flex-col items-center gap-1">
                                                     <span className="font-semibold" style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)', textOrientation: 'mixed', height: '130px' }}>
-                                                        {mod.name} - {(parseFloat(mod.conversation_mark) || 0).toFixed(0)}
+                                                        {mod.name} - {getEffectiveConvMark(mod).toFixed(0)}
                                                     </span>
                                                 </div>
                                             </th>
@@ -337,7 +346,7 @@ export default function CtwCourseSemesterAoConsolidatedPage() {
                                                             Total - {details.reduce((sum: number, d: any) => sum + (parseFloat(d.male_marks) || 0), 0).toFixed(0)}
                                                         </th>
                                                         <th rowSpan={2} className="border border-black px-1 py-1 text-center font-bold">
-                                                            Conv.<br />{conversationMark.toFixed(2)}
+                                                            Conv.<br />{getEffectiveConvMark(mod).toFixed(0)}
                                                         </th>
                                                     </React.Fragment>
                                                 );
@@ -353,7 +362,7 @@ export default function CtwCourseSemesterAoConsolidatedPage() {
                                                             Avg <br /> {estimatedMark.toFixed(0)}
                                                         </th>
                                                         <th rowSpan={2} className="border border-black px-1 py-1 text-center font-bold">
-                                                            Conv. <br /> {conversationMark.toFixed(2)}
+                                                            Conv. <br /> {getEffectiveConvMark(mod).toFixed(0)}
                                                         </th>
                                                     </React.Fragment>
                                                 );
@@ -364,7 +373,7 @@ export default function CtwCourseSemesterAoConsolidatedPage() {
                                                             Mark <br /> {estimatedMark.toFixed(0)}
                                                         </th>
                                                         <th rowSpan={2} className="border border-black px-1 py-1 text-center font-bold">
-                                                            Conv. <br /> {conversationMark.toFixed(2)}
+                                                            Conv. <br /> {getEffectiveConvMark(mod).toFixed(0)}
                                                         </th>
                                                     </React.Fragment>
                                                 );

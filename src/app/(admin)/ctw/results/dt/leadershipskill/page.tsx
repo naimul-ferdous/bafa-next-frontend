@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { CtwLeadershipSkillResult } from "@/libs/types/ctwLeadershipSkill";
 import { Icon } from "@iconify/react";
 import { ctwLeadershipSkillResultService } from "@/libs/services/ctwLeadershipSkillResultService";
-import { ctwResultsModuleService } from "@/libs/services/ctwResultsModuleService";
+import { ctwCommonService } from "@/libs/services/ctwCommonService";
 import { useAuth } from "@/libs/hooks/useAuth";
 import FullLogo from "@/components/ui/fulllogo";
 import DataTable, { Column } from "@/components/ui/DataTable";
@@ -44,27 +44,29 @@ export default function CtwLeadershipSkillResultsPage() {
   const [moduleLoading, setModuleLoading] = useState(true);
 
   useEffect(() => {
+    if (!user?.id) return;
     const fetchModuleId = async () => {
       try {
         setModuleLoading(true);
-        const modulesRes = await ctwResultsModuleService.getAllModules({ per_page: 100 });
-        const leadershipSkillModule = modulesRes.data.find((m: any) => m.code === LEADERSHIP_SKILL_MODULE_CODE);
-        if (leadershipSkillModule) {
-          setLeadershipSkillModuleId(leadershipSkillModule.id);
+        const options = await ctwCommonService.getLeadershipSkillFormOptions(user?.id || 0);
+        if (options?.module) {
+          setLeadershipSkillModuleId(options.module.id);
         } else {
-          console.error(`Module with code ${LEADERSHIP_SKILL_MODULE_CODE} not found.`);
+          setLeadershipSkillModuleId(null);
+          setLoading(false);
         }
       } catch (err) {
-        console.error("Failed to fetch module ID:", err);
+        setLeadershipSkillModuleId(null);
+        setLoading(false);
       } finally {
         setModuleLoading(false);
       }
     };
     fetchModuleId();
-  }, []);
+  }, [user?.id]);
 
   const loadResults = useCallback(async () => {
-    if (leadershipSkillModuleId === null || !user?.id) return;
+    if (leadershipSkillModuleId === null || !user?.id) { setLoading(false); return; }
     try {
       setLoading(true);
       const response = await ctwLeadershipSkillResultService.getAllResults(leadershipSkillModuleId, {
@@ -246,7 +248,7 @@ export default function CtwLeadershipSkillResultsPage() {
       </div>
 
       {isInstructor ? (
-        (loading || moduleLoading) ? <TableLoading /> : (
+        (loading) ? <TableLoading /> : (
           <>
             <DataTable columns={columns} data={results} keyExtractor={(result) => result.id.toString()} emptyMessage="No results found" />
             <div className="flex items-center justify-between mt-6">

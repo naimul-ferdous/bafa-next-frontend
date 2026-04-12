@@ -172,6 +172,27 @@ export const ctwResultsModuleService = {
   },
 
   /**
+   * Get all estimated marks filtered by semester_id and exam_type_id (from ctw_results_module_estimated_marks)
+   */
+  async getEstimatedMarksBySemesterAndExam(params: { semester_id: number; exam_type_id: number }): Promise<CtwResultsModuleEstimatedMark[]> {
+    try {
+      const query = new URLSearchParams();
+      query.append('semester_id', params.semester_id.toString());
+      query.append('exam_type_id', params.exam_type_id.toString());
+
+      const token = getToken();
+      const result = await apiClient.get<ApiResponse<CtwResultsModuleEstimatedMark[]>>(
+        `/ctw-results-module-estimated-marks?${query.toString()}`,
+        token
+      );
+      return result?.data || [];
+    } catch (error) {
+      console.error('Failed to fetch estimated marks by semester and exam type:', error);
+      return [];
+    }
+  },
+
+  /**
    * Store estimated mark for a module
    */
   async storeEstimatedMark(moduleId: number, data: Omit<CtwResultsModuleEstimatedMarkCreateData, 'ctw_results_module_id'>): Promise<CtwResultsModuleEstimatedMark | null> {

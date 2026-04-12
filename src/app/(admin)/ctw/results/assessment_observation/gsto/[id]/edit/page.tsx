@@ -4,7 +4,8 @@
 import React, { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { ctwGstoAssessmentResultService } from "@/libs/services/ctwGstoAssessmentResultService";
-import { ctwResultsModuleService } from "@/libs/services/ctwResultsModuleService";
+import { ctwCommonService } from "@/libs/services/ctwCommonService";
+import { useAuth } from "@/libs/hooks/useAuth";
 import FullLogo from "@/components/ui/fulllogo";
 import GstoAssessmentResultForm from "@/components/ctw-gsto-assessment/GstoAssessmentResultForm";
 import { Icon } from "@iconify/react";
@@ -14,6 +15,7 @@ const GSTO_ASSESSMENT_MODULE_CODE = "gsto_assessment";
 export default function EditGstoAssessmentResultPage() {
   const router = useRouter();
   const params = useParams();
+  const { user } = useAuth();
   const resultId = params?.id as string;
 
   const [loading, setLoading] = useState(false);
@@ -21,29 +23,34 @@ export default function EditGstoAssessmentResultPage() {
   const [result, setResult] = useState<any | null>(null);
   const [error, setError] = useState("");
   const [moduleId, setModuleId] = useState<number | null>(null);
+  const [moduleLoading, setModuleLoading] = useState(true);
 
   useEffect(() => {
+    if (!user?.id) return;
     const fetchModuleId = async () => {
       try {
-        const modulesRes = await ctwResultsModuleService.getAllModules({ per_page: 100 });
-        const foundModule = modulesRes.data.find((m: any) => m.code === GSTO_ASSESSMENT_MODULE_CODE);
-        if (foundModule) {
-          setModuleId(foundModule.id);
+        setModuleLoading(true);
+        const options = await ctwCommonService.getGstoAssessmentFormOptions(user?.id || 0);
+        if (options?.module) {
+          setModuleId(options.module.id);
         } else {
-          setError(`Module with code ${GSTO_ASSESSMENT_MODULE_CODE} not found.`);
-          setLoadingResult(false);
+          setModuleId(null);
+          setLoading(false);
+          setError("Module not found.");
         }
       } catch (err) {
-        console.error("Failed to fetch module ID:", err);
+        setModuleId(null);
+        setLoading(false);
         setError("Failed to fetch module ID.");
-        setLoadingResult(false);
+      } finally {
+        setModuleLoading(false);
       }
     };
     fetchModuleId();
-  }, []);
+  }, [user?.id]);
 
   useEffect(() => {
-    if (moduleId === null || !resultId) return;
+    if (moduleId === null || !resultId) { setLoading(false); return; }
 
     const loadResult = async () => {
       try {

@@ -189,9 +189,9 @@ export default function ResultDetailsPage({ params }: { params: Promise<{ id: st
           </div>
         </div>
 
-        {/* 1. Pen Picture */}
+        {/* 1. PER */}
         <div className="mb-10">
-          <h3 className="font-bold text-gray-900 mb-3">1. Pen Picture:</h3>
+          <h3 className="font-bold text-gray-900 mb-3">1. PER:</h3>
           <div className="leading-relaxed text-gray-800 text-justify">
             {result.pen_picture || "No pen picture provided."}
           </div>

@@ -49,7 +49,11 @@ interface UserProfile {
 }
 
 interface FinalReportTabProps {
-  semesterData: SemesterData;
+  reportData?: {
+    is_6th_semester: boolean;
+    exam_phases: any[];
+    final: any[];
+  } | null;
   semesterId: number;
   courseId: number;
   selectedCadets?: number[];
@@ -58,10 +62,11 @@ interface FinalReportTabProps {
   cadetApprovalStatuses?: CadetApprovalStatus[];
   approvalProcesses?: ApprovalProcess[];
   profile?: UserProfile | null;
+  is6thSemester?: boolean;
 }
 
 const FinalReportTab: React.FC<FinalReportTabProps> = ({
-  semesterData,
+  reportData,
   semesterId,
   courseId,
   selectedCadets = [],
@@ -70,15 +75,41 @@ const FinalReportTab: React.FC<FinalReportTabProps> = ({
   cadetApprovalStatuses = [],
   approvalProcesses = [],
   profile,
+  is6thSemester = false,
 }) => {
   const router = useRouter();
 
-  // Check if a cadet is selected
-  const isCadetSelected = (cadetId: number) => selectedCadets.includes(cadetId);
+  // Extract data from reportData
+  const finalData = reportData?.final || [];
+  const examPhasesFromBackend = reportData?.exam_phases || [];
+  const isBackendData = finalData.length > 0;
+
+  // Get all unique exam phases for header - use backend data
+  const allExamPhases = isBackendData ? examPhasesFromBackend : [];
+
+  // Calculate totals for each cadet using backend data
+  const cadetsWithTotals = finalData.map((cadet: any, index: number) => ({
+    cadet: cadet,
+    cadetData: { cadet_details: { id: cadet.cadet_id, name: cadet.name, bdno: cadet.bd_no || '', rank: { name: cadet.rank } } },
+    index,
+    dailyAvg: cadet.daily_avg || 0,
+    totalValue: cadet.total || 0,
+    inPercentage: cadet.in_percentage || 0,
+    position: cadet.position || index + 1
+  }));
+
+  // Create position map from backend
+  const positionMap: { [key: number]: number } = {};
+  cadetsWithTotals.forEach((item) => {
+    positionMap[item.index] = item.position;
+  });
 
   // Check if all cadets are selected
-  const areAllCadetsSelected = semesterData.cadets.length > 0 &&
-    semesterData.cadets.every(c => selectedCadets.includes(c.cadet_details.id));
+  const areAllCadetsSelected = cadetsWithTotals.length > 0 &&
+    cadetsWithTotals.every(c => selectedCadets.includes(c.cadetData.cadet_details.id));
+
+  // Check if a cadet is selected
+  const isCadetSelected = (cadetId: number) => selectedCadets.includes(cadetId);
 
   // Check if cadet can be approved
   const canApprove = (cadetId: number) => {
@@ -198,83 +229,6 @@ const FinalReportTab: React.FC<FinalReportTabProps> = ({
     return { grade: "1", word: "Inferior", color: "text-red-800" };
   };
 
-  // Get Solo Check mark from marks
-  const getSoloCheckMark = (marks: Ftw11sqnFlyingExaminationMark[]) => {
-    const soloCheckMark = marks.find(
-      (mark) =>
-        mark.syllabus?.phase_shortname?.includes("SOLO") ||
-        mark.syllabus?.phase_full_name?.includes("SOLO Ck") ||
-        mark.exercise?.exercise_name?.includes("SOLO")
-    );
-    return soloCheckMark ? parseFloat(soloCheckMark.achieved_mark || "0") : 0;
-  };
-
-  // Get MTT mark from marks
-  const getMttMark = (marks: Ftw11sqnFlyingExaminationMark[]) => {
-    const mttMark = marks.find(
-      (mark) =>
-        mark.syllabus?.phase_shortname === "MTT" ||
-        mark.syllabus?.phase_full_name?.includes("Mid Term Test") ||
-        mark.syllabus?.phase_full_name?.includes("MTT")
-    );
-    return mttMark ? parseFloat(mttMark.achieved_mark || "0") : 0;
-  };
-
-  // Calculate daily average from marks (excluding MTT and Solo Check)
-  const getDailyAvg = (marks: Ftw11sqnFlyingExaminationMark[]) => {
-    const dailyMarks = marks.filter(
-      (mark) =>
-        !mark.syllabus?.phase_shortname?.includes("SOLO") &&
-        !mark.syllabus?.phase_full_name?.includes("SOLO Ck") &&
-        mark.syllabus?.phase_shortname !== "MTT" &&
-        !mark.syllabus?.phase_full_name?.includes("Mid Term Test") &&
-        mark.achieved_mark &&
-        parseFloat(mark.achieved_mark) > 0
-    );
-
-    if (dailyMarks.length === 0) return 0;
-
-    // Group by phase and calculate phase averages
-    const phaseGroups: { [key: string]: number[] } = {};
-    dailyMarks.forEach((mark) => {
-      const phaseKey = mark.syllabus?.phase_shortname || mark.syllabus?.id?.toString() || "unknown";
-      if (!phaseGroups[phaseKey]) {
-        phaseGroups[phaseKey] = [];
-      }
-      phaseGroups[phaseKey].push(parseFloat(mark.achieved_mark || "0"));
-    });
-
-    // Calculate average of phase averages
-    const phaseAverages = Object.values(phaseGroups).map(
-      (marks) => marks.reduce((sum, m) => sum + m, 0) / marks.length
-    );
-
-    if (phaseAverages.length === 0) return 0;
-
-    const avgOfAvg = phaseAverages.reduce((sum, avg) => sum + avg, 0) / phaseAverages.length;
-    return avgOfAvg * 4; // Daily avg multiplied by 4 for 400 marks
-  };
-
-  // Calculate totals for each cadet
-  const cadetsWithTotals = semesterData.cadets.map((cadetData, index) => {
-    const soloCkMark = getSoloCheckMark(cadetData.marks);
-    const mttMark = getMttMark(cadetData.marks);
-    const mttValue = mttMark * 1.5; // MTT is out of 150
-    const dailyAvg = getDailyAvg(cadetData.marks);
-
-    const totalValue = soloCkMark + mttValue + dailyAvg;
-    const inPercentage = (totalValue / 650) * 100;
-
-    return { cadetData, index, soloCkMark, mttMark, mttValue, dailyAvg, totalValue, inPercentage };
-  });
-
-  // Sort by total value for positions
-  const sortedCadets = [...cadetsWithTotals].sort((a, b) => b.totalValue - a.totalValue);
-  const positionMap: { [key: number]: number } = {};
-  sortedCadets.forEach((item, pos) => {
-    positionMap[item.index] = pos + 1;
-  });
-
   return (
     <div className="bg-white overflow-hidden">
       <div className="overflow-x-auto">
@@ -317,12 +271,16 @@ const FinalReportTab: React.FC<FinalReportTabProps> = ({
               >
                 Name
               </th>
-              <th className="px-4 py-3 text-center text-xs font-medium text-black uppercase tracking-wider border border-black">
-                Solo Ck
-              </th>
-              <th className="px-4 py-3 text-center text-xs font-medium text-black uppercase tracking-wider border border-black">
-                MTT
-              </th>
+              {isBackendData && allExamPhases.map((exam) => (
+                <th key={exam.key} className="px-4 py-3 text-center text-xs font-medium text-black uppercase tracking-wider border border-black">
+                  {exam.phase_fullname || exam.key}
+                </th>
+              ))}
+              {!isBackendData && is6thSemester && (
+                <th className="px-4 py-3 text-center text-xs font-medium text-black uppercase tracking-wider border border-black">
+                  MTT
+                </th>
+              )}
               <th className="px-4 py-3 text-center text-xs font-medium text-black uppercase tracking-wider border border-black">
                 Daily Avg.
               </th>
@@ -345,12 +303,6 @@ const FinalReportTab: React.FC<FinalReportTabProps> = ({
                 rowSpan={2}
                 className="px-4 py-3 text-center text-xs font-medium text-black uppercase tracking-wider border border-black"
               >
-                Grade
-              </th>
-              <th
-                rowSpan={2}
-                className="px-4 py-3 text-center text-xs font-medium text-black uppercase tracking-wider border border-black"
-              >
                 Sign of Ins
               </th>
               <th
@@ -367,112 +319,129 @@ const FinalReportTab: React.FC<FinalReportTabProps> = ({
               </th>
             </tr>
             <tr>
-              <th className="px-4 py-2 text-center text-xs font-medium text-black uppercase tracking-wider border border-black">
-                100
-              </th>
-              <th className="px-4 py-2 text-center text-xs font-medium text-black uppercase tracking-wider border border-black">
-                150
-              </th>
+              {isBackendData && allExamPhases.map((exam) => (
+                <th key={`weight-${exam.key}`} className="px-4 py-2 text-center text-xs font-medium text-black uppercase tracking-wider border border-black">
+                  {Math.round(exam.weight * 100)}
+                </th>
+              ))}
+              {!isBackendData && is6thSemester && (
+                <th className="px-4 py-2 text-center text-xs font-medium text-black uppercase tracking-wider border border-black">
+                  150
+                </th>
+              )}
               <th className="px-4 py-2 text-center text-xs font-medium text-black uppercase tracking-wider border border-black">
                 400
               </th>
               <th className="px-4 py-2 text-center text-xs font-medium text-black uppercase tracking-wider border border-black">
-                650
+                {isBackendData ? 650 : (is6thSemester ? 1200 : 650)}
               </th>
             </tr>
           </thead>
           <tbody className="bg-white">
-            {cadetsWithTotals.map(
-              ({ cadetData, index, soloCkMark, mttValue, dailyAvg, totalValue, inPercentage }) => {
-                const position = positionMap[index];
-                const gradeInfo = getNineScaleGrade(inPercentage);
+            {cadetsWithTotals.map((cadetItem) => {
+              const { index, dailyAvg, totalValue, inPercentage, } = cadetItem;
+              const cadet = cadetItem.cadet || cadetItem.cadetData?.cadet_details;
+              const cadetData = cadetItem.cadetData || { cadet_details: { id: cadet?.cadet_id || 0, name: cadet?.name || '', bdno: cadet?.bd_no || '', rank: { name: cadet?.rank || 'Officer Cadet' } } };
+              const position = positionMap[index];
+              const gradeInfo = getNineScaleGrade(inPercentage);
 
-                return (
-                  <tr
-                    key={cadetData.cadet_details.id}
-                    className="hover:bg-gray-100 transition-colors cursor-pointer"
-                    onClick={() =>
-                      router.push(
-                        `/ftw/11sqn/results/flying/results/course/${courseId}/semester/${semesterId}/cadet/${cadetData.cadet_details.id}`
-                      )
-                    }
-                  >
-                    <td className="px-2 py-3 text-center text-black border border-black text-sm print:hidden">
-                      <input
-                        type="checkbox"
-                        checked={isCadetSelected(cadetData.cadet_details.id)}
-                        onChange={() => onSelectCadet?.(cadetData.cadet_details.id)}
-                        disabled={isApprovedByMe(cadetData.cadet_details.id) || !canApprove(cadetData.cadet_details.id)}
-                        className="w-4 h-4 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                        onClick={(e) => e.stopPropagation()}
-                      />
+              return (
+                <tr
+                  key={cadetData.cadet_details.id}
+                  className="hover:bg-gray-100 transition-colors cursor-pointer"
+                  onClick={() =>
+                    router.push(
+                      `/ftw/11sqn/results/flying/results/course/${courseId}/semester/${semesterId}/cadet/${cadetData.cadet_details.id}`
+                    )
+                  }
+                >
+                  <td className="px-2 py-3 text-center text-black border border-black text-sm print:hidden">
+                    <input
+                      type="checkbox"
+                      checked={isCadetSelected(cadetData.cadet_details.id)}
+                      onChange={() => onSelectCadet?.(cadetData.cadet_details.id)}
+                      disabled={isApprovedByMe(cadetData.cadet_details.id) || !canApprove(cadetData.cadet_details.id)}
+                      className="w-4 h-4 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                  </td>
+                  <td className="px-4 py-3 text-center text-black border border-black text-sm">
+                    {index + 1}
+                  </td>
+                  <td className="px-4 py-3 text-center text-black border border-black text-sm">
+                    {cadetData.cadet_details.bdno || cadet.bd_no || ''}
+                  </td>
+                  <td className="px-4 py-3 text-center text-black border border-black text-sm">
+                    {cadetData.cadet_details.rank?.name || cadet.rank || "Officer Cadet"}
+                  </td>
+                  <td className="px-4 py-3 text-left text-black border border-black text-sm">
+                    {cadetData.cadet_details.name || cadet.name || ''}
+                  </td>
+                  {isBackendData && allExamPhases.map((exam) => (
+                    <td key={`mark-${exam.key}`} className="px-4 py-3 text-center text-black border border-black text-sm">
+                      {(() => {
+                        const backendCadet = finalData.find((f: any) => f.cadet_id === cadetData.cadet_details.id);
+                        const mark = backendCadet ? backendCadet[exam.key] : 0;
+                        return (mark || 0).toFixed(2);
+                      })()}
                     </td>
-                    <td className="px-4 py-3 text-center text-black border border-black text-sm">
-                      {index + 1}
-                    </td>
-                    <td className="px-4 py-3 text-center text-black border border-black text-sm">
-                      {cadetData.cadet_details.bdno}
-                    </td>
-                    <td className="px-4 py-3 text-center text-black border border-black text-sm">
-                      {cadetData.cadet_details.rank?.name || "Officer Cadet"}
-                    </td>
-                    <td className="px-4 py-3 text-left text-black border border-black text-sm">
-                      {cadetData.cadet_details.name}
-                    </td>
-                    <td className="px-4 py-3 text-center text-black border border-black text-sm">
-                      {soloCkMark.toFixed(2)}
-                    </td>
-                    <td className="px-4 py-3 text-center text-black border border-black text-sm">
-                      {mttValue.toFixed(2)}
-                    </td>
-                    <td className="px-4 py-3 text-center border border-black text-sm font-bold">
-                      <span
-                        className={`${
-                          dailyAvg >= 320
-                            ? "text-green-600"
-                            : dailyAvg >= 240
-                            ? "text-yellow-600"
-                            : "text-red-600"
+                  ))}
+                  <td className="px-4 py-3 text-center border border-black text-sm font-bold">
+                    <span
+                      className={`${
+                          isBackendData 
+                            ? (cadet.daily_avg || 0) >= 320
+                              ? "text-green-600"
+                              : (cadet.daily_avg || 0) >= 240
+                                ? "text-yellow-600"
+                                : "text-red-600"
+                            : dailyAvg >= 320
+                                ? "text-green-600"
+                                : dailyAvg >= 240
+                                  ? "text-yellow-600"
+                                  : "text-red-600"
                         }`}
-                      >
-                        {dailyAvg.toFixed(2)}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-center border border-black text-sm font-bold">
-                      <span
-                        className={`${
-                          totalValue >= 520
-                            ? "text-green-600"
-                            : totalValue >= 390
-                            ? "text-yellow-600"
-                            : "text-red-600"
+                    >
+                      {isBackendData ? (cadet.daily_avg || 0).toFixed(2) : dailyAvg.toFixed(2)}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-center border border-black text-sm font-bold">
+                    <span
+                      className={`${
+                          isBackendData
+                            ? (cadet.total || 0) >= 960
+                              ? "text-green-600"
+                              : (cadet.total || 0) >= 720
+                                ? "text-yellow-600"
+                                : "text-red-600"
+                            : totalValue >= 960
+                              ? "text-green-600"
+                              : totalValue >= 720
+                                ? "text-yellow-600"
+                                : "text-red-600"
                         }`}
-                      >
-                        {totalValue.toFixed(2)}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-center text-black border border-black text-sm">
-                      {inPercentage.toFixed(1)}%
-                    </td>
-                    <td className="px-4 py-3 text-center text-black border border-black text-sm font-bold">
-                      {position}
-                    </td>
-                    <td className="px-4 py-3 text-center text-black border border-black text-sm">
-                      {gradeInfo.word}
-                    </td>
-                    <td className="px-4 py-3 text-center text-black border border-black text-sm">
-                      -
-                    </td>
-                    <td className="px-4 py-3 text-center text-black border border-black text-sm">
-                      -
-                    </td>
-                    <td className="px-4 py-3 text-left text-black border border-black text-sm print:hidden">
-                      {renderApprovalStatus(cadetData.cadet_details.id)}
-                    </td>
-                  </tr>
-                );
-              }
-            )}
+                    >
+                      {isBackendData ? (cadet.total || 0).toFixed(2) : totalValue.toFixed(2)}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-center text-black border border-black text-sm">
+                    {isBackendData ? `${(cadet.in_percentage || 0).toFixed(4)}%` : `${inPercentage.toFixed(4)}%`}
+                  </td>
+                  <td className="px-4 py-3 text-center text-black border border-black text-sm font-bold">
+                    {isBackendData ? cadet.position : position}
+                  </td>
+                  <td className="px-4 py-3 text-center text-black border border-black text-sm">
+                    -
+                  </td>
+                  <td className="px-4 py-3 text-center text-black border border-black text-sm">
+                    -
+                  </td>
+                  <td className="px-4 py-3 text-left text-black border border-black text-sm print:hidden">
+                    {renderApprovalStatus(cadetData.cadet_details.id)}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>

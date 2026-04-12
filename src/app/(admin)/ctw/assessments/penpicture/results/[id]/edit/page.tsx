@@ -6,7 +6,7 @@ import { ctwAssessmentPenpictureResultService } from "@/libs/services/ctwAssessm
 import FullLogo from "@/components/ui/fulllogo";
 import ResultForm from "@/components/ctw-assessment-penpicture-results/ResultForm";
 import { Icon } from "@iconify/react";
-import type { CtwAssessmentPenpictureResult } from "@/libs/types/ctw";
+import type { CtwAssessmentPenpictureResult } from "@/libs/types/system";
 
 export default function EditResultPage() {
   const router = useRouter();
@@ -45,7 +45,7 @@ export default function EditResultPage() {
     setLoading(true);
     try {
       await ctwAssessmentPenpictureResultService.updateResult(parseInt(resultId), data);
-      router.push("/ctw/assessments/penpicture/results");
+      router.push("/ctw/assessments/penpicture/results/view");
     } catch (err: any) {
       throw err;
     } finally {
@@ -54,7 +54,7 @@ export default function EditResultPage() {
   };
 
   const handleCancel = () => {
-    router.push("/ctw/assessments/penpicture/results");
+    router.push("/ctw/assessments/penpicture/results/view");
   };
 
   if (loadingResult) {

@@ -5,18 +5,18 @@ import React, { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { ftw12sqnAssessmentOlqResultService } from "@/libs/services/ftw12sqnAssessmentOlqResultService";
 import FullLogo from "@/components/ui/fulllogo";
-import Ftw12sqnOlqResultForm from "@/components/ftw-12sqn-assessment-olq/Ftw12sqnOlqResultForm";
 import { Icon } from "@iconify/react";
-import type { Ftw12sqnAssessmentOlqResult, Ftw12sqnAssessmentOlqResultCreateData } from "@/libs/types/ftw12sqnAssessmentOlq";
+import type { Ftw12SqnAssessmentOlqResult, Ftw12SqnAssessmentOlqResultCreateData } from "@/libs/types/ftw12sqnAssessmentOlq";
+import OlqResultForm from "@/components/ftw-12sqn-assessment-olq/OlqResultForm";
 
-export default function EditFtw12sqnOlqResultPage() {
+export default function EditOlqResultPage() {
   const router = useRouter();
   const params = useParams();
   const resultId = params?.id as string;
 
   const [loading, setLoading] = useState(false);
   const [loadingResult, setLoadingResult] = useState(true);
-  const [result, setResult] = useState<Ftw12sqnAssessmentOlqResult | null>(null);
+  const [result, setResult] = useState<Ftw12SqnAssessmentOlqResult | null>(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -42,11 +42,11 @@ export default function EditFtw12sqnOlqResultPage() {
     }
   }, [resultId]);
 
-  const handleSubmit = async (data: Ftw12sqnAssessmentOlqResultCreateData) => {
+  const handleSubmit = async (data: Ftw12SqnAssessmentOlqResultCreateData) => {
     setLoading(true);
     try {
       await ftw12sqnAssessmentOlqResultService.updateResult(parseInt(resultId), data);
-      router.push("/ftw/12sqn/assessments/olq/results");
+      router.push("/ftw12sqn/assessments/olq/results");
     } catch (err: any) {
       throw err;
     } finally {
@@ -55,7 +55,7 @@ export default function EditFtw12sqnOlqResultPage() {
   };
 
   const handleCancel = () => {
-    router.push("/ftw/12sqn/assessments/olq/results");
+    router.push("/ftw12sqn/assessments/olq/results");
   };
 
   if (loadingResult) {
@@ -74,7 +74,7 @@ export default function EditFtw12sqnOlqResultPage() {
         <div className="text-center py-12">
           <Icon icon="hugeicons:alert-circle" className="w-10 h-10 mx-auto mb-4 text-red-500" />
           <p className="text-red-600">{error}</p>
-          <button onClick={() => router.push("/ftw/12sqn/assessments/olq/results")} className="mt-4 px-6 py-2 bg-blue-500 text-white rounded-xl hover:bg-blue-600">
+          <button onClick={() => router.push("/ftw12sqn/assessments/olq/results")} className="mt-4 px-6 py-2 bg-blue-500 text-white rounded-xl hover:bg-blue-600">
             Back to OLQ Results
           </button>
         </div>
@@ -87,10 +87,10 @@ export default function EditFtw12sqnOlqResultPage() {
       <div className="text-center mb-8">
         <div className="flex justify-center mb-4"><FullLogo /></div>
         <h1 className="text-xl font-bold text-gray-900 uppercase">Bangladesh Air Force Academy</h1>
-        <h2 className="text-md font-semibold text-gray-700 mt-2 uppercase">Edit FTW 12sqn OLQ Result</h2>
+        <h2 className="text-md font-semibold text-gray-700 mt-2 uppercase">Edit OLQ Result</h2>
       </div>
 
-      <Ftw12sqnOlqResultForm
+      <OlqResultForm
         initialData={result}
         onSubmit={handleSubmit}
         onCancel={handleCancel}

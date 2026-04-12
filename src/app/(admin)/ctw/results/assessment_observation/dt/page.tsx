@@ -5,13 +5,11 @@ import React, { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@iconify/react";
 import { ctwDtAssessmentResultService } from "@/libs/services/ctwDtAssessmentResultService";
-import { ctwResultsModuleService } from "@/libs/services/ctwResultsModuleService";
+import { ctwCommonService } from "@/libs/services/ctwCommonService";
 import { useAuth } from "@/libs/hooks/useAuth";
 import FullLogo from "@/components/ui/fulllogo";
 import DataTable, { Column } from "@/components/ui/DataTable";
 import ConfirmationModal from "@/components/ui/modal/ConfirmationModal";
-
-const DT_ASSESSMENT_MODULE_CODE = "dt_assessment";
 
 export default function CtwDtAssessmentResultsPage() {
   const router = useRouter();
@@ -43,27 +41,29 @@ export default function CtwDtAssessmentResultsPage() {
   const [moduleLoading, setModuleLoading] = useState(true);
 
   useEffect(() => {
+    if (!user?.id) return;
     const fetchModuleId = async () => {
       try {
         setModuleLoading(true);
-        const modulesRes = await ctwResultsModuleService.getAllModules({ per_page: 100 });
-        const foundModule = modulesRes.data.find((m: any) => m.code === DT_ASSESSMENT_MODULE_CODE);
-        if (foundModule) {
-          setModuleId(foundModule.id);
+        const options = await ctwCommonService.getDtAssessmentFormOptions(user?.id || 0);
+        if (options?.module) {
+          setModuleId(options.module.id);
         } else {
-          console.error(`Module with code ${DT_ASSESSMENT_MODULE_CODE} not found.`);
+          setModuleId(null);
+          setLoading(false);
         }
       } catch (err) {
-        console.error("Failed to fetch module ID:", err);
+        setModuleId(null);
+        setLoading(false);
       } finally {
         setModuleLoading(false);
       }
     };
     fetchModuleId();
-  }, []);
+  }, [user?.id]);
 
   const loadResults = useCallback(async () => {
-    if (moduleId === null || !user?.id) return;
+    if (moduleId === null || !user?.id) { setLoading(false); return; }
 
     try {
       setLoading(true);
@@ -173,7 +173,13 @@ export default function CtwDtAssessmentResultsPage() {
   );
 
   const columns: Column<any>[] = [
-    { key: "id", header: "SL.", headerAlign: "center", className: "text-center text-gray-900", render: (result, index) => (pagination.from || 0) + (index + 1) },
+    { 
+      key: "id", 
+      header: "SL.", 
+      headerAlign: "center", 
+      className: "text-center text-gray-900", 
+      render: (index) => (pagination.from || 0) + index 
+    },
     {
       key: "course",
       header: "Course",
@@ -195,28 +201,28 @@ export default function CtwDtAssessmentResultsPage() {
       ),
     },
     {
-      key: "program",
-      header: "Program",
-      className: "text-gray-700",
-      render: (result) => result.program?.name || "N/A",
-    },
-    {
-      key: "branch",
-      header: "Branch",
-      className: "text-gray-700",
-      render: (result) => result.branch?.name || "N/A",
-    },
-    {
       key: "exam_type",
       header: "Exam Type",
       className: "text-gray-700",
       render: (result) => result.exam_type?.name || "N/A",
     },
     {
+      key: "result_date",
+      header: "Result Date",
+      className: "text-gray-700 text-sm",
+      render: (result) => result.result_date ? new Date(result.result_date).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }) : "—",
+    },
+    {
       key: "created_at",
       header: "Created At",
       className: "text-gray-700 text-sm",
-      render: (result) => result.created_at ? new Date(result.created_at).toLocaleDateString("en-GB") : "—"
+      render: (result) => result.created_at ? new Date(result.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }) : "—",
+    },
+    {
+      key: "instructor",
+      header: "Instructor",
+      className: "text-gray-700 text-sm",
+      render: (result) => result.instructor?.name || "—",
     },
     {
       key: "actions",
@@ -339,7 +345,7 @@ export default function CtwDtAssessmentResultsPage() {
 
 
       {isInstructor ? (
-        (loading || moduleLoading) ? <TableLoading /> : (
+        (loading) ? <TableLoading /> : (
           <>
             <DataTable columns={columns} data={results} keyExtractor={(result) => result.id.toString()} emptyMessage="No results found" />
 

@@ -5,7 +5,7 @@
 
 import apiClient from '@/libs/auth/api-client';
 import { getToken } from '@/libs/auth/auth-token';
-import type { CtwAssessmentPenpictureResult } from "@/libs/types/system";
+import type { CtwAssessmentPenpictureResult } from "@/libs/types/ctw";
 
 interface ResultQueryParams {
   page?: number;
@@ -280,6 +280,17 @@ export const ctwAssessmentPenpictureResultService = {
       console.error(`Failed to delete result ${id}:`, error);
       return false;
     }
+  },
+
+  /**
+   * Bulk create results (single API call)
+   */
+  async bulkCreate(results: any[]): Promise<any> {
+    const token = getToken();
+    if (!token) throw new Error('Authentication token not found. Please login again.');
+    const result = await apiClient.post<any>('/ctw-assessment-penpicture-results/bulk', { results }, token);
+    if (!result || !result.success) throw new Error(result?.message || 'Failed to create results');
+    return result.data;
   },
 
   /**

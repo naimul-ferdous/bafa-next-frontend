@@ -4,16 +4,16 @@
 import React, { useState, useEffect } from "react";
 import Label from "@/components/form/Label";
 import { commonService } from "@/libs/services/commonService";
+import { ctwCommonService } from "@/libs/services/ctwCommonService";
 import { ctwResultsModuleService } from "@/libs/services/ctwResultsModuleService";
-import { ctwInstructorAssignCadetService } from "@/libs/services/ctwInstructorAssignCadetService";
+import { cadetService } from "@/libs/services/cadetService";
 import { ctwInstructorAssignModuleService } from "@/libs/services/ctwInstructorAssignModuleService";
 import { useAuth } from "@/libs/hooks/useAuth";
 import { Icon } from "@iconify/react";
 import type { SystemCourse, SystemSemester, SystemProgram, SystemBranch, SystemGroup, SystemExam } from "@/libs/types/system";
-import type { CtwBmaResult } from "@/libs/types/ctwBma";
 
 interface ResultFormProps {
-  initialData?: CtwBmaResult | null;
+  initialData?: any | null;
   onSubmit: (data: any) => Promise<void>;
   onCancel: () => void;
   loading: boolean;
@@ -56,33 +56,31 @@ export default function BmaResultForm({ initialData, onSubmit, onCancel, loading
   const [groups, setGroups] = useState<SystemGroup[]>([]);
   const [exams, setExams] = useState<SystemExam[]>([]);
   const [estimatedMarks, setEstimatedMarks] = useState<any[]>([]);
-  const [bmaModuleId, setBmaModuleId] = useState<number>(0);
+  const [moduleId, setModuleId] = useState<number>(0);
   const [loadingDropdowns, setLoadingDropdowns] = useState(true);
   const [loadingCadets, setLoadingCadets] = useState(false);
   const [loadingEstimatedMarks, setLoadingEstimatedMarks] = useState(false);
+  const [loadingSemesters, setLoadingSemesters] = useState(false);
   const [moduleAssigned, setModuleAssigned] = useState(false);
 
   useEffect(() => {
+    if (!user?.id) return;
+
     const loadDropdownData = async () => {
       try {
         setLoadingDropdowns(true);
-        const [options, modulesRes] = await Promise.all([
-          commonService.getResultOptions(),
-          ctwResultsModuleService.getAllModules({ per_page: 100 }),
-        ]);
+        const options = await ctwCommonService.getBmaFormOptions(user.id);
 
         if (options) {
           setCourses(options.courses);
-          setSemesters(options.semesters);
           setPrograms(options.programs);
           setBranches(options.branches);
           setGroups(options.groups);
           setExams(options.exams);
-        }
 
-        const bmaModule = modulesRes.data.find((m: any) => m.code === BMA_MODULE_CODE);
-        if (bmaModule) {
-          setBmaModuleId(bmaModule.id);
+          if (options.module) {
+            setModuleId(options.module.id);
+          }
         }
       } catch (err) {
         console.error("Failed to load dropdown data:", err);
@@ -93,18 +91,42 @@ export default function BmaResultForm({ initialData, onSubmit, onCancel, loading
     };
 
     loadDropdownData();
-  }, []);
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (!formData.course_id) {
+      setSemesters([]);
+      if (!initialData) setFormData(prev => ({ ...prev, semester_id: 0 }));
+      return;
+    }
+
+    const loadSemesters = async () => {
+      try {
+        setLoadingSemesters(true);
+        if (!initialData) setFormData(prev => ({ ...prev, semester_id: 0 }));
+        const result = await commonService.getSemestersByCourse(formData.course_id);
+        setSemesters(result);
+      } catch (err) {
+        console.error("Failed to load semesters:", err);
+        setSemesters([]);
+      } finally {
+        setLoadingSemesters(false);
+      }
+    };
+
+    loadSemesters();
+  }, [formData.course_id, initialData]);
 
   useEffect(() => {
     const loadEstimatedMarks = async () => {
-      if (!bmaModuleId || !formData.course_id || !formData.semester_id) {
+      if (!moduleId || !formData.course_id || !formData.semester_id) {
         setEstimatedMarks([]);
         return;
       }
 
       try {
         setLoadingEstimatedMarks(true);
-        const response = await ctwResultsModuleService.getEstimatedMarks(bmaModuleId, {
+        const response = await ctwResultsModuleService.getEstimatedMarks(moduleId, {
           course_id: formData.course_id,
           semester_id: formData.semester_id,
         });
@@ -118,7 +140,7 @@ export default function BmaResultForm({ initialData, onSubmit, onCancel, loading
     };
 
     loadEstimatedMarks();
-  }, [bmaModuleId, formData.course_id, formData.semester_id]);
+  }, [moduleId, formData.course_id, formData.semester_id]);
 
   const hasEstimatedMark = (examTypeId: number): boolean => {
     return estimatedMarks.some((em: any) => em.exam_type_id === examTypeId);
@@ -127,14 +149,14 @@ export default function BmaResultForm({ initialData, onSubmit, onCancel, loading
   const getMaxMark = (): number => {
     if (!formData.exam_type_id) return 0;
     const em = estimatedMarks.find((em: any) => em.exam_type_id === formData.exam_type_id);
-    return em?.estimated_mark || em?.mark || 0;
+    return em?.conversation_mark ? parseFloat(em.conversation_mark) : (em?.estimated_mark || em?.mark || 0);
   };
 
   const maxMark = getMaxMark();
 
   useEffect(() => {
     const loadCadets = async () => {
-      if (!user?.id || !bmaModuleId || !formData.course_id || !formData.semester_id || !formData.exam_type_id) {
+      if (!user?.id || !moduleId || !formData.course_id || !formData.semester_id || !formData.exam_type_id) {
         setCadetRows([]);
         setModuleAssigned(false);
         return;
@@ -159,35 +181,30 @@ export default function BmaResultForm({ initialData, onSubmit, onCancel, loading
 
         setModuleAssigned(true);
 
-        const params: any = {
+        const cadetParams: any = {
           per_page: 500,
-          instructor_id: user.id,
-          ctw_results_module_id: bmaModuleId,
           course_id: formData.course_id,
           semester_id: formData.semester_id,
-          is_active: true,
+          is_current: 1,
         };
-        if (formData.program_id) params.program_id = formData.program_id;
-        if (formData.branch_id) params.branch_id = formData.branch_id;
-        if (formData.group_id) params.group_id = formData.group_id;
+        if (formData.program_id) cadetParams.program_id = formData.program_id;
+        if (formData.branch_id) cadetParams.branch_id = formData.branch_id;
+        if (formData.group_id) cadetParams.group_id = formData.group_id;
 
-        const assignedCadetsRes = await ctwInstructorAssignCadetService.getAll(params);
+        const cadetsRes = await cadetService.getAllCadets(cadetParams);
 
-        const rows: CadetRow[] = assignedCadetsRes.data
-          .filter((ac: any) => ac.cadet)
-          .map((ac: any) => {
-            const cadet = ac.cadet;
-            const currentRank = cadet.assigned_ranks?.find((ar: any) => ar.rank)?.rank;
-            return {
-              cadet_id: cadet.id,
-              cadet_number: cadet.cadet_number || "",
-              cadet_name: cadet.name,
-              cadet_rank: currentRank?.short_name || currentRank?.name || "Officer Cadet",
-              branch: cadet.assigned_branchs?.find((ab: any) => ab.is_current)?.branch?.name || cadet.assigned_branchs?.[0]?.branch?.name || "N/A",
-              mark: 0,
-              is_active: true,
-            };
-          });
+        const rows: CadetRow[] = cadetsRes.data.map((cadet: any) => {
+          const currentRank = cadet.assigned_ranks?.find((ar: any) => ar.rank)?.rank;
+          return {
+            cadet_id: cadet.id,
+            cadet_number: cadet.cadet_number || "",
+            cadet_name: cadet.name,
+            cadet_rank: currentRank?.short_name || currentRank?.name || "Officer Cadet",
+            branch: cadet.assigned_branchs?.find((ab: any) => ab.is_current)?.branch?.name || cadet.assigned_branchs?.[0]?.branch?.name || "N/A",
+            mark: 0,
+            is_active: true,
+          };
+        });
 
         setCadetRows(rows);
       } catch (err) {
@@ -200,7 +217,7 @@ export default function BmaResultForm({ initialData, onSubmit, onCancel, loading
     if (!initialData) {
       loadCadets();
     }
-  }, [user?.id, bmaModuleId, formData.course_id, formData.semester_id, formData.program_id, formData.branch_id, formData.group_id, formData.exam_type_id, initialData]);
+  }, [user?.id, moduleId, formData.course_id, formData.semester_id, formData.program_id, formData.branch_id, formData.group_id, formData.exam_type_id, initialData]);
 
   useEffect(() => {
     if (initialData) {
@@ -216,6 +233,7 @@ export default function BmaResultForm({ initialData, onSubmit, onCancel, loading
       });
 
       if (initialData.achieved_marks && initialData.achieved_marks.length > 0) {
+        setModuleAssigned(true);
         const uniqueCadets = Array.from(new Set(initialData.achieved_marks.map(m => m.cadet_id)));
         const rows: CadetRow[] = uniqueCadets.map(cadetId => {
           const mark = initialData.achieved_marks?.find(m => m.cadet_id === cadetId);
@@ -275,7 +293,7 @@ export default function BmaResultForm({ initialData, onSubmit, onCancel, loading
         group_id: formData.group_id || undefined,
         exam_type_id: formData.exam_type_id,
         instructor_id: user.id,
-        ctw_results_module_id: bmaModuleId,
+        ctw_results_module_id: moduleId,
         remarks: formData.remarks || undefined,
         is_active: formData.is_active,
         marks: marks,
@@ -323,8 +341,16 @@ export default function BmaResultForm({ initialData, onSubmit, onCancel, loading
 
             <div>
               <Label>Semester <span className="text-red-500">*</span></Label>
-              <select value={formData.semester_id} onChange={(e) => handleChange("semester_id", parseInt(e.target.value))} className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500" required>
-                <option value={0}>Select Semester</option>
+              <select
+                value={formData.semester_id}
+                onChange={(e) => handleChange("semester_id", parseInt(e.target.value))}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500"
+                required
+                disabled={!formData.course_id || loadingSemesters}
+              >
+                <option value={0}>
+                  {loadingSemesters ? "Loading..." : !formData.course_id ? "Select course first" : "Select Semester"}
+                </option>
                 {semesters.map(semester => (<option key={semester.id} value={semester.id}>{semester.name} ({semester.code})</option>))}
               </select>
             </div>

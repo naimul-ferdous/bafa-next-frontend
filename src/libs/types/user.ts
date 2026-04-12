@@ -248,6 +248,54 @@ export interface CadetProfile {
   assigned_groups?: CadetGroupAssignment[];
   assigned_branchs?: CadetBranchAssignment[];
   assigned_universities?: CadetUniversityAssignment[];
+  ftw11sqn_instructor_assign_mission_cadets?: {
+    id: number;
+    assignment_id: number;
+    cadet_id: number;
+    assignment?: {
+      id: number;
+      instructor_id: number;
+      mission_id: number;
+      instructor?: { id: number; name: string };
+      mission?: { id: number; phase_full_name: string; phase_shortname: string; phase_symbol?: string };
+    };
+  }[];
+  ftw11sqn_instructor_assign_ground_cadets?: {
+    id: number;
+    assignment_id: number;
+    cadet_id: number;
+    assignment?: {
+      id: number;
+      instructor_id: number;
+      ground_id: number;
+      instructor?: { id: number; name: string };
+      ground?: { id: number; ground_full_name: string; ground_shortname: string };
+    };
+  }[];
+  ftw12sqn_instructor_assign_mission_cadets?: {
+    id: number;
+    assignment_id: number;
+    cadet_id: number;
+    assignment?: {
+      id: number;
+      instructor_id: number;
+      mission_id: number;
+      instructor?: { id: number; name: string };
+      mission?: { id: number; phase_full_name: string; phase_shortname: string; phase_symbol?: string };
+    };
+  }[];
+  ftw12sqn_instructor_assign_ground_cadets?: {
+    id: number;
+    assignment_id: number;
+    cadet_id: number;
+    assignment?: {
+      id: number;
+      instructor_id: number;
+      ground_id: number;
+      instructor?: { id: number; name: string };
+      ground?: { id: number; ground_full_name: string; ground_shortname: string };
+    };
+  }[];
   family_members?: any[];
   educations?: any[];
   educational_records?: any[];
@@ -303,6 +351,11 @@ export interface Wing {
   code?: string;
   description?: string;
   is_active?: boolean;
+  is_academy?: boolean;
+  is_gst?: boolean;
+  is_flying?: boolean;
+  is_professional?: boolean;
+  is_central?: boolean;
   created_at?: string;
   updated_at?: string;
 }

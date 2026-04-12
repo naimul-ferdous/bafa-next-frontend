@@ -79,9 +79,25 @@ export interface Ftw12sqnFlyingSyllabus {
   updated_at?: string;
   course?: SystemCourse | null;
   semester?: SystemSemester | null;
+  flying_type?: Ftw12sqnFlyingType;
   flying_phase_type?: Ftw12sqnFlyingPhaseType;
   syllabus_types?: Ftw12sqnFlyingSyllabusType[];
   creator?: User;
+}
+
+// Grouped Response Types
+export interface Ftw12sqnFlyingSyllabusGroupedSemester {
+  semester_id: number | null;
+  semester_name: string;
+  semester_details: any;
+  syllabus: Ftw12sqnFlyingSyllabus[];
+}
+
+export interface Ftw12sqnFlyingSyllabusGroupedCourse {
+  course_id: number | null;
+  course_name: string;
+  course_details: any;
+  semesters: Ftw12sqnFlyingSyllabusGroupedSemester[];
 }
 
 // Create/Update Data Types
@@ -156,6 +172,8 @@ export interface Ftw12sqnGroundSyllabus {
   id: number;
   course_id?: number | null;
   semester_id?: number | null;
+  ground_type_id?: number | null;
+  ftw_12sqn_ground_type_id?: number;
   ground_full_name: string;
   ground_shortname: string;
   ground_symbol?: string;

@@ -4,8 +4,9 @@
 import React, { useState, useEffect } from "react";
 import Label from "@/components/form/Label";
 import { commonService } from "@/libs/services/commonService";
+import { ctwCommonService } from "@/libs/services/ctwCommonService";
 import { ctwResultsModuleService } from "@/libs/services/ctwResultsModuleService";
-import { ctwInstructorAssignCadetService } from "@/libs/services/ctwInstructorAssignCadetService";
+import { cadetService } from "@/libs/services/cadetService";
 import { ctwInstructorAssignModuleService } from "@/libs/services/ctwInstructorAssignModuleService";
 import { useAuth } from "@/libs/hooks/useAuth";
 import { Icon } from "@iconify/react";
@@ -28,6 +29,8 @@ interface CadetRow {
   cadet_rank: string;
   branch: string;
   mark: number;
+  currentInstructorMark: number;
+  marksByInstructor: { [instructorId: number]: number };
   is_active: boolean;
 }
 
@@ -58,34 +61,36 @@ export default function WrittenResultForm({ initialData, onSubmit, onCancel, loa
   const [exams, setExams] = useState<SystemExam[]>([]);
   const [estimatedMarks, setEstimatedMarks] = useState<any[]>([]);
   const [writtenModuleId, setWrittenModuleId] = useState<number>(0);
+  const [writtenModule, setWrittenModule] = useState<any>(null);
   const [loadingDropdowns, setLoadingDropdowns] = useState(true);
   const [loadingCadets, setLoadingCadets] = useState(false);
   const [loadingEstimatedMarks, setLoadingEstimatedMarks] = useState(false);
+  const [loadingSemesters, setLoadingSemesters] = useState(false);
   const [moduleAssigned, setModuleAssigned] = useState(false);
+  const [moduleInstructors, setModuleInstructors] = useState<any[]>([]);
+  const [allExistingMarks, setAllExistingMarks] = useState<any[]>([]);
 
-  // Load dropdown data + find written module
+
+  // Load all form options in a single API call
   useEffect(() => {
+    if (!user?.id) return;
+
     const loadDropdownData = async () => {
       try {
         setLoadingDropdowns(true);
-        const [options, modulesRes] = await Promise.all([
-          commonService.getResultOptions(),
-          ctwResultsModuleService.getAllModules({ per_page: 100 }),
-        ]);
+        const options = await ctwCommonService.getWrittenFormOptions(user.id);
 
         if (options) {
           setCourses(options.courses);
-          setSemesters(options.semesters);
           setPrograms(options.programs);
           setBranches(options.branches);
           setGroups(options.groups);
           setExams(options.exams);
-        }
 
-        // Find written module id
-        const writtenModule = modulesRes.data.find((m: any) => m.code === WRITTEN_MODULE_CODE);
-        if (writtenModule) {
-          setWrittenModuleId(writtenModule.id);
+          if (options.module) {
+            setWrittenModuleId(options.module.id);
+            setWrittenModule(options.module);
+          }
         }
       } catch (err) {
         console.error("Failed to load dropdown data:", err);
@@ -96,7 +101,32 @@ export default function WrittenResultForm({ initialData, onSubmit, onCancel, loa
     };
 
     loadDropdownData();
-  }, []);
+  }, [user?.id]);
+
+  // Load semesters dynamically when course is selected
+  useEffect(() => {
+    if (!formData.course_id) {
+      setSemesters([]);
+      if (!initialData) setFormData(prev => ({ ...prev, semester_id: 0 }));
+      return;
+    }
+
+    const loadSemesters = async () => {
+      try {
+        setLoadingSemesters(true);
+        if (!initialData) setFormData(prev => ({ ...prev, semester_id: 0 }));
+        const result = await commonService.getSemestersByCourse(formData.course_id);
+        setSemesters(result);
+      } catch (err) {
+        console.error("Failed to load semesters:", err);
+        setSemesters([]);
+      } finally {
+        setLoadingSemesters(false);
+      }
+    };
+
+    loadSemesters();
+  }, [formData.course_id, initialData]);
 
   // Load estimated marks from DB when course + semester are selected
   useEffect(() => {
@@ -109,7 +139,6 @@ export default function WrittenResultForm({ initialData, onSubmit, onCancel, loa
       try {
         setLoadingEstimatedMarks(true);
         const response = await ctwResultsModuleService.getEstimatedMarks(writtenModuleId, {
-          course_id: formData.course_id,
           semester_id: formData.semester_id,
         });
         setEstimatedMarks(response);
@@ -129,6 +158,16 @@ export default function WrittenResultForm({ initialData, onSubmit, onCancel, loa
     return estimatedMarks.some((em: any) => em.exam_type_id === examTypeId);
   };
 
+  // Get estimated mark info for the selected exam type
+  const getEstimatedMarkInfo = () => {
+    if (!formData.exam_type_id) return null;
+    return estimatedMarks.find((em: any) => em.exam_type_id === formData.exam_type_id);
+  };
+
+  const estimatedMarkInfo = getEstimatedMarkInfo();
+  const maxMark = estimatedMarkInfo ? parseFloat(estimatedMarkInfo.estimated_mark_per_instructor || estimatedMarkInfo.mark || 0) : 0;
+  const conversationMark = estimatedMarkInfo ? parseFloat(estimatedMarkInfo.conversation_mark || 0) : 0;
+
   // Auto-load cadets from ctw_instructor_assign_cadets after exam type selected
   // First check if instructor is assigned to this module via ctw_instructor_assign_modules
   useEffect(() => {
@@ -143,7 +182,7 @@ export default function WrittenResultForm({ initialData, onSubmit, onCancel, loa
       try {
         setLoadingCadets(true);
 
-        // First check if instructor is assigned to this written module
+        // First check if instructor is assigned to this foot_drill module
         const moduleAssignRes = await ctwInstructorAssignModuleService.getAll({
           instructor_id: user.id,
           module_code: WRITTEN_MODULE_CODE,
@@ -161,37 +200,33 @@ export default function WrittenResultForm({ initialData, onSubmit, onCancel, loa
 
         setModuleAssigned(true);
 
-        // Instructor is assigned — now fetch cadets
-        const params: any = {
+        // Fetch cadets directly by course + semester
+        const cadetParams: any = {
           per_page: 500,
-          instructor_id: user.id,
-          ctw_results_module_id: writtenModuleId,
           course_id: formData.course_id,
           semester_id: formData.semester_id,
-          is_active: true,
+          is_current: 1,
         };
-        // Optional filters
-        if (formData.program_id) params.program_id = formData.program_id;
-        if (formData.branch_id) params.branch_id = formData.branch_id;
-        if (formData.group_id) params.group_id = formData.group_id;
+        if (formData.program_id) cadetParams.program_id = formData.program_id;
+        if (formData.branch_id) cadetParams.branch_id = formData.branch_id;
+        if (formData.group_id) cadetParams.group_id = formData.group_id;
 
-        const assignedCadetsRes = await ctwInstructorAssignCadetService.getAll(params);
+        const cadetsRes = await cadetService.getAllCadets(cadetParams);
 
-        const rows: CadetRow[] = assignedCadetsRes.data
-          .filter((ac: any) => ac.cadet)
-          .map((ac: any) => {
-            const cadet = ac.cadet;
-            const currentRank = cadet.assigned_ranks?.find((ar: any) => ar.rank)?.rank;
-            return {
-              cadet_id: cadet.id,
-              cadet_number: cadet.cadet_number || "",
-              cadet_name: cadet.name,
-              cadet_rank: currentRank?.short_name || currentRank?.name || "Officer Cadet",
-              branch: cadet.assigned_branchs?.find((ab: any) => ab.is_current)?.branch?.name || cadet.assigned_branchs?.[0]?.branch?.name || "N/A",
-              mark: 0,
-              is_active: true,
-            };
-          });
+        const rows: CadetRow[] = cadetsRes.data.map((cadet: any) => {
+          const currentRank = cadet.assigned_ranks?.find((ar: any) => ar.rank)?.rank;
+          return {
+            cadet_id: cadet.id,
+            cadet_number: cadet.cadet_number || "",
+            cadet_name: cadet.name,
+            cadet_rank: currentRank?.short_name || currentRank?.name || "Officer Cadet",
+            branch: cadet.assigned_branchs?.find((ab: any) => ab.is_current)?.branch?.name || cadet.assigned_branchs?.[0]?.branch?.name || "N/A",
+            mark: 0,
+            currentInstructorMark: 0,
+            marksByInstructor: {},
+            is_active: true,
+          };
+        });
 
         setCadetRows(rows);
       } catch (err) {
@@ -220,19 +255,22 @@ export default function WrittenResultForm({ initialData, onSubmit, onCancel, loa
         is_active: initialData.is_active,
       });
 
-      if (initialData.result_marks && initialData.result_marks.length > 0) {
-        const uniqueCadets = Array.from(new Set(initialData.result_marks.map(m => m.cadet_id)));
+      if (initialData.achieved_marks && initialData.achieved_marks.length > 0) {
+        setModuleAssigned(true); // Module is assigned if initial data exists
+        const uniqueCadets = Array.from(new Set(initialData.achieved_marks.map(m => m.cadet_id)));
         const rows: CadetRow[] = uniqueCadets.map(cadetId => {
-          const mark = initialData.result_marks?.find(m => m.cadet_id === cadetId);
+          const mark = initialData.achieved_marks?.find(m => m.cadet_id === cadetId);
           const currentRank = mark?.cadet?.assigned_ranks?.find((ar: any) => ar.rank)?.rank;
 
           return {
             cadet_id: cadetId,
             cadet_number: mark?.cadet?.cadet_number || "",
             cadet_name: mark?.cadet?.name || "Unknown",
-            cadet_rank: currentRank?.short_name || currentRank?.name || "Officer Cadet",
-            branch: initialData.branch?.name || "N/A",
+            cadet_rank: currentRank?.short_name || currentRank?.name || "-",
+            branch: mark?.cadet?.assigned_branchs?.find((ab: any) => ab.is_current)?.branch?.name || mark?.cadet?.assigned_branchs?.[0]?.branch?.name || "N/A",
             mark: mark?.achieved_mark || 0,
+            currentInstructorMark: 0,
+            marksByInstructor: {},
             is_active: mark?.is_active || true,
           };
         });
@@ -248,9 +286,13 @@ export default function WrittenResultForm({ initialData, onSubmit, onCancel, loa
   const handleCadetChange = (cadetIndex: number, field: keyof CadetRow, value: any) => {
     setCadetRows(prev => {
       const updated = [...prev];
+      let finalValue = value;
+      if (field === "mark" && maxMark > 0 && typeof value === "number" && value > maxMark) {
+        finalValue = maxMark;
+      }
       updated[cadetIndex] = {
         ...updated[cadetIndex],
-        [field]: value
+        [field]: finalValue
       };
       return updated;
     });
@@ -331,8 +373,16 @@ export default function WrittenResultForm({ initialData, onSubmit, onCancel, loa
 
             <div>
               <Label>Semester <span className="text-red-500">*</span></Label>
-              <select value={formData.semester_id} onChange={(e) => handleChange("semester_id", parseInt(e.target.value))} className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500" required>
-                <option value={0}>Select Semester</option>
+              <select
+                value={formData.semester_id}
+                onChange={(e) => handleChange("semester_id", parseInt(e.target.value))}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500"
+                required
+                disabled={!formData.course_id || loadingSemesters}
+              >
+                <option value={0}>
+                  {loadingSemesters ? "Loading..." : !formData.course_id ? "Select course first" : "Select Semester"}
+                </option>
                 {semesters.map(semester => (<option key={semester.id} value={semester.id}>{semester.name} ({semester.code})</option>))}
               </select>
             </div>
@@ -422,7 +472,7 @@ export default function WrittenResultForm({ initialData, onSubmit, onCancel, loa
           ) : !moduleAssigned ? (
             <div className="text-center py-12 text-red-500">
               <Icon icon="hugeicons:alert-circle" className="w-10 h-10 mx-auto mb-2" />
-              <p className="font-medium">You are not assigned to the Written module for the selected course & semester.</p>
+              <p className="font-medium">You are not assigned to the Written Drill module for the selected course & semester.</p>
               <p className="text-sm text-gray-500 mt-1">Please contact admin to assign you to this module.</p>
             </div>
           ) : cadetRows.length === 0 ? (
@@ -435,13 +485,24 @@ export default function WrittenResultForm({ initialData, onSubmit, onCancel, loa
               <table className="w-full border-collapse border border-black">
                 <thead>
                   <tr>
-                    <th className="border border-black px-3 py-2 text-center uppercase">SL</th>
-                    <th className="border border-black px-3 py-2 text-center uppercase">CADET NO.</th>
-                    <th className="border border-black px-3 py-2 text-center uppercase">RANK</th>
-                    <th className="border border-black px-3 py-2 text-left uppercase">NAME</th>
-                    <th className="border border-black px-3 py-2 text-left uppercase">BRANCH</th>
-                    <th className="border border-black px-3 py-2 text-center uppercase">MARK</th>
+                    <th className="border border-black px-3 py-2 text-center" rowSpan={2}>SL</th>
+                    <th className="border border-black px-3 py-2 text-center" rowSpan={2}>BD No.</th>
+                    <th className="border border-black px-3 py-2 text-center" rowSpan={2}>Rank</th>
+                    <th className="border border-black px-3 py-2 text-left" rowSpan={2}>Name</th>
+                    <th className="border border-black px-3 py-2 text-left" rowSpan={2}>Branch</th>
+                    {writtenModule && writtenModule.instructor_count > 0 && (
+                      <th className="border border-black px-3 py-2 text-center" colSpan={writtenModule.instructor_count}>Instructors</th>
+                    )}
+                    <th className="border border-black px-3 py-2 text-center" rowSpan={2}>Total</th>
+                    <th className="border border-black px-3 py-2 text-center" rowSpan={2}>Conv - {conversationMark.toFixed(2)}</th>
                   </tr>
+                  {writtenModule && writtenModule.instructor_count > 0 && (
+                    <tr>
+                      {Array.from({ length: writtenModule.instructor_count }, (_, i) => i + 1).map(instrNum => (
+                        <th key={instrNum} className="border border-black px-3 py-2 text-center">Inst {instrNum}</th>
+                      ))}
+                    </tr>
+                  )}
                 </thead>
                 <tbody>
                   {cadetRows.map((cadet, index) => (
@@ -449,19 +510,29 @@ export default function WrittenResultForm({ initialData, onSubmit, onCancel, loa
                       <td className="border border-black px-3 py-2 text-center font-medium">{index + 1}</td>
                       <td className="border border-black px-3 py-2 text-center">{cadet.cadet_number}</td>
                       <td className="border border-black px-3 py-2 text-center">{cadet.cadet_rank}</td>
-                      <td className="border border-black px-3 py-2 font-medium">{cadet.cadet_name}</td>
-                      <td className="border border-black px-3 py-2 font-medium">{cadet.branch}</td>
-                      <td className="border border-black px-2 py-1 text-center">
-                        <input
-                          type="number"
-                          min={0}
-                          step={0.01}
-                          value={cadet.mark || 0}
-                          onChange={(e) => handleCadetChange(index, "mark", parseFloat(e.target.value) || 0)}
-                          className="w-full px-2 py-1 border border-gray-300 rounded text-center text-sm focus:ring-2 focus:ring-blue-500 bg-white"
-                          placeholder="0"
-                        />
-                      </td>
+                      <td className="border border-black px-3 py-2">{cadet.cadet_name}</td>
+                      <td className="border border-black px-3 py-2">{cadet.branch}</td>
+                      
+                      {writtenModule && writtenModule.instructor_count > 0 && (
+                        Array.from({ length: writtenModule.instructor_count }, (_, i) => (
+                          <td key={i} className="border border-black px-2 py-1 text-center">
+                            {i === 0 ? ( // Only show input for the first instructor
+                              <input
+                                type="number"
+                                min={0}
+                                max={maxMark > 0 ? maxMark : undefined}
+                                step={0.01}
+                                value={cadet.mark || 0}
+                                onChange={(e) => handleCadetChange(index, "mark", parseFloat(e.target.value) || 0)}
+                                className="w-full px-2 py-1 border border-gray-300 rounded text-center text-sm focus:ring-2 focus:ring-blue-500 bg-white"
+                                placeholder="0"
+                              />
+                            ) : (
+                              "-" // Placeholder for other instructors
+                            )}
+                          </td>
+                        ))
+                      )}
                     </tr>
                   ))}
                 </tbody>

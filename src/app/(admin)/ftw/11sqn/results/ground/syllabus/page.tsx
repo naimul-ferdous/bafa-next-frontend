@@ -6,18 +6,13 @@ import { Ftw11sqnGroundSyllabus } from "@/libs/types/ftw11sqnFlying";
 import { Icon } from "@iconify/react";
 import { ftw11sqnGroundSyllabusService } from "@/libs/services/ftw11sqnGroundSyllabusService";
 import FullLogo from "@/components/ui/fulllogo";
-import Link from "next/link";
 
 interface GroundSyllabusSummaryRow {
-    course_id: number | null;
-    course_name: string;
     semester_id: number | null;
     semester_name: string;
     total_subjects: number;
     total_tests: number;
     total_marks: number;
-    isFirstInCourse: boolean;
-    courseRowSpan: number;
 }
 
 interface SemesterGroup {
@@ -27,16 +22,9 @@ interface SemesterGroup {
     syllabus: Ftw11sqnGroundSyllabus[];
 }
 
-interface CourseGroup {
-    course_id: number | null;
-    course_name: string;
-    course_details: any;
-    semesters: SemesterGroup[];
-}
-
 export default function Ftw11sqnGroundSyllabusPage() {
     const router = useRouter();
-    const [groupedData, setGroupedData] = useState<CourseGroup[]>([]);
+    const [groupedData, setGroupedData] = useState<SemesterGroup[]>([]);
     const [loading, setLoading] = useState(true);
 
     const loadSyllabus = useCallback(async () => {
@@ -58,27 +46,21 @@ export default function Ftw11sqnGroundSyllabusPage() {
     const summaryData = useMemo((): GroundSyllabusSummaryRow[] => {
         const rows: GroundSyllabusSummaryRow[] = [];
 
-        groupedData.forEach(courseGroup => {
-            courseGroup.semesters.forEach((semesterGroup, semIndex) => {
-                let totalTests = 0;
-                let totalMarks = 0;
+        groupedData.forEach(semesterGroup => {
+            let totalTests = 0;
+            let totalMarks = 0;
 
-                semesterGroup.syllabus.forEach(s => {
-                    totalTests += parseFloat(String(s.no_of_test || 0));
-                    totalMarks += parseFloat(String(s.highest_mark || 0));
-                });
+            semesterGroup.syllabus.forEach(s => {
+                totalTests += parseFloat(String(s.no_of_test || 0));
+                totalMarks += parseFloat(String(s.highest_mark || 0));
+            });
 
-                rows.push({
-                    course_id: courseGroup.course_id,
-                    course_name: courseGroup.course_name,
-                    semester_id: semesterGroup.semester_id,
-                    semester_name: semesterGroup.semester_name,
-                    total_subjects: semesterGroup.syllabus.length,
-                    total_tests: totalTests,
-                    total_marks: totalMarks,
-                    isFirstInCourse: semIndex === 0,
-                    courseRowSpan: courseGroup.semesters.length
-                });
+            rows.push({
+                semester_id: semesterGroup.semester_id,
+                semester_name: semesterGroup.semester_name,
+                total_subjects: semesterGroup.syllabus.length,
+                total_tests: totalTests,
+                total_marks: totalMarks,
             });
         });
 
@@ -89,12 +71,8 @@ export default function Ftw11sqnGroundSyllabusPage() {
     const handlePrint = () => window.print();
     const handleExport = () => console.log("Export ground summary");
 
-    const goToDetailedSyllabus = (courseId: number | null, semesterId: number | null) => {
-        router.push(`/ftw/11sqn/results/ground/syllabus/course/${courseId || 0}/semester/${semesterId || 0}`);
-    };
-
-    const goToFullCourseDetails = (courseId: number | null) => {
-        router.push(`/ftw/11sqn/results/ground/syllabus/details/${courseId || 0}`);
+    const goToDetailedSyllabus = (semesterId: number | null) => {
+        router.push(`/ftw/11sqn/results/ground/syllabus/semester/${semesterId || 0}`);
     };
 
     const TableLoading = () => (
@@ -126,7 +104,7 @@ export default function Ftw11sqnGroundSyllabusPage() {
 
                 <div className="flex items-center justify-between gap-4 mb-6">
                     <div className="text-gray-500 text-sm italic">
-                        * Use "Details" button to see full course ground syllabus or click a semester for specific subjects.
+                        * Click a semester to view subjects.
                     </div>
                     <div className="flex items-center gap-3">
                         <button onClick={handleAddSyllabus} className="px-4 py-2 rounded-lg text-white flex items-center gap-1 bg-blue-600 hover:bg-blue-700">
@@ -146,7 +124,7 @@ export default function Ftw11sqnGroundSyllabusPage() {
                             <table className="w-full border-collapse">
                                 <thead className="border-b border-black">
                                     <tr>
-                                        <th className="px-4 py-2 text-center text-sm font-bold text-gray-900 border-r border-black">Course Name</th>
+                                        <th className="px-4 py-2 text-center text-sm font-bold text-gray-900 border-r border-black">SL</th>
                                         <th className="px-4 py-2 text-center text-sm font-bold text-gray-900 border-r border-black">Semester</th>
                                         <th className="px-4 py-2 text-center text-sm font-bold text-gray-900 border-r border-black">Subjects</th>
                                         <th className="px-4 py-2 text-center text-sm font-bold text-gray-900 border-r border-black">Tests</th>
@@ -162,30 +140,25 @@ export default function Ftw11sqnGroundSyllabusPage() {
                                     ) : (
                                         summaryData.map((row, index) => (
                                             <tr 
-                                                key={`${row.course_id}-${row.semester_id}`} 
+                                                key={row.semester_id}
                                                 className="hover:bg-gray-50 cursor-pointer transition-colors"
-                                                onClick={() => goToDetailedSyllabus(row.course_id, row.semester_id)}
+                                                onClick={() => goToDetailedSyllabus(row.semester_id)}
                                             >
-                                                {row.isFirstInCourse && (
-                                                    <td 
-                                                        rowSpan={row.courseRowSpan} 
-                                                        className="px-4 py-2 border-r border-black align-center bg-white cursor-default"
-                                                        onClick={(e) => e.stopPropagation()}
-                                                    >
-                                                        <Link href={`/ftw/11sqn/results/ground/syllabus/details/${row.course_id}`} className="flex items-center flex-col gap-2 group">
-                                                            <span className="font-bold text-gray-900 group-hover:underline">{row.course_name}</span>
-                                                        </Link>
-                                                    </td>
-                                                )}
+                                                <td className="px-4 py-2 text-sm text-center text-gray-700 border-r border-black font-medium">
+                                                    {index + 1}
+                                                </td>
                                                 <td className="px-4 py-2 text-sm text-center text-gray-700 border-r border-black">{row.semester_name}</td>
                                                 <td className="px-4 py-2 text-sm text-center text-gray-700 border-r border-black font-medium">{row.total_subjects}</td>
                                                 <td className="px-4 py-2 text-sm text-center text-gray-700 border-r border-black">{row.total_tests}</td>
                                                 <td className="px-4 py-2 text-sm text-center font-bold text-green-700 border-r border-black">
                                                     {row.total_marks}
                                                 </td>
-                                                <td className="px-4 py-2 text-center" onClick={(e) => e.stopPropagation()}>
+                                                <td className="px-4 py-2 text-center">
                                                     <button
-                                                        onClick={() => goToDetailedSyllabus(row.course_id, row.semester_id)}
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            goToDetailedSyllabus(row.semester_id);
+                                                        }}
                                                         className="p-1.5 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors"
                                                         title="View Semester Details"
                                                     >

@@ -30,7 +30,6 @@ interface ExerciseInput {
 }
 
 export interface GroundSyllabusFormData {
-  course_id: number | null;
   semester_id: number | null;
   ground_full_name: string;
   ground_shortname: string;
@@ -44,7 +43,6 @@ export interface GroundSyllabusFormData {
 
 export default function GroundSyllabusForm({ initialData, onSubmit, onCancel, loading, isEdit = false }: GroundSyllabusFormProps) {
   const [formData, setFormData] = useState<GroundSyllabusFormData>({
-    course_id: null,
     semester_id: null,
     ground_full_name: "",
     ground_shortname: "",
@@ -58,7 +56,6 @@ export default function GroundSyllabusForm({ initialData, onSubmit, onCancel, lo
   const [errors, setErrors] = useState<Partial<Record<keyof GroundSyllabusFormData, string>>>({});
   
   // Options state
-  const [courseOptions, setCourseOptions] = useState<any[]>([]);
   const [semesterOptions, setSemesterOptions] = useState<any[]>([]);
   const [optionsLoading, setOptionsLoading] = useState(true);
 
@@ -69,7 +66,6 @@ export default function GroundSyllabusForm({ initialData, onSubmit, onCancel, lo
         setOptionsLoading(true);
         const options = await commonService.getResultOptions();
         if (options) {
-          setCourseOptions(options.courses || []);
           setSemesterOptions(options.semesters.filter(s => s.is_active && s.is_flying) || []);
         }
       } catch (error) {
@@ -140,7 +136,6 @@ export default function GroundSyllabusForm({ initialData, onSubmit, onCancel, lo
       exercises.sort((a, b) => a.exercise_sort - b.exercise_sort);
 
       setFormData({
-        course_id: initialData.course_id || null,
         semester_id: initialData.semester_id || null,
         ground_full_name: initialData.ground_full_name,
         ground_shortname: initialData.ground_shortname,
@@ -169,7 +164,6 @@ export default function GroundSyllabusForm({ initialData, onSubmit, onCancel, lo
   // Validation
   const validateForm = (): boolean => {
     const newErrors: Partial<Record<keyof GroundSyllabusFormData, string>> = {};
-    if (!formData.course_id) newErrors.course_id = "Course selection is required";
     if (!formData.semester_id) newErrors.semester_id = "Semester selection is required";
     if (!formData.ground_full_name.trim()) newErrors.ground_full_name = "Ground subject name is required";
     if (!formData.ground_shortname.trim()) newErrors.ground_shortname = "Short name is required";
@@ -195,7 +189,6 @@ export default function GroundSyllabusForm({ initialData, onSubmit, onCancel, lo
       }));
 
       const syllabusData: Ftw11sqnGroundSyllabusCreateData = {
-        course_id: formData.course_id,
         semester_id: formData.semester_id,
         ground_full_name: formData.ground_full_name,
         ground_shortname: formData.ground_shortname,
@@ -228,24 +221,6 @@ export default function GroundSyllabusForm({ initialData, onSubmit, onCancel, lo
           Basic Information
         </h3>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Course <span className="text-red-500">*</span>
-            </label>
-            <select
-              value={formData.course_id || ""}
-              onChange={(e) => handleChange("course_id", e.target.value ? parseInt(e.target.value) : null)}
-              className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${errors.course_id ? "border-red-500" : "border-gray-300"}`}
-              required
-            >
-              <option value="">{optionsLoading ? "Loading Courses..." : "Select Course"}</option>
-              {courseOptions.map((c) => (
-                <option key={c.id} value={c.id}>{c.name}</option>
-              ))}
-            </select>
-            {errors.course_id && <p className="mt-1 text-sm text-red-500">{errors.course_id}</p>}
-          </div>
-
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Semester <span className="text-red-500">*</span>

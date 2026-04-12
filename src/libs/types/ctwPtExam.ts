@@ -53,6 +53,7 @@ export interface CtwPtExamResultMarkDetail {
   ctw_result_mark_id: number;
   ctw_results_module_estimated_marks_details_id: number;
   qty: number;
+  achieved_time?: string;
   marks: number;
 }
 

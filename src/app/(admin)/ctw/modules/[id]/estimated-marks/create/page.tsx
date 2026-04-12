@@ -43,6 +43,7 @@ export default function CreateEstimatedMarkPage() {
         onCancel={handleCancel}
         loading={loading}
         isEdit={false}
+        moduleId={moduleId}
       />
     </div>
   );

@@ -62,6 +62,7 @@ export interface CtwOneMileResultMarkDetail {
   practices_marks?: string | number;
   ctw_results_module_estimated_marks_details_id?: number;
   qty?: number;
+  achieved_time?: string;
   marks?: string | number;
   is_active: boolean;
 }

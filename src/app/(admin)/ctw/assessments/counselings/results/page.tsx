@@ -1,324 +1,357 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
-import { useRouter } from "next/navigation";
-import { CtwAssessmentCounselingResult } from "@/libs/types/system";
+import React, { useState, useEffect } from "react";
+import Link from "next/link";
+import Image from "next/image";
 import { Icon } from "@iconify/react";
-import { ctwAssessmentCounselingResultService } from "@/libs/services/ctwAssessmentCounselingResultService";
-import { useAuth } from "@/libs/hooks/useAuth";
-import FullLogo from "@/components/ui/fulllogo";
-import DataTable, { Column } from "@/components/ui/DataTable";
-import ConfirmationModal from "@/components/ui/modal/ConfirmationModal";
+import { useAuth } from "@/context/AuthContext";
+import { ctwInstructorStatsService } from "@/libs/services/ctwInstructorStatsService";
 
-export default function CtwAssessmentCounselingResultsPage() {
-  const router = useRouter();
-  const { user, userIsInstructor } = useAuth();
-  const isInstructor = userIsInstructor;
+interface NoticeItem {
+  id: number;
+  title: string;
+  body: string;
+  timestamp: string;
+  tag: string;
+  tagColor: string;
+  icon: string;
+  iconBg: string;
+  isNew?: boolean;
+}
 
-  const [results, setResults] = useState<CtwAssessmentCounselingResult[]>([]);
-  const [loading, setLoading] = useState(true);
+interface StatCardProps {
+  label: string;
+  value: number;
+  icon: string;
+  accentColor: string;
+  bgImage: string;
+  loading?: boolean;
+}
 
-  const [officialResults, setOfficialResults] = useState<any[]>([]);
-  const [officialLoading, setOfficialLoading] = useState(false);
+const demoNotices: NoticeItem[] = [
+  {
+    id: 1,
+    title: "OLQ Assessment Scheduled",
+    body: "All cadets are required to appear for OLQ evaluation on 26 Feb at 0800 hrs. Dress: Service uniform.",
+    timestamp: "5 mins ago",
+    tag: "Urgent",
+    tagColor: "bg-red-100 text-red-600",
+    icon: "hugeicons:star",
+    iconBg: "from-orange-500 to-red-600",
+    isNew: true,
+  },
+  {
+    id: 2,
+    title: "Subject Marks Updated",
+    body: "Term-II subject marks for all cadets have been updated. Please verify entries before final consolidation.",
+    timestamp: "1 hr ago",
+    tag: "Subjects",
+    tagColor: "bg-blue-100 text-blue-600",
+    icon: "hugeicons:book-02",
+    iconBg: "from-blue-500 to-indigo-600",
+    isNew: true,
+  },
+  {
+    id: 3,
+    title: "Counseling Records Due",
+    body: "Counseling entries for the current term must be submitted by EOD Friday to the CTW admin.",
+    timestamp: "3 hrs ago",
+    tag: "Counseling",
+    tagColor: "bg-violet-100 text-violet-600",
+    icon: "hugeicons:user-multiple",
+    iconBg: "from-violet-600 to-purple-700",
+  },
+  {
+    id: 4,
+    title: "Pen Picture Submissions Open",
+    body: "Instructors can now submit pen pictures for their assigned cadets via the Pen Picture module.",
+    timestamp: "Yesterday",
+    tag: "Pen Picture",
+    tagColor: "bg-indigo-100 text-indigo-600",
+    icon: "hugeicons:edit-02",
+    iconBg: "from-indigo-500 to-violet-700",
+  },
+];
 
-  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
-  const [deletingResult, setDeletingResult] = useState<CtwAssessmentCounselingResult | null>(null);
-  const [deleteLoading, setDeleteLoading] = useState(false);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [perPage, setPerPage] = useState(10);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [pagination, setPagination] = useState({
-    current_page: 1,
-    last_page: 1,
-    per_page: 10,
-    total: 0,
-    from: 0,
-    to: 0,
-  });
-
-  const loadResults = useCallback(async () => {
-    try {
-      setLoading(true);
-      const response = await ctwAssessmentCounselingResultService.getAllResults({
-        page: currentPage,
-        per_page: perPage,
-        search: searchTerm || undefined,
-        instructor_id: isInstructor ? user?.id : undefined,
-      });
-      setResults(response.data);
-      setPagination({
-        current_page: response.current_page,
-        last_page: response.last_page,
-        per_page: response.per_page,
-        total: response.total,
-        from: response.from,
-        to: response.to,
-      });
-    } catch (error) {
-      console.error("Failed to load results:", error);
-    } finally {
-      setLoading(false);
-    }
-  }, [currentPage, perPage, searchTerm, isInstructor, user?.id]);
-
-  const loadOfficialResults = useCallback(async () => {
-    try {
-      setOfficialLoading(true);
-      const data = await ctwAssessmentCounselingResultService.getGroupedResults({
-        search: searchTerm || undefined
-      });
-      setOfficialResults(data);
-    } catch (error) {
-      console.error("Failed to load official results:", error);
-    } finally {
-      setOfficialLoading(false);
-    }
-  }, [searchTerm]);
-
-  useEffect(() => {
-    if (isInstructor) {
-      loadResults();
-    } else {
-      loadOfficialResults();
-    }
-  }, [loadResults, loadOfficialResults, isInstructor]);
-
-  const handleAddResult = () => router.push("/ctw/assessments/counselings/results/create");
-  const handleEditResult = (result: CtwAssessmentCounselingResult) => router.push(`/ctw/assessments/counselings/results/${result.id}/edit`);
-  const handleViewResult = (result: CtwAssessmentCounselingResult) => router.push(`/ctw/assessments/counselings/results/${result.id}`);
-  const handleDeleteResult = (result: CtwAssessmentCounselingResult) => {
-    setDeletingResult(result);
-    setDeleteModalOpen(true);
-  };
-
-  const confirmDelete = async () => {
-    if (!deletingResult) return;
-    try {
-      setDeleteLoading(true);
-      await ctwAssessmentCounselingResultService.deleteResult(deletingResult.id);
-      await loadResults();
-      setDeleteModalOpen(false);
-      setDeletingResult(null);
-    } catch (error) {
-      console.error("Failed to delete result:", error);
-      alert("Failed to delete result");
-    } finally {
-      setDeleteLoading(false);
-    }
-  };
-
-  const handleExport = () => window.print();
-  const handleSearchChange = (value: string) => {
-    setSearchTerm(value);
-    setCurrentPage(1);
-  };
-  const handlePerPageChange = (value: number) => {
-    setPerPage(value);
-    setCurrentPage(1);
-  };
-
-  const TableLoading = () => (
-    <div className="w-full min-h-[20vh] flex items-center justify-center">
-      <div><Icon icon="hugeicons:fan-01" className="w-10 h-10 animate-spin mx-auto my-10 text-blue-500" /></div>
+// ─── Circle Node ──────────────────────────────────────────────────────────────
+const OrbitCircle = ({ title, href, icon }: { title: string; href: string; icon: string }) => (
+  <Link href={href} className="group block">
+    <div className="w-38 h-38 rounded-full bg-white border-2 border-slate-200 group-hover:border-blue-400 shadow-[0_8px_32px_rgba(0,0,0,0.10)] group-hover:shadow-[0_8px_40px_rgba(59,130,246,0.20)] transition-all duration-500 flex flex-col items-center justify-center gap-2 overflow-hidden relative">
+      <div className="absolute inset-0 transition-transform duration-700 group-hover:scale-110">
+        <Image src="/images/bg/corner-1.png" alt="" fill className="object-cover object-right-top" priority />
+      </div>
+      <div className="relative z-10 flex flex-col items-center gap-2">
+        <div className="w-11 h-11 transition-all duration-300 flex items-center justify-center">
+          <Icon icon={icon} className="w-8 h-8 text-blue-600 transition-colors" />
+        </div>
+        <span className="max-w-[100px] text-sm text-slate-900 group-hover:text-blue-700 font-semibold leading-none text-center px-3">
+          {title}
+        </span>
+      </div>
     </div>
-  );
+  </Link>
+);
 
-  const columns: Column<CtwAssessmentCounselingResult>[] = [
-    { key: "id", header: "SL.", headerAlign: "center", className: "text-center text-gray-900", render: (result, index) => (pagination.from || 0) + (index + 1) },
-    {
-      key: "cadet",
-      header: "Cadet",
-      className: "text-gray-900 font-medium",
-      render: (result) => {
-        const cadet = result.cadet as any;
-        const cadetId = cadet?.cadet_number || cadet?.service_number || cadet?.bd_no || "N/A";
-        return (
-          <div className="flex flex-col">
-            <span>{cadet?.name || "—"}</span>
-            <span className="text-xs text-gray-500 font-mono">{cadetId}</span>
-          </div>
-        );
-      }
-    },
-    {
-      key: "course",
-      header: "Course",
-      render: (result) => (
-        <div>
-          <div className="font-medium text-gray-900">{result.course?.name || "N/A"}</div>
-          <div className="text-xs text-gray-500">{result.course?.code || ""}</div>
+const StatCard = ({ label, value, icon, accentColor, bgImage, loading }: StatCardProps) => (
+  <div className="relative bg-white rounded-[1.5rem] sm:rounded-[2rem] border border-slate-100 shadow-sm p-5 sm:p-6 overflow-hidden min-h-[160px] sm:min-h-[180px] flex flex-col justify-between">
+    <div className="absolute inset-y-0 right-0 w-1/2 pointer-events-none">
+      <Image src={`/images/bg/${bgImage}`} alt="" fill className="object-cover object-right" priority />
+    </div>
+    <div className="relative z-10">
+      <p className="font-semibold mt-2 flex items-center gap-2">{label}</p>
+      <div className="absolute top-0 right-0">
+        <div className="relative w-16 h-16 sm:w-18 sm:h-18 rounded-xl flex items-center justify-center shadow-lg opacity-10">
+          <Icon icon={icon} className="relative z-16 w-16 h-16" />
         </div>
-      ),
-    },
-    {
-      key: "semester",
-      header: "Semester",
-      render: (result) => (
-        <div>
-          <div className="font-medium text-gray-900">{result.semester?.name || "N/A"}</div>
-          <div className="text-xs text-gray-500">{result.semester?.code || ""}</div>
-        </div>
-      ),
-    },
-    {
-      key: "counseling_type",
-      header: "Counseling Type",
-      className: "text-gray-900",
-      render: (result) => (
-        <div className="flex flex-col">
-          <span className="font-medium">{result.counseling_type?.type_name || "—"}</span>
-        </div>
-      )
-    },
-    {
-      key: "instructor",
-      header: "Instructor",
-      className: "text-gray-700",
-      render: (result) => (
-        <div>
-          <div className="font-medium text-gray-900">{result.instructor?.name || "—"}</div>
-        </div>
-      )
-    },
-    {
-      key: "created_at",
-      header: "Date",
-      headerAlign: "center",
-      className: "text-center text-gray-900 font-medium",
-      render: (result) => result.created_at ? new Date(result.created_at).toLocaleDateString("en-GB") : "—"
-    },
-    {
-      key: "actions",
-      header: "Actions",
-      headerAlign: "center",
-      className: "text-center no-print",
-      render: (result) => (
-        <div className="flex items-center justify-center gap-1" onClick={(e) => e.stopPropagation()}>
-          <button onClick={() => handleViewResult(result)} className="p-1 text-blue-600 hover:bg-blue-50 rounded transition-all" title="View"><Icon icon="hugeicons:view" className="w-4 h-4" /></button>
-          <button onClick={() => handleEditResult(result)} className="p-1 text-yellow-600 hover:bg-yellow-50 rounded transition-all" title="Edit"><Icon icon="hugeicons:pencil-edit-01" className="w-4 h-4" /></button>
-          <button onClick={() => handleDeleteResult(result)} className="p-1 text-red-600 hover:bg-red-50 rounded transition-all" title="Delete"><Icon icon="hugeicons:delete-02" className="w-4 h-4" /></button>
-        </div>
-      ),
-    },
-  ];
+      </div>
+      <div className="mt-4 sm:mt-5">
+        {loading ? (
+          <div className="h-10 w-16 bg-slate-100 rounded-xl animate-pulse" />
+        ) : (
+          <p className="text-4xl font-black text-slate-900 leading-none">{value}</p>
+        )}
+      </div>
+    </div>
+  </div>
+);
 
-  const officialColumns: Column<any>[] = [
-    { key: "id", header: "SL.", headerAlign: "center", className: "text-center text-gray-900", render: (_, index) => index + 1 },
-    {
-      key: "course",
-      header: "Course",
-      render: (row) => (
-        <div>
-          <div className="font-medium text-gray-900">{row.course_details?.name || "N/A"}</div>
-          <div className="text-xs text-gray-500">{row.course_details?.code || ""}</div>
-        </div>
-      ),
-    },
-    {
-      key: "semester",
-      header: "Semester",
-      render: (row) => (
-        <div>
-          <div className="font-medium text-gray-900">{row.semester_details?.name || "N/A"}</div>
-          <div className="text-xs text-gray-500">{row.semester_details?.code || ""}</div>
-        </div>
-      ),
-    },
-    {
-      key: "program",
-      header: "Program",
-      className: "text-gray-700",
-      render: (row) => row.program_details?.name || "N/A",
-    },
-    {
-      key: "cadets",
-      header: "Batches",
-      className: "text-gray-700 text-center font-bold text-blue-600",
-      render: (row) => row.results_count || row.count || 0,
-    },
-    {
-      key: "created_at",
-      header: "Last Created",
-      className: "text-gray-700 text-sm",
-      render: (row) => row.last_created_at ? new Date(row.last_created_at).toLocaleDateString("en-GB") : "—",
-    },
-    {
-      key: "actions",
-      header: "Actions",
-      headerAlign: "center",
-      className: "text-center no-print",
-      render: (row) => (
-        <div className="flex flex-col items-center gap-1">
-            <button onClick={() => router.push(`/ctw/assessments/counselings/results/course/${row.course_details?.id}/semester/${row.semester_details?.id}`)} className="px-3 py-1 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-lg flex items-center gap-1 text-[10px] font-black uppercase transition-all" title="View Results">
-              <Icon icon="hugeicons:view" className="w-3.5 h-3.5" /> View Detailed
-            </button>
-        </div>
-      ),
-    },
-  ];
+// ─── Nodes config ─────────────────────────────────────────────────────────────
+const nodes = [
+  { title: "Input Result", href: "/ctw/assessments/counselings/results/create", icon: "hugeicons:pencil-edit-01" },
+  { title: "View Result",  href: "/ctw/assessments/counselings/results/view",   icon: "hugeicons:notebook" },
+];
+
+// ─── Tree layout constants (px) ───────────────────────────────────────────────
+const W = 560;
+const rootDiam = 176;
+const rootCx = W / 2;
+const stemGap = 48;
+const branchY = rootDiam + stemGap;
+const childDropGap = 28;
+const childTopY = branchY + childDropGap;
+const childDiam = 144;
+const H = childTopY + childDiam + 16;
+const childCx = [rootCx - 160, rootCx + 160] as const;
+
+const NoticesPanel = () => {
+  const newCount = demoNotices.filter((n) => n.isNew).length;
 
   return (
-    <div className="bg-white p-6 rounded-lg border border-gray-200 space-y-6">
-      <div className="text-center mb-8">
-        <div className="flex justify-center mb-4"><FullLogo /></div>
-        <h1 className="text-xl font-bold text-gray-900 uppercase tracking-tight">Bangladesh Air Force Academy</h1>
-        <h2 className="text-md font-semibold text-gray-700 mt-2 uppercase tracking-widest underline decoration-2 underline-offset-4">INTERVIEW/COUNSELLING REPORT (CTW)</h2>
-      </div>
-
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
-        <div className="relative w-80">
-          <Icon icon="hugeicons:search-01" className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
-          <input type="text" placeholder="Search by course, semester, instructor..." value={searchTerm} onChange={(e) => handleSearchChange(e.target.value)} className="pl-10 pr-4 py-2 border border-gray-200 rounded-lg bg-gray-50 text-gray-900 w-full focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all" />
+    <div className="relative bg-white rounded-[1.5rem] sm:rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden flex flex-col h-full">
+      <div className="relative px-4 sm:px-6 pt-4 sm:pt-6 pb-3 sm:pb-4 border-b border-slate-100 overflow-hidden">
+        <div className="absolute inset-0 opacity-20 pointer-events-none">
+          <Image src="/images/bg/corner-1.png" alt="" fill className="object-cover object-right-top" />
         </div>
-        <div className="flex items-center gap-3">
-          {/* {isInstructor && ( */}
-            <button onClick={handleAddResult} className="px-4 py-2 rounded-lg text-white flex items-center gap-1 bg-blue-600 hover:bg-blue-700 transition-all shadow-md active:scale-95"><Icon icon="hugeicons:add-circle" className="w-4 h-4 mr-2" />Add Result</button>
-          {/* )} */}
-          <button onClick={handleExport} className="px-4 py-2 rounded-lg text-white flex items-center gap-1 bg-gray-800 hover:bg-gray-900 transition-all shadow-md active:scale-95"><Icon icon="hugeicons:printer" className="w-4 h-4 mr-2" />Print Report</button>
-        </div>
-      </div>
-
-      {isInstructor ? (
-        loading ? (
-          <TableLoading />
-        ) : (
-          <>
-            <DataTable columns={columns} data={results} keyExtractor={(result) => result.id.toString()} emptyMessage="No results found" onRowClick={handleViewResult} />
-            
-            <div className="flex items-center justify-between mt-6 pt-6 border-t border-gray-100">
-              <div className="flex items-center gap-4">
-                <div className="text-sm text-gray-700 font-medium">Showing {pagination.from || 0} to {pagination.to || 0} of {pagination.total} results</div>
-                <select value={perPage} onChange={(e) => handlePerPageChange(Number(e.target.value))} className="px-4 py-2 border border-gray-200 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 transition-all cursor-pointer">
-                  <option value={10}>10 per page</option>
-                  <option value={25}>25 per page</option>
-                  <option value={50}>50 per page</option>
-                </select>
-              </div>
-              <div className="flex items-center gap-2">
-                <button onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))} disabled={currentPage === 1} className="px-4 py-2 text-sm border border-black rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all font-bold"><Icon icon="hugeicons:arrow-left-01" className="w-4 h-4 inline mr-1" />Prev</button>
-                <div className="flex items-center gap-1">
-                  {Array.from({ length: Math.min(5, pagination.last_page) }, (_, i) => {
-                    let pageNum = i + 1;
-                    if (currentPage > 3 && pagination.last_page > 5) {
-                      pageNum = currentPage - 2 + i;
-                      if (pageNum > pagination.last_page) pageNum = pagination.last_page - (4 - i);
-                    }
-                    return (
-                      <button key={pageNum} onClick={() => setCurrentPage(pageNum)} className={`w-10 h-10 text-sm rounded-lg transition-all font-bold ${currentPage === pageNum ? "bg-blue-600 text-white shadow-md" : "border border-gray-300 hover:bg-gray-50"}`}>{pageNum}</button>
-                    );
-                  })}
-                </div>
-                <button onClick={() => setCurrentPage(prev => Math.min(pagination.last_page, prev + 1))} disabled={currentPage === pagination.last_page} className="px-4 py-2 text-sm border border-black rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all font-bold">Next<Icon icon="hugeicons:arrow-right-01" className="w-4 h-4 inline ml-1" /></button>
-              </div>
+        <div className="relative z-10 flex items-center justify-between">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl sm:rounded-2xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center shadow-md">
+              <Icon icon="hugeicons:notification-02" className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
             </div>
-          </>
-        )
-      ) : (
-        officialLoading ? <TableLoading /> : <DataTable columns={officialColumns} data={officialResults} keyExtractor={(_, index) => index.toString()} emptyMessage="No results found" />
-      )}
+            <div>
+              <h2 className="text-xs sm:text-sm font-black text-slate-900 uppercase tracking-widest leading-none">Notices</h2>
+              <p className="text-[8px] sm:text-[9px] font-bold text-slate-400 uppercase tracking-wider mt-0.5">Official Board</p>
+            </div>
+          </div>
+          {newCount > 0 && (
+            <div className="flex items-center gap-1.5 bg-red-50 border border-red-100 px-2 sm:px-2.5 py-1 rounded-full">
+              <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+              <span className="text-[9px] sm:text-[10px] font-black text-red-500 uppercase tracking-wider">{newCount} New</span>
+            </div>
+          )}
+        </div>
+      </div>
 
-      <ConfirmationModal isOpen={deleteModalOpen} onClose={() => setDeleteModalOpen(false)} onConfirm={confirmDelete} title="Delete Result" message={`Are you sure you want to delete this counseling result batch? This action cannot be undone.`} confirmText="Delete" cancelText="Cancel" loading={deleteLoading} variant="danger" />
+      <div className="flex-1 overflow-y-auto divide-y divide-slate-50 px-1.5 sm:px-2 py-1.5 sm:py-2">
+        {demoNotices.map((notice) => (
+          <div
+            key={notice.id}
+            className="group relative flex gap-2.5 sm:gap-3 px-3 sm:px-4 py-3 sm:py-4 rounded-xl sm:rounded-2xl hover:bg-slate-50 transition-colors duration-300 cursor-pointer"
+          >
+            {notice.isNew && (
+              <span className="absolute top-3 sm:top-4 right-3 sm:right-4 w-2 h-2 rounded-full bg-blue-500" />
+            )}
+            <div className={`shrink-0 w-8 h-8 sm:w-9 sm:h-9 rounded-lg sm:rounded-xl bg-gradient-to-br ${notice.iconBg} flex items-center justify-center shadow-sm mt-0.5`}>
+              <Icon icon={notice.icon} className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap mb-1">
+                <span className={`text-[8px] sm:text-[9px] font-black uppercase tracking-widest px-1.5 sm:px-2 py-0.5 rounded-full ${notice.tagColor}`}>
+                  {notice.tag}
+                </span>
+                <span className="text-[8px] sm:text-[9px] text-slate-300 font-bold uppercase tracking-wider">{notice.timestamp}</span>
+              </div>
+              <p className="text-[11px] sm:text-xs font-black text-slate-800 leading-snug group-hover:text-blue-700 transition-colors">
+                {notice.title}
+              </p>
+              <p className="text-[9px] sm:text-[10px] text-slate-400 font-medium leading-relaxed mt-0.5 sm:mt-1 line-clamp-2">
+                {notice.body}
+              </p>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="px-4 sm:px-6 py-3 sm:py-4 border-t border-slate-100">
+        <Link
+          href="/notices"
+          className="group flex items-center justify-center gap-2 w-full py-2 sm:py-2.5 rounded-xl bg-slate-50 hover:bg-blue-50 border border-slate-100 hover:border-blue-200 transition-all duration-300"
+        >
+          <span className="text-[9px] sm:text-[10px] font-black uppercase tracking-widest text-slate-500 group-hover:text-blue-600 transition-colors">
+            View All Notices
+          </span>
+          <Icon icon="hugeicons:arrow-right-02" className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-slate-400 group-hover:text-blue-500 transition-colors" />
+        </Link>
+      </div>
+    </div>
+  );
+};
+
+// ─── Page ─────────────────────────────────────────────────────────────────────
+export default function CtwAssessmentCounselingResultsPage() {
+  const { user, userIsInstructor } = useAuth();
+
+  const isInstructor = userIsInstructor;
+  const instructorId = user?.id;
+
+  const [stats, setStats] = useState({ subjects: 0, cadets: 0, results: 0 });
+  const [statsLoading, setStatsLoading] = useState(false);
+
+  useEffect(() => {
+    if (!isInstructor || !instructorId) return;
+    setStatsLoading(true);
+    ctwInstructorStatsService.getStats(instructorId)
+      .then((data) => {
+        setStats({
+          subjects: data.total_subjects,
+          cadets: data.total_cadets,
+          results: data.total_results,
+        });
+      }).catch(console.error)
+      .finally(() => setStatsLoading(false));
+  }, [isInstructor, instructorId]);
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-4 xl:grid-cols-5 gap-4 sm:gap-6 animate-in fade-in duration-700">
+      <div className="lg:col-span-3 flex justify-center items-center mx-auto px-3 sm:px-4 md:px-6 lg:px-0 animate-in fade-in duration-700">
+        <div className="flex items-center justify-center overflow-hidden relative">
+
+          {/* Desktop / Tablet — Binary Tree */}
+          <div className="hidden sm:flex w-full items-center justify-center py-8">
+            <div
+              className="relative sm:scale-[0.68] md:scale-[0.82] lg:scale-[0.92] xl:scale-100 transition-transform origin-top"
+              style={{ width: `${W}px`, height: `${H}px` }}
+            >
+              <svg
+                className="absolute inset-0 w-full h-full pointer-events-none"
+                viewBox={`0 0 ${W} ${H}`}
+              >
+                <line x1={rootCx} y1={rootDiam} x2={rootCx} y2={branchY} stroke="#94a3b8" strokeWidth="2" strokeDasharray="6 5" />
+                <line x1={childCx[0]} y1={branchY} x2={childCx[1]} y2={branchY} stroke="#94a3b8" strokeWidth="2" strokeDasharray="6 5" />
+                <line x1={childCx[0]} y1={branchY} x2={childCx[0]} y2={childTopY} stroke="#94a3b8" strokeWidth="2" strokeDasharray="6 5" />
+                <line x1={childCx[1]} y1={branchY} x2={childCx[1]} y2={childTopY} stroke="#94a3b8" strokeWidth="2" strokeDasharray="6 5" />
+                <circle cx={rootCx}     cy={branchY}   r="5" fill="#64748b" />
+                <circle cx={childCx[0]} cy={branchY}   r="4" fill="#94a3b8" />
+                <circle cx={childCx[1]} cy={branchY}   r="4" fill="#94a3b8" />
+                <circle cx={childCx[0]} cy={childTopY} r="3" fill="#cbd5e1" />
+                <circle cx={childCx[1]} cy={childTopY} r="3" fill="#cbd5e1" />
+              </svg>
+
+              <div
+                className="absolute"
+                style={{ left: `${rootCx}px`, top: "0", transform: "translateX(-50%)" }}
+              >
+                <div className="relative w-44 h-44 rounded-full bg-white border-2 border-slate-900 shadow-[0_0_60px_rgba(0,0,0,0.12)] flex items-center justify-center group hover:scale-105 transition-transform duration-500 overflow-hidden">
+                  <div className="absolute inset-0">
+                    <Image src="/images/bg/corner-2.png" alt="" fill className="object-cover object-right-top" priority />
+                  </div>
+                  <div className="relative z-10 flex flex-col items-center px-6 py-3">
+                    <p className="font-black text-slate-500 uppercase tracking-widest mt-2 text-center leading-tight">
+                      CTW <br /> Counseling Management
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {nodes.map((node, i) => (
+                <div
+                  key={i}
+                  className="absolute"
+                  style={{ left: `${childCx[i]}px`, top: `${childTopY}px`, transform: "translateX(-50%)" }}
+                >
+                  <OrbitCircle {...node} />
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Mobile Grid */}
+          <div className="sm:hidden w-full space-y-5 py-4">
+            <div className="text-center relative py-8 rounded-2xl overflow-hidden">
+              <div className="absolute inset-0 -z-10">
+                <Image src="/images/bg/corner-1.png" alt="" fill className="object-cover opacity-20" />
+              </div>
+              <h1 className="text-4xl font-black text-slate-900 leading-tight">COUNSELING</h1>
+              <div className="h-1.5 w-16 bg-blue-600 rounded-full mt-2 mx-auto" />
+              <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mt-2">CTW Result Management</p>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              {nodes.map((node, i) => (
+                <Link
+                  key={i}
+                  href={node.href}
+                  className="relative flex flex-col items-center p-5 bg-white rounded-2xl border border-slate-200 gap-2 overflow-hidden shadow-sm hover:shadow-md hover:border-blue-300 transition-all duration-300"
+                >
+                  <div className="absolute inset-0 -z-10">
+                    <Image src="/images/bg/corner-1.png" alt="" fill className="object-cover opacity-10" />
+                  </div>
+                  <div className="w-9 h-9 rounded-xl bg-white shadow-sm border border-slate-100 flex items-center justify-center">
+                    <Icon icon={node.icon} className="w-5 h-5 text-blue-600" />
+                  </div>
+                  <span className="text-[9px] font-black uppercase text-slate-800 tracking-wider leading-none text-center">{node.title}</span>
+                </Link>
+              ))}
+            </div>
+          </div>
+
+        </div>
+      </div>
+      <div className="lg:col-span-1 xl:col-span-2">
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            {isInstructor && (
+              <div className="hidden lg:flex flex-col gap-4">
+                <StatCard
+                  label="Total Subjects"
+                  value={stats.subjects}
+                  icon="solar:book-2-broken"
+                  accentColor="from-blue-600 to-indigo-700"
+                  bgImage="corner-1.png"
+                  loading={statsLoading}
+                />
+                <StatCard
+                  label="Total Cadets"
+                  value={stats.cadets}
+                  icon="hugeicons:user-group"
+                  accentColor="from-violet-600 to-purple-700"
+                  bgImage="corner-2.png"
+                  loading={statsLoading}
+                />
+                <StatCard
+                  label="Results Inputted"
+                  value={stats.results}
+                  icon="hugeicons:notebook"
+                  accentColor="from-emerald-500 to-teal-700"
+                  bgImage="corner-1.png"
+                  loading={statsLoading}
+                />
+              </div>
+            )}
+          </div>
+          <div>
+            <NoticesPanel />
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

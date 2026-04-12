@@ -2,7 +2,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useMemo } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Icon } from "@iconify/react";
 import { atwResultService } from "@/libs/services/atwResultService";
 import { atwApprovalService } from "@/libs/services/atwApprovalService";
@@ -30,6 +30,9 @@ interface Subject {
     legend: string | null;
     full_mark: number;
     components: SubjectComponent[];
+    university_name?: string | null;
+    program_name?: string | null;
+    changeable_semester_id?: number | null;
 }
 
 interface Cadet {
@@ -235,10 +238,13 @@ function SignatureBox({ auth, signer, approvedAt, position }: {
 export default function AtwCourseSemesterProgramResultsPage() {
     const params = useParams();
     const router = useRouter();
+    const searchParams = useSearchParams();
     const can = useCan("/atw/results");
     const courseId = params.courseId as string;
     const semesterId = params.semesterId as string;
     const programId = params.programId as string;
+    const changeableId = searchParams.get('changeable') || '';
+    const mainOnly = searchParams.get('main') === '1';
 
     const { user } = useAuth() as { user: AuthUser | null };
 
@@ -278,7 +284,9 @@ export default function AtwCourseSemesterProgramResultsPage() {
             const responseData = await atwResultService.getSubjectWiseByProgram(
                 parseInt(courseId),
                 parseInt(semesterId),
-                parseInt(programId)
+                parseInt(programId),
+                changeableId ? parseInt(changeableId) : undefined,
+                mainOnly || undefined
             );
             if (responseData) {
                 if (responseData.atw_result_mark_cadet_approvals) {
@@ -300,7 +308,7 @@ export default function AtwCourseSemesterProgramResultsPage() {
         } finally {
             setLoading(false);
         }
-    }, [courseId, semesterId, programId]);
+    }, [courseId, semesterId, programId, changeableId, mainOnly]);
 
     useEffect(() => {
         loadResults();
@@ -709,10 +717,21 @@ export default function AtwCourseSemesterProgramResultsPage() {
             `}</style>
 
             <div className="p-4 flex items-center justify-between no-print">
-                <button onClick={handleBack} className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 flex items-center gap-2">
-                    <Icon icon="hugeicons:arrow-left-01" className="w-4 h-4" />
-                    Back to List
-                </button>
+                <div className="flex items-center gap-2">
+                    <button onClick={handleBack} className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 flex items-center gap-2">
+                        <Icon icon="hugeicons:arrow-left-01" className="w-4 h-4" />
+                        Back to List
+                    </button>
+                    {(changeableId || mainOnly) && (
+                        <button
+                            onClick={() => router.push(`/atw/results/course/${courseId}/semester/${semesterId}/program/${programId}`)}
+                            className="px-4 py-2 border border-blue-300 rounded-lg text-blue-700 hover:bg-blue-50 flex items-center gap-2"
+                        >
+                            <Icon icon="hugeicons:view" className="w-4 h-4" />
+                            View All
+                        </button>
+                    )}
+                </div>
                 <div className="flex items-center gap-3">
                     {(myAuthority as any)?.is_program_forward ? (
                         myProgramApproval?.status === 'pending' &&
@@ -949,7 +968,43 @@ export default function AtwCourseSemesterProgramResultsPage() {
                                             <th rowSpan={4} className="border border-black p-2">Rank</th>
                                             <th rowSpan={4} className="border border-black p-2">Name</th>
                                             <th rowSpan={4} className="border border-black p-2">Branch</th>
-                                            <th colSpan={data.subjects.length} className="border border-black p-2 text-center">BUP Subjects</th>
+                                            {(() => {
+                                                const groups: { programName: string | null; universityName: string | null; changeableId: number | null; count: number }[] = [];
+                                                let currentKey = '';
+                                                data.subjects.forEach((sub) => {
+                                                    const key = `${sub.program_name || ''}-${sub.university_name || ''}-${sub.changeable_semester_id || ''}`;
+                                                    if (key === currentKey && groups.length > 0) {
+                                                        groups[groups.length - 1].count++;
+                                                    } else {
+                                                        groups.push({ programName: sub.program_name || null, universityName: sub.university_name || null, changeableId: sub.changeable_semester_id || null, count: 1 });
+                                                        currentKey = key;
+                                                    }
+                                                });
+                                                const isFiltered = !!changeableId || mainOnly;
+                                                return groups.map((g, i) => {
+                                                    const isClickable = !isFiltered && groups.length > 1;
+                                                    const handleClick = () => {
+                                                        if (!isClickable) return;
+                                                        if (g.changeableId) {
+                                                            router.push(`/atw/results/course/${courseId}/semester/${semesterId}/program/${programId}?changeable=${g.changeableId}`);
+                                                        } else {
+                                                            router.push(`/atw/results/course/${courseId}/semester/${semesterId}/program/${programId}?main=1`);
+                                                        }
+                                                    };
+                                                    return (
+                                                        <th
+                                                            key={i}
+                                                            colSpan={g.count}
+                                                            className={`border border-black p-2 text-center ${isClickable ? 'cursor-pointer hover:bg-blue-50 transition-colors' : ''}`}
+                                                            onClick={isClickable ? handleClick : undefined}
+                                                            title={isClickable ? `View ${g.programName} results only` : undefined}
+                                                        >
+                                                           
+                                                            <div>{g.universityName ? `${g.universityName} Subjects` : 'Subjects'}</div>
+                                                        </th>
+                                                    );
+                                                });
+                                            })()}
                                             <th rowSpan={4} className="border border-black p-2">Total<br />({grandTotalFullMark})</th>
                                             <th rowSpan={4} className="border border-black p-2">Percentile</th>
                                             <th rowSpan={4} className="border border-black p-2">Position</th>

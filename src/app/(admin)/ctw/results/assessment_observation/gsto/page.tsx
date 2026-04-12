@@ -5,7 +5,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@iconify/react";
 import { ctwGstoAssessmentResultService } from "@/libs/services/ctwGstoAssessmentResultService";
-import { ctwResultsModuleService } from "@/libs/services/ctwResultsModuleService";
+import { ctwCommonService } from "@/libs/services/ctwCommonService";
 import { useAuth } from "@/libs/hooks/useAuth";
 import FullLogo from "@/components/ui/fulllogo";
 import DataTable, { Column } from "@/components/ui/DataTable";
@@ -43,27 +43,29 @@ export default function CtwGstoAssessmentResultsPage() {
   const [moduleLoading, setModuleLoading] = useState(true);
 
   useEffect(() => {
+    if (!user?.id) return;
     const fetchModuleId = async () => {
       try {
         setModuleLoading(true);
-        const modulesRes = await ctwResultsModuleService.getAllModules({ per_page: 100 });
-        const foundModule = modulesRes.data.find((m: any) => m.code === GSTO_ASSESSMENT_MODULE_CODE);
-        if (foundModule) {
-          setModuleId(foundModule.id);
+        const options = await ctwCommonService.getGstoAssessmentFormOptions(user?.id || 0);
+        if (options?.module) {
+          setModuleId(options.module.id);
         } else {
-          console.error(`Module with code ${GSTO_ASSESSMENT_MODULE_CODE} not found.`);
+          setModuleId(null);
+          setLoading(false);
         }
       } catch (err) {
-        console.error("Failed to fetch module ID:", err);
+        setModuleId(null);
+        setLoading(false);
       } finally {
         setModuleLoading(false);
       }
     };
     fetchModuleId();
-  }, []);
+  }, [user?.id]);
 
   const loadResults = useCallback(async () => {
-    if (moduleId === null || !user?.id) return;
+    if (moduleId === null || !user?.id) { setLoading(false); return; }
 
     try {
       setLoading(true);
@@ -339,7 +341,7 @@ export default function CtwGstoAssessmentResultsPage() {
 
 
       {isInstructor ? (
-        (loading || moduleLoading) ? <TableLoading /> : (
+        (loading) ? <TableLoading /> : (
           <>
             <DataTable columns={columns} data={results} keyExtractor={(result) => result.id.toString()} emptyMessage="No results found" />
 

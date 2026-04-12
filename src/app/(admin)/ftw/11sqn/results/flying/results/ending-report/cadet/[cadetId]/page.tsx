@@ -1,10 +1,13 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
-import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { Icon } from "@iconify/react";
 import { ftw11sqnFlyingExaminationMarkService } from "@/libs/services/ftw11sqnFlyingExaminationMarkService";
 import { ftw11sqnGroundExaminationMarkService } from "@/libs/services/ftw11sqnGroundExaminationMarkService";
+import { ftw11sqnFlyingSyllabusService } from "@/libs/services/ftw11sqnFlyingSyllabusService";
+import { ftw11sqnGroundSyllabusService } from "@/libs/services/ftw11sqnGroundSyllabusService";
+import type { Ftw11sqnFlyingSyllabus, Ftw11sqnGroundSyllabus } from "@/libs/types/ftw11sqnFlying";
 import FullLogo from "@/components/ui/fulllogo";
 
 interface CadetDetails {
@@ -22,6 +25,7 @@ interface CadetDetails {
 interface FlyingMark {
   id: number;
   achieved_mark: string | null;
+  achieved_time?: string | null;
   participate_date: string | null;
   is_present: boolean;
   remark: string | null;
@@ -59,20 +63,34 @@ interface FlyingMark {
 
 interface GroundMark {
   id: number;
-  exam_mark: string | null;
-  participate_date: string | null;
+  ftw_11sqn_ground_syllabus_id?: number;
+  achieved_mark?: string | null;
+  participate_date?: string | null;
   is_present: boolean;
-  remark: string | null;
-  phase?: {
+  remark?: string | null;
+  syllabus?: {
     id: number;
-    ground_fullname: string | null;
-    ground_shortname: string | null;
+    ground_full_name: string;
+    ground_shortname: string;
   };
-  test?: {
+  exercise?: {
     id: number;
-    test_name: string | null;
-    max_mark: number | null;
+    exercise_name: string;
+    max_mark?: string | null;
   };
+  cadet?: {
+    id: number;
+    name: string;
+    bd_no?: string;
+    bdno?: string;
+    cadet_number?: string;
+    enrollment_date?: string;
+    joining_date?: string;
+    appointment_date?: string;
+    rank?: { id: number; name: string };
+  };
+  course?: { id: number; name: string; code: string };
+  semester?: { id: number; name: string; code: string };
 }
 
 interface GroundPhaseData {
@@ -110,264 +128,22 @@ interface FlyingPhaseData {
   is_exam: boolean;
 }
 
-// Dummy data for when no data is found
-const dummyGroundData: GroundPhaseData[] = [
-  { sl: 1, phase_name: "MTD", tests: 7, max_mark: 700.00, obtained: 604.90, percentage: 86.41 },
-  { sl: 2, phase_name: "Quiz on Flg ph", tests: 8, max_mark: 800.00, obtained: 526.00, percentage: 65.75 },
-  { sl: 3, phase_name: "Sessional", tests: 2, max_mark: 200.00, obtained: 172.00, percentage: 86.00 },
-];
-
-const dummyFlyingData: FlyingPhaseData[] = [
-  { sl: 1, phase_shortname: "ID", phase_fullname: "Initial Dual", approved: { dual_sorties: 8, solo_sorties: "-", dual_hrs: "7:55", solo_hrs: "0:00" }, actual: { dual_sorties: 5, solo_sorties: 0, dual_hrs: "4:45", solo_hrs: "0:00" }, ph_avg: "-", daily_avg: "53.25", weight: "-", mark_out_of_1200: "-", is_mission: true, is_exam: false },
-  { sl: 2, phase_shortname: "CCT(Pre-SOLO)", phase_fullname: "Circuit", approved: { dual_sorties: 11, solo_sorties: "-", dual_hrs: "7:35", solo_hrs: "0:00" }, actual: { dual_sorties: 1, solo_sorties: 0, dual_hrs: "0:30", solo_hrs: "0:00" }, ph_avg: "-", daily_avg: "57.00", weight: "-", mark_out_of_1200: "-", is_mission: true, is_exam: false },
-  { sl: 3, phase_shortname: "SOLO Ck", phase_fullname: "SOLO Check", approved: { dual_sorties: 1, solo_sorties: "-", dual_hrs: "0:30", solo_hrs: "0:00" }, actual: { dual_sorties: "-", solo_sorties: "-", dual_hrs: "-", solo_hrs: "-" }, ph_avg: "-", daily_avg: "-", weight: "-", mark_out_of_1200: "-", is_mission: true, is_exam: false },
-  { sl: 4, phase_shortname: "CCT (Consolidation)", phase_fullname: "CCT (Consolidation)", approved: { dual_sorties: 3, solo_sorties: 5, dual_hrs: "1:30", solo_hrs: "2:05" }, actual: { dual_sorties: "-", solo_sorties: "-", dual_hrs: "-", solo_hrs: "-" }, ph_avg: "-", daily_avg: "-", weight: "-", mark_out_of_1200: "-", is_mission: true, is_exam: false },
-  { sl: 5, phase_shortname: "GF", phase_fullname: "General Flying", approved: { dual_sorties: 9, solo_sorties: 5, dual_hrs: "9:30", solo_hrs: "5:00" }, actual: { dual_sorties: "-", solo_sorties: "-", dual_hrs: "-", solo_hrs: "-" }, ph_avg: "-", daily_avg: "-", weight: "-", mark_out_of_1200: "-", is_mission: true, is_exam: false },
-  { sl: 6, phase_shortname: "IF", phase_fullname: "Instrument Flying", approved: { dual_sorties: 10, solo_sorties: "-", dual_hrs: "11:15", solo_hrs: "0:00" }, actual: { dual_sorties: "-", solo_sorties: "-", dual_hrs: "-", solo_hrs: "-" }, ph_avg: "-", daily_avg: "-", weight: "-", mark_out_of_1200: "-", is_mission: true, is_exam: false },
-  { sl: 7, phase_shortname: "GF", phase_fullname: "General Flying", approved: { dual_sorties: 1, solo_sorties: "-", dual_hrs: "1:15", solo_hrs: "0:00" }, actual: { dual_sorties: "-", solo_sorties: "-", dual_hrs: "-", solo_hrs: "-" }, ph_avg: "-", daily_avg: "55.13", weight: 4, mark_out_of_1200: "220.50", is_mission: true, is_exam: false },
-  { sl: 8, phase_shortname: "NAV", phase_fullname: "Navigation Flying", approved: { dual_sorties: 9, solo_sorties: 2, dual_hrs: "11:30", solo_hrs: "2:50" }, actual: { dual_sorties: "-", solo_sorties: "-", dual_hrs: "-", solo_hrs: "-" }, ph_avg: "-", daily_avg: "-", weight: "-", mark_out_of_1200: "-", is_mission: true, is_exam: false },
-  { sl: 9, phase_shortname: "GF", phase_fullname: "General Flying", approved: { dual_sorties: 1, solo_sorties: "-", dual_hrs: "1:00", solo_hrs: "0:00" }, actual: { dual_sorties: "-", solo_sorties: "-", dual_hrs: "-", solo_hrs: "-" }, ph_avg: "-", daily_avg: "-", weight: "-", mark_out_of_1200: "-", is_mission: true, is_exam: false },
-  { sl: 10, phase_shortname: "FMN", phase_fullname: "Formation Flying", approved: { dual_sorties: 10, solo_sorties: 2, dual_hrs: "11:00", solo_hrs: "1:30" }, actual: { dual_sorties: "-", solo_sorties: "-", dual_hrs: "-", solo_hrs: "-" }, ph_avg: "-", daily_avg: "-", weight: "-", mark_out_of_1200: "-", is_mission: true, is_exam: false },
-  { sl: 11, phase_shortname: "IF", phase_fullname: "Instrument Flying", approved: { dual_sorties: 1, solo_sorties: "-", dual_hrs: "0:50", solo_hrs: "0:00" }, actual: { dual_sorties: "-", solo_sorties: "-", dual_hrs: "-", solo_hrs: "-" }, ph_avg: "-", daily_avg: "-", weight: "-", mark_out_of_1200: "-", is_mission: true, is_exam: false },
-  { sl: 12, phase_shortname: "NF", phase_fullname: "Night Flying", approved: { dual_sorties: 4, solo_sorties: 1, dual_hrs: "2:50", solo_hrs: "0:15" }, actual: { dual_sorties: "-", solo_sorties: "-", dual_hrs: "-", solo_hrs: "-" }, ph_avg: "-", daily_avg: "-", weight: "-", mark_out_of_1200: "-", is_mission: true, is_exam: false },
-  { sl: 13, phase_shortname: "AA", phase_fullname: "Advance Aerobatics Flying", approved: { dual_sorties: 6, solo_sorties: 5, dual_hrs: "7:30", solo_hrs: "5:00" }, actual: { dual_sorties: "-", solo_sorties: "-", dual_hrs: "-", solo_hrs: "-" }, ph_avg: "-", daily_avg: "-", weight: "-", mark_out_of_1200: "-", is_mission: true, is_exam: false },
-  { sl: 14, phase_shortname: "CF", phase_fullname: "Combined Flying", approved: { dual_sorties: 4, solo_sorties: "-", dual_hrs: "4:45", solo_hrs: "0:00" }, actual: { dual_sorties: "-", solo_sorties: "-", dual_hrs: "-", solo_hrs: "-" }, ph_avg: "-", daily_avg: "-", weight: "-", mark_out_of_1200: "-", is_mission: true, is_exam: false },
-  { sl: 15, phase_shortname: "MTT-1", phase_fullname: "Mid Term Test", approved: { dual_sorties: 1, solo_sorties: "-", dual_hrs: "1:15", solo_hrs: "0:00" }, actual: { dual_sorties: "-", solo_sorties: "-", dual_hrs: "-", solo_hrs: "-" }, ph_avg: "-", daily_avg: "-", weight: 1.5, mark_out_of_1200: "-", is_mission: false, is_exam: true },
-  { sl: 16, phase_shortname: "IFT-1", phase_fullname: "Instrument Flying Test", approved: { dual_sorties: 1, solo_sorties: "-", dual_hrs: "1:15", solo_hrs: "0:00" }, actual: { dual_sorties: "-", solo_sorties: "-", dual_hrs: "-", solo_hrs: "-" }, ph_avg: "-", daily_avg: "-", weight: 1, mark_out_of_1200: "-", is_mission: false, is_exam: true },
-  { sl: 17, phase_shortname: "FNT-1", phase_fullname: "Final Navigation Test", approved: { dual_sorties: 1, solo_sorties: "-", dual_hrs: "1:25", solo_hrs: "0:00" }, actual: { dual_sorties: "-", solo_sorties: "-", dual_hrs: "-", solo_hrs: "-" }, ph_avg: "-", daily_avg: "-", weight: 1, mark_out_of_1200: "-", is_mission: false, is_exam: true },
-  { sl: 18, phase_shortname: "FFT-1", phase_fullname: "Final Formation Test", approved: { dual_sorties: 1, solo_sorties: "-", dual_hrs: "1:10", solo_hrs: "0:00" }, actual: { dual_sorties: "-", solo_sorties: "-", dual_hrs: "-", solo_hrs: "-" }, ph_avg: "-", daily_avg: "-", weight: 1, mark_out_of_1200: "-", is_mission: false, is_exam: true },
-  { sl: 19, phase_shortname: "FHT-1", phase_fullname: "Final Handling Test", approved: { dual_sorties: 1, solo_sorties: "-", dual_hrs: "1:15", solo_hrs: "0:00" }, actual: { dual_sorties: "-", solo_sorties: "-", dual_hrs: "-", solo_hrs: "-" }, ph_avg: "-", daily_avg: "-", weight: 1.75, mark_out_of_1200: "-", is_mission: false, is_exam: true },
-  { sl: 20, phase_shortname: "FHT-2", phase_fullname: "Final Handling Test", approved: { dual_sorties: 1, solo_sorties: "-", dual_hrs: "1:15", solo_hrs: "0:00" }, actual: { dual_sorties: "-", solo_sorties: "-", dual_hrs: "-", solo_hrs: "-" }, ph_avg: "-", daily_avg: "-", weight: 1.75, mark_out_of_1200: "-", is_mission: false, is_exam: true },
-];
 
 export default function EndingReportCadetViewPage() {
   const params = useParams();
   const router = useRouter();
-  const searchParams = useSearchParams();
 
   const cadetId = params.cadetId as string;
-  const courseId = searchParams.get("course_id");
-  const semesterId = searchParams.get("semester_id");
 
   const [loading, setLoading] = useState(true);
   const [cadetDetails, setCadetDetails] = useState<CadetDetails | null>(null);
-  const [flyingMarks, setFlyingMarks] = useState<FlyingMark[]>([]);
-  const [groundMarks, setGroundMarks] = useState<GroundMark[]>([]);
   const [groundData, setGroundData] = useState<GroundPhaseData[]>([]);
   const [flyingData, setFlyingData] = useState<FlyingPhaseData[]>([]);
-  const [useDummyData, setUseDummyData] = useState(false);
 
   const formatDate = (dateString: string | undefined) => {
     if (!dateString) return "-";
     return new Date(dateString).toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' });
   };
-
-  const fetchData = useCallback(async () => {
-    if (!cadetId || !courseId || !semesterId) return;
-
-    try {
-      setLoading(true);
-
-      // Fetch flying marks
-      const flyingResponse = await ftw11sqnFlyingExaminationMarkService.getAllMarks({
-        cadet_id: parseInt(cadetId),
-        course_id: parseInt(courseId),
-        semester_id: parseInt(semesterId),
-        per_page: 1000,
-      });
-
-      if (flyingResponse.data && flyingResponse.data.length > 0) {
-        setFlyingMarks(flyingResponse.data);
-
-        // Extract cadet details from first mark
-        const firstMark = flyingResponse.data[0];
-        setCadetDetails({
-          id: firstMark.cadet?.id || parseInt(cadetId),
-          name: firstMark.cadet?.name || "",
-          bd_no: firstMark.cadet?.bd_no || firstMark.cadet?.cadet_number || firstMark.cadet?.bdno || "",
-          rank: firstMark.cadet?.rank,
-          course: firstMark.course,
-          semester: firstMark.semester,
-          enrollment_date: firstMark.cadet?.enrollment_date,
-          joining_date: firstMark.cadet?.joining_date,
-          appointment_date: firstMark.cadet?.appointment_date,
-        });
-
-        // Process flying data into phase groups
-        const phaseMap = new Map<string, {
-          marks: FlyingMark[];
-          phase_fullname: string;
-          phase_symbol?: string;
-          exam_type?: string;
-          total_dual_sorties: number;
-          total_solo_sorties: number;
-          total_dual_hrs: number;
-          total_solo_hrs: number;
-        }>();
-
-        flyingResponse.data.forEach((mark: FlyingMark) => {
-          const phaseKey = mark.syllabus?.phase_shortname || "Unknown";
-
-          if (!phaseMap.has(phaseKey)) {
-            phaseMap.set(phaseKey, {
-              marks: [],
-              phase_fullname: mark.syllabus?.phase_fullname || "",
-              phase_symbol: mark.syllabus?.phase_symbol || undefined,
-              exam_type: mark.syllabus?.exam_type || undefined,
-              total_dual_sorties: 0,
-              total_solo_sorties: 0,
-              total_dual_hrs: 0,
-              total_solo_hrs: 0,
-            });
-          }
-
-          const group = phaseMap.get(phaseKey)!;
-          group.marks.push(mark);
-
-          // Count sorties and hours
-          if (mark.dual_flight && mark.dual_flight !== "-" && mark.dual_flight !== "") {
-            group.total_dual_sorties += 1;
-            group.total_dual_hrs += parseFloat(mark.dual_flight) || 0;
-          }
-          if (mark.solo_flight && mark.solo_flight !== "-" && mark.solo_flight !== "") {
-            group.total_solo_sorties += 1;
-            group.total_solo_hrs += parseFloat(mark.solo_flight) || 0;
-          }
-        });
-
-        // Convert to flying data format
-        const processedFlyingData: FlyingPhaseData[] = [];
-        let sl = 1;
-        phaseMap.forEach((data, phaseKey) => {
-          const validMarks = data.marks.filter(m => {
-            const mark = parseFloat(m.achieved_mark || "0");
-            return !isNaN(mark) && mark > 0;
-          });
-          const totalMarks = validMarks.reduce((sum, m) => sum + parseFloat(m.achieved_mark || "0"), 0);
-          const average = validMarks.length > 0 ? totalMarks / validMarks.length : 0;
-
-          const isExam = data.exam_type === 'exam';
-
-          processedFlyingData.push({
-            sl: sl++,
-            phase_shortname: phaseKey,
-            phase_fullname: data.phase_fullname,
-            phase_symbol: data.phase_symbol,
-            exam_type: data.exam_type,
-            approved: {
-              dual_sorties: "-",
-              solo_sorties: "-",
-              dual_hrs: "-",
-              solo_hrs: "-",
-            },
-            actual: {
-              dual_sorties: data.total_dual_sorties || "-",
-              solo_sorties: data.total_solo_sorties || "-",
-              dual_hrs: data.total_dual_hrs > 0 ? data.total_dual_hrs.toFixed(2).replace('.', ':') : "-",
-              solo_hrs: data.total_solo_hrs > 0 ? data.total_solo_hrs.toFixed(2).replace('.', ':') : "-",
-            },
-            ph_avg: average > 0 ? average.toFixed(2) : "-",
-            daily_avg: "-",
-            weight: isExam ? getExamWeight(data.phase_symbol || phaseKey) : "-",
-            mark_out_of_1200: "-",
-            is_mission: !isExam,
-            is_exam: isExam,
-          });
-        });
-
-        if (processedFlyingData.length > 0) {
-          setFlyingData(processedFlyingData);
-        } else {
-          setFlyingData(dummyFlyingData);
-          setUseDummyData(true);
-        }
-      } else {
-        setFlyingData(dummyFlyingData);
-        setUseDummyData(true);
-        // Set dummy cadet details
-        setCadetDetails({
-          id: parseInt(cadetId),
-          name: "Sakib Ahmed",
-          bd_no: "14672",
-          rank: { id: 1, name: "Officer Cadet" },
-          course: { id: 1, name: "84 BAFA", code: "84" },
-        });
-      }
-
-      // Fetch ground marks
-      try {
-        const groundResponse = await ftw11sqnGroundExaminationMarkService.getAllMarks({
-          cadet_id: parseInt(cadetId),
-          course_id: parseInt(courseId),
-          semester_id: parseInt(semesterId),
-          per_page: 1000,
-        });
-
-        if (groundResponse.data && groundResponse.data.length > 0) {
-          setGroundMarks(groundResponse.data);
-
-          // Process ground data
-          const groundPhaseMap = new Map<string, { marks: GroundMark[]; total_max: number; total_obtained: number }>();
-
-          groundResponse.data.forEach((mark: GroundMark) => {
-            const phaseName = mark.phase?.ground_fullname || "Unknown";
-
-            if (!groundPhaseMap.has(phaseName)) {
-              groundPhaseMap.set(phaseName, { marks: [], total_max: 0, total_obtained: 0 });
-            }
-
-            const group = groundPhaseMap.get(phaseName)!;
-            group.marks.push(mark);
-            group.total_max += mark.test?.max_mark || 100;
-            group.total_obtained += parseFloat(mark.exam_mark || "0");
-          });
-
-          const processedGroundData: GroundPhaseData[] = [];
-          let groundSl = 1;
-          groundPhaseMap.forEach((data, phaseName) => {
-            processedGroundData.push({
-              sl: groundSl++,
-              phase_name: phaseName,
-              tests: data.marks.length,
-              max_mark: data.total_max,
-              obtained: data.total_obtained,
-              percentage: data.total_max > 0 ? (data.total_obtained / data.total_max) * 100 : 0,
-            });
-          });
-
-          if (processedGroundData.length > 0) {
-            setGroundData(processedGroundData);
-          } else {
-            setGroundData(dummyGroundData);
-          }
-        } else {
-          setGroundData(dummyGroundData);
-        }
-      } catch (groundError) {
-        console.error("Error fetching ground marks:", groundError);
-        setGroundData(dummyGroundData);
-      }
-
-    } catch (error) {
-      console.error("Error fetching cadet data:", error);
-      setFlyingData(dummyFlyingData);
-      setGroundData(dummyGroundData);
-      setUseDummyData(true);
-      setCadetDetails({
-        id: parseInt(cadetId),
-        name: "Sakib Ahmed",
-        bd_no: "14672",
-        rank: { id: 1, name: "Officer Cadet" },
-        course: { id: 1, name: "84 BAFA", code: "84" },
-      });
-    } finally {
-      setLoading(false);
-    }
-  }, [cadetId, courseId, semesterId]);
-
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
 
   const getExamWeight = (phaseSymbol: string) => {
     switch (phaseSymbol) {
@@ -382,6 +158,181 @@ export default function EndingReportCadetViewPage() {
         return 1;
     }
   };
+
+  const fetchData = useCallback(async () => {
+    if (!cadetId) return;
+
+    try {
+      setLoading(true);
+
+      // Fetch syllabi, marks in parallel
+      const [flyingSyllabusResponse, groundSyllabusResponse, flyingResponse, groundResponse] = await Promise.all([
+        ftw11sqnFlyingSyllabusService.getAll({ per_page: 1000 }),
+        ftw11sqnGroundSyllabusService.getAll({ per_page: 1000 }),
+        ftw11sqnFlyingExaminationMarkService.getAllMarks({ cadet_id: parseInt(cadetId), per_page: 1000 }),
+        ftw11sqnGroundExaminationMarkService.getAllMarks({ cadet_id: parseInt(cadetId), per_page: 1000 }),
+      ]);
+
+      const syllabi: Ftw11sqnFlyingSyllabus[] = (flyingSyllabusResponse.data || []).sort(
+        (a, b) => (a.phase_sort ?? 0) - (b.phase_sort ?? 0)
+      );
+      const groundSyllabi: Ftw11sqnGroundSyllabus[] = (groundSyllabusResponse.data || []).sort(
+        (a, b) => (a.ground_sort ?? 0) - (b.ground_sort ?? 0)
+      );
+
+      // Extract cadet details from first flying mark (or ground mark)
+      const firstFlyingMark = flyingResponse.data?.[0];
+      const firstGroundMark = groundResponse.data?.[0];
+      const firstMark = firstFlyingMark || firstGroundMark;
+      if (firstMark) {
+        setCadetDetails({
+          id: firstMark.cadet?.id || parseInt(cadetId),
+          name: firstMark.cadet?.name || "",
+          bd_no: firstMark.cadet?.bd_no || firstMark.cadet?.cadet_number || firstMark.cadet?.bdno || "",
+          rank: firstMark.cadet?.rank,
+          course: firstMark.course,
+          semester: firstMark.semester,
+          enrollment_date: firstMark.cadet?.enrollment_date,
+          joining_date: firstMark.cadet?.joining_date,
+          appointment_date: firstMark.cadet?.appointment_date,
+        });
+      }
+
+      // Build a map of syllabus_id -> marks[] from flying marks
+      const marksBySyllabusId = new Map<number, FlyingMark[]>();
+      (flyingResponse.data || []).forEach((mark: FlyingMark) => {
+        const sid = mark.syllabus?.id;
+        if (!sid) return;
+        if (!marksBySyllabusId.has(sid)) marksBySyllabusId.set(sid, []);
+        marksBySyllabusId.get(sid)!.push(mark);
+      });
+
+      // Build flying table from syllabi (all phases shown, marks filled in if exist)
+      const processedFlyingData: FlyingPhaseData[] = syllabi.map((syl, index) => {
+        const isExam = syl.flying_type?.type_code?.toLowerCase() === 'exam' ||
+                       syl.flying_type?.type_name?.toLowerCase() === 'exam';
+
+        // Approved sorties/hours from syllabus_types
+        const dualType = syl.syllabus_types?.find(t =>
+          t.phase_type?.type_code?.toLowerCase() === 'dual' ||
+          t.phase_type?.type_name?.toLowerCase() === 'dual'
+        );
+        const soloType = syl.syllabus_types?.find(t =>
+          t.phase_type?.type_code?.toLowerCase() === 'solo' ||
+          t.phase_type?.type_name?.toLowerCase() === 'solo'
+        );
+
+        const marks = marksBySyllabusId.get(syl.id) || [];
+        let totalDualSorties = 0, totalSoloSorties = 0;
+        let totalDualHrs = 0, totalSoloHrs = 0;
+
+        marks.forEach((mark: FlyingMark) => {
+          const typeName = (mark.phase_type?.type_name || "").toLowerCase();
+          // Parse achieved_time "H:MM" to decimal hours
+          const timeHrs = (() => {
+            const t = mark.achieved_time;
+            if (!t || t === "-" || t === "") return 0;
+            const parts = t.split(':');
+            if (parts.length >= 2) return parseInt(parts[0]) + parseInt(parts[1]) / 60;
+            return parseFloat(t) || 0;
+          })();
+          const isSolo = typeName.includes('solo');
+          const isDual = typeName.includes('dual') || (!isSolo && typeName !== "");
+
+          if (isSolo) {
+            totalSoloSorties += 1;
+            totalSoloHrs += timeHrs;
+          } else if (isDual) {
+            totalDualSorties += 1;
+            totalDualHrs += timeHrs;
+          } else {
+            // No phase_type info — default to dual
+            totalDualSorties += 1;
+            totalDualHrs += timeHrs;
+          }
+        });
+
+        const validMarks = marks.filter(m => {
+          const v = parseFloat(m.achieved_mark || "0");
+          return !isNaN(v) && v > 0;
+        });
+        const totalMarkSum = validMarks.reduce((s, m) => s + parseFloat(m.achieved_mark || "0"), 0);
+        const average = validMarks.length > 0 ? totalMarkSum / validMarks.length : null;
+
+        const formatHrs = (hrs: number) => {
+          const h = Math.floor(hrs);
+          const m = Math.round((hrs - h) * 60);
+          return `${h}:${m.toString().padStart(2, '0')}`;
+        };
+
+        return {
+          sl: index + 1,
+          phase_shortname: syl.phase_shortname,
+          phase_fullname: syl.phase_full_name,
+          phase_symbol: syl.phase_symbol,
+          exam_type: isExam ? 'exam' : 'mission',
+          approved: {
+            dual_sorties: dualType?.sorties ?? "-",
+            solo_sorties: soloType?.sorties ?? "-",
+            dual_hrs: dualType?.hours ? formatHrs(parseFloat(String(dualType.hours))) : "-",
+            solo_hrs: soloType?.hours ? formatHrs(parseFloat(String(soloType.hours))) : "-",
+          },
+          actual: {
+            dual_sorties: totalDualSorties > 0 ? totalDualSorties : "-",
+            solo_sorties: totalSoloSorties > 0 ? totalSoloSorties : "-",
+            dual_hrs: totalDualHrs > 0 ? formatHrs(totalDualHrs) : "-",
+            solo_hrs: totalSoloHrs > 0 ? formatHrs(totalSoloHrs) : "-",
+          },
+          ph_avg: average !== null ? average.toFixed(2) : "-",
+          daily_avg: "-",
+          weight: isExam ? getExamWeight(syl.phase_symbol || syl.phase_shortname) : "-",
+          mark_out_of_1200: isExam && average !== null ? (average * getExamWeight(syl.phase_symbol || syl.phase_shortname)).toFixed(2) : "-",
+          is_mission: !isExam,
+          is_exam: isExam,
+        };
+      });
+
+      // Sort: missions first (by phase_sort), then exams (by phase_sort), renumber SL
+      const missionRows = processedFlyingData.filter(p => p.is_mission);
+      const examRows = processedFlyingData.filter(p => p.is_exam);
+      const sortedFlyingData = [...missionRows, ...examRows].map((row, i) => ({ ...row, sl: i + 1 }));
+      setFlyingData(sortedFlyingData);
+
+      // Build ground table from syllabi (show all phases; fill obtained from marks)
+      const groundMarksByPhaseId = new Map<number, GroundMark[]>();
+      (groundResponse.data || []).forEach((mark: GroundMark) => {
+        const pid = mark.syllabus?.id ?? mark.ftw_11sqn_ground_syllabus_id;
+        if (!pid) return;
+        if (!groundMarksByPhaseId.has(pid)) groundMarksByPhaseId.set(pid, []);
+        groundMarksByPhaseId.get(pid)!.push(mark);
+      });
+
+      const processedGroundData: GroundPhaseData[] = groundSyllabi.map((syl, index) => {
+        const marks = groundMarksByPhaseId.get(syl.id) || [];
+        const obtained = marks.reduce((s, m) => s + parseFloat(m.achieved_mark || "0"), 0);
+        const highestMark = parseFloat(String(syl.highest_mark)) || 0;
+        const maxMark = (syl.no_of_test || 1) * highestMark;
+        return {
+          sl: index + 1,
+          phase_name: syl.ground_full_name,
+          tests: syl.no_of_test,
+          max_mark: maxMark,
+          obtained,
+          percentage: maxMark > 0 ? (obtained / maxMark) * 100 : 0,
+        };
+      });
+      setGroundData(processedGroundData);
+
+    } catch (error) {
+      console.error("Error fetching cadet data:", error);
+    } finally {
+      setLoading(false);
+    }
+  }, [cadetId]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
   const handleBack = () => router.back();
   const handlePrint = () => window.print();
@@ -399,10 +350,10 @@ export default function EndingReportCadetViewPage() {
   const missionPhases = flyingData.filter(p => p.is_mission && p.ph_avg !== "-");
   const dailyAverage = missionPhases.length > 0
     ? missionPhases.reduce((sum, p) => sum + parseFloat(p.ph_avg as string), 0) / missionPhases.length
-    : 55.13;
+    : 0;
 
   // Overall percentage calculation
-  const overallPercentage = useDummyData ? 18.38 : (dailyAverage * 4) / 12;
+  const overallPercentage = (dailyAverage * 4) / 12;
 
   if (loading) {
     return (
@@ -452,7 +403,7 @@ export default function EndingReportCadetViewPage() {
       {/* Personal Details */}
       <div className="mt-4">
         <h2 className="uppercase font-bold text-sm mb-2">PERSONAL DETAILS</h2>
-        <div className="grid grid-cols-3 gap-x-8 gap-y-1 text-sm">
+        <div className="grid grid-cols-2 gap-x-8 gap-y-1 text-sm">
           <div className="flex">
             <span className="font-semibold w-32">BD/No</span>
             <span className="border-b border-black flex-1 text-center">{cadetDetails?.bd_no || "-"}</span>
@@ -611,11 +562,11 @@ export default function EndingReportCadetViewPage() {
                     {phase.is_mission ? (
                       isFirstMission ? (
                         <td className="px-1 py-1 text-center border border-black" rowSpan={missionCount}>
-                          <span className="text-red-500 font-bold">{dailyAverage.toFixed(2)}</span>
+                          <span className="text-red-500 font-bold">{dailyAverage > 0 ? dailyAverage.toFixed(2) : "-"}</span>
                         </td>
                       ) : null
                     ) : (
-                      <td className="px-1 py-1 text-center text-black border border-black">{phase.daily_avg}</td>
+                      <td className="px-1 py-1 text-center text-black border border-black">{phase.ph_avg}</td>
                     )}
                     {phase.is_mission ? (
                       isFirstMission ? (
@@ -640,18 +591,18 @@ export default function EndingReportCadetViewPage() {
               <tr className="font-bold bg-gray-50">
                 <td className="px-1 py-1 text-center text-black border border-black">-</td>
                 <td className="px-1 py-1 text-black border border-black font-bold">TOTAL</td>
-                <td className="px-1 py-1 text-center text-black border border-black">{useDummyData ? 84 : flyingTotals.approved_dual_sorties || "-"}</td>
-                <td className="px-1 py-1 text-center text-black border border-black">{useDummyData ? 20 : flyingTotals.approved_solo_sorties || "-"}</td>
-                <td className="px-1 py-1 text-center text-black border border-black">{useDummyData ? "86:30" : "-"}</td>
-                <td className="px-1 py-1 text-center text-black border border-black">{useDummyData ? "16:00" : "-"}</td>
-                <td className="px-1 py-1 text-center text-blue-600 border border-black font-bold">{useDummyData ? 6 : flyingTotals.actual_dual_sorties || "-"}</td>
-                <td className="px-1 py-1 text-center text-blue-600 border border-black font-bold">{useDummyData ? 0 : flyingTotals.actual_solo_sorties || "-"}</td>
-                <td className="px-1 py-1 text-center text-blue-600 border border-black font-bold">{useDummyData ? "5:15" : "-"}</td>
-                <td className="px-1 py-1 text-center text-blue-600 border border-black font-bold">{useDummyData ? "0:00" : "-"}</td>
+                <td className="px-1 py-1 text-center text-black border border-black">{flyingTotals.approved_dual_sorties || "-"}</td>
+                <td className="px-1 py-1 text-center text-black border border-black">{flyingTotals.approved_solo_sorties || "-"}</td>
                 <td className="px-1 py-1 text-center text-black border border-black">-</td>
                 <td className="px-1 py-1 text-center text-black border border-black">-</td>
-                <td className="px-1 py-1 text-center text-black border border-black font-bold">{useDummyData ? 12 : flyingTotals.total_weight + 4}</td>
-                <td className="px-1 py-1 text-center text-green-600 border border-black font-bold">{useDummyData ? "220.50" : (dailyAverage * 4).toFixed(2)}</td>
+                <td className="px-1 py-1 text-center text-blue-600 border border-black font-bold">{flyingTotals.actual_dual_sorties || "-"}</td>
+                <td className="px-1 py-1 text-center text-blue-600 border border-black font-bold">{flyingTotals.actual_solo_sorties || "-"}</td>
+                <td className="px-1 py-1 text-center text-blue-600 border border-black font-bold">-</td>
+                <td className="px-1 py-1 text-center text-blue-600 border border-black font-bold">-</td>
+                <td className="px-1 py-1 text-center text-black border border-black">-</td>
+                <td className="px-1 py-1 text-center text-black border border-black">-</td>
+                <td className="px-1 py-1 text-center text-black border border-black font-bold">{flyingTotals.total_weight + 4}</td>
+                <td className="px-1 py-1 text-center text-green-600 border border-black font-bold">{dailyAverage > 0 ? (dailyAverage * 4).toFixed(2) : "-"}</td>
               </tr>
               {/* Overall Percentage Row */}
               <tr className="font-bold">
@@ -669,11 +620,11 @@ export default function EndingReportCadetViewPage() {
       <div className="mt-6 text-sm space-y-1">
         <div className="flex">
           <span className="font-semibold w-48">11. Total on Type</span>
-          <span className="border-b border-black px-4">{useDummyData ? "5:15 hrs" : "-"}</span>
+          <span className="border-b border-black px-4">{"-"}</span>
         </div>
         <div className="flex">
           <span className="font-semibold w-48">12. Grand Total</span>
-          <span className="border-b border-black px-4">{useDummyData ? "5:15 hrs" : "-"}</span>
+          <span className="border-b border-black px-4">{"-"}</span>
         </div>
         <div className="flex">
           <span className="font-semibold w-48">13. Overall Grading</span>
@@ -681,9 +632,9 @@ export default function EndingReportCadetViewPage() {
         </div>
         <div className="flex">
           <span className="font-semibold w-48">14. Position in the Course</span>
-          <span className="border-b border-black px-4">{useDummyData ? "6th" : "-"}</span>
+          <span className="border-b border-black px-4">{"-"}</span>
           <span className="mx-2">out of</span>
-          <span className="border-b border-black px-4">{useDummyData ? "7" : "-"}</span>
+          <span className="border-b border-black px-4">{"-"}</span>
           <span className="ml-2">students</span>
         </div>
       </div>

@@ -72,17 +72,26 @@ export default function OneMileCourseSemesterResultPage() {
     loadData();
   }, [loadData]);
 
-  // One Mile mark calculation per submission per cadet
+  const practiceCount = (estimatedMark as any)?.practice_count || 0;
+
+  // Aggregate marks per cadet per instructor, including practice details
   const aggregatedMarks = useMemo(() => {
     const cadetMap = new Map<number, any>();
     const convPracticeWeight = parseFloat(String(estimatedMark?.convert_of_practice || 0));
     const convExamWeight = parseFloat(String(estimatedMark?.convert_of_exam || 0));
-    const convMarkLimit = estimatedMark?.conversation_mark || 0;
+    const convMarkLimit = parseFloat(String(estimatedMark?.conversation_mark || 0));
 
     cadets.forEach(cadet => {
       cadetMap.set(cadet.id, {
         cadet,
-        instructorMarks: {}, // instructor_id -> final converted mark
+        instructorData: {} as Record<number, {
+          practices: number[];
+          avg_practice: number;
+          exam_mark: number;
+          conv_practice: number;
+          conv_exam: number;
+          finalMark: number;
+        }>,
         totalFinal: 0,
         submissionCount: 0,
       });
@@ -96,7 +105,7 @@ export default function OneMileCourseSemesterResultPage() {
         const cadetId = markItem.cadet_id;
         if (cadetMap.has(cadetId)) {
           const practices: number[] = [];
-          if (markItem.details) {
+          if (markItem.details && markItem.details.length > 0) {
             markItem.details.forEach((d: any) => {
               if (d.practices_marks !== null && d.practices_marks !== undefined) {
                 practices.push(parseFloat(String(d.practices_marks)));
@@ -104,18 +113,25 @@ export default function OneMileCourseSemesterResultPage() {
             });
           }
           const avg_practice = practices.length > 0
-            ? practices.reduce((a, b) => a + b, 0) / practices.length
+            ? practices.reduce((a: number, b: number) => a + b, 0) / practices.length
             : 0;
-          const test_mark = parseFloat(String(markItem.achieved_mark || 0));
+          const exam_mark = parseFloat(String(markItem.achieved_mark || markItem.mark || 0));
           const conv_practice = (avg_practice * convPracticeWeight) / 100;
-          const conv_exam = (test_mark * convExamWeight) / 100;
+          const conv_exam = (exam_mark * convExamWeight) / 100;
           let finalMark = conv_practice + conv_exam;
           if (convMarkLimit > 0 && finalMark > convMarkLimit) {
             finalMark = convMarkLimit;
           }
 
           const cadetData = cadetMap.get(cadetId);
-          cadetData.instructorMarks[instructorId] = finalMark;
+          cadetData.instructorData[instructorId] = {
+            practices,
+            avg_practice,
+            exam_mark,
+            conv_practice,
+            conv_exam,
+            finalMark,
+          };
           cadetData.totalFinal += finalMark;
           cadetData.submissionCount += 1;
         }
@@ -127,7 +143,7 @@ export default function OneMileCourseSemesterResultPage() {
 
   // Rank cadets by average converted mark
   const rankedData = useMemo(() => {
-    const convMarkLimit = estimatedMark?.conversation_mark || 0;
+    const convMarkLimit = parseFloat(String(estimatedMark?.conversation_mark || 0));
     const expectedCount = moduleDetails?.instructor_count || 0;
     const isComplete = expectedCount > 0 && submissions.length >= expectedCount;
     const passThreshold = convMarkLimit * 0.5;
@@ -155,7 +171,6 @@ export default function OneMileCourseSemesterResultPage() {
       });
     }
 
-    // Re-sort by cadet number for display
     withConv.sort((a, b) => {
       const aNo = a.cadet?.cadet_number ?? "";
       const bNo = b.cadet?.cadet_number ?? "";
@@ -194,10 +209,14 @@ export default function OneMileCourseSemesterResultPage() {
     );
   }
 
-  const conversationMarkLimit = estimatedMark?.conversation_mark || 0;
+  const conversationMarkLimit = parseFloat(String(estimatedMark?.conversation_mark || 0));
+  const estimatedMarkPerInstructor = parseFloat(String((estimatedMark as any)?.estimated_mark_per_instructor || conversationMarkLimit || 100));
   const instructorCount = moduleDetails?.instructor_count || 0;
   const isComplete = instructorCount > 0 && submissions.length >= instructorCount;
   const instructorSlots = Array.from({ length: instructorCount }, (_, i) => i);
+
+  const hasPractices = practiceCount > 0;
+  const instrColSpan = hasPractices ? practiceCount + 4 : 4;
 
   return (
     <div className="print-no-border bg-white rounded-lg border border-gray-200">
@@ -234,76 +253,95 @@ export default function OneMileCourseSemesterResultPage() {
         </div>
 
         <div className="mb-6">
-          <h2 className="text-lg font-bold text-gray-900 mb-4 pb-1 border-b border-dashed border-gray-400 uppercase text-base">
-            Course Information
-          </h2>
-          <div className="grid grid-cols-2 gap-x-12 gap-y-3">
-            <div className="flex">
-              <span className="w-48 text-gray-900 font-medium">Course</span>
-              <span className="mr-4">:</span>
-              <span className="text-gray-900 flex-1 font-bold">{courseDetails?.name || "N/A"}</span>
-            </div>
-            <div className="flex">
-              <span className="w-48 text-gray-900 font-medium">Semester</span>
-              <span className="mr-4">:</span>
-              <span className="text-gray-900 flex-1 font-bold">{semesterDetails?.name || "N/A"}</span>
-            </div>
-            <div className="flex">
-              <span className="w-48 text-gray-900 font-medium">Module</span>
-              <span className="mr-4">:</span>
-              <span className="text-gray-900 flex-1 font-bold">{moduleDetails?.full_name} ({moduleDetails?.short_name})</span>
-            </div>
-            <div className="flex">
-              <span className="w-48 text-gray-900 font-medium">Exam Type</span>
-              <span className="mr-4">:</span>
-              <span className="text-gray-900 flex-1 font-bold">{examType || "N/A"}</span>
-            </div>
-            <div className="flex">
-              <span className="w-48 text-gray-900 font-medium">Practice Weight</span>
-              <span className="mr-4">:</span>
-              <span className="text-gray-900 flex-1 font-bold">{estimatedMark?.convert_of_practice || 0}%</span>
-            </div>
-            <div className="flex">
-              <span className="w-48 text-gray-900 font-medium">Exam Weight</span>
-              <span className="mr-4">:</span>
-              <span className="text-gray-900 flex-1 font-bold">{estimatedMark?.convert_of_exam || 0}%</span>
-            </div>
-            <div className="flex">
-              <span className="w-48 text-gray-900 font-medium">Conversion Limit</span>
-              <span className="mr-4">:</span>
-              <span className="text-gray-900 flex-1 font-bold">{conversationMarkLimit}</span>
-            </div>
-          </div>
-        </div>
-
-        <div className="mb-6">
-          <h2 className="text-lg font-bold text-gray-900 mb-4 pb-1 border-b border-dashed border-gray-400 uppercase text-base">
-            Cadets Marks
-          </h2>
-
           <div className="overflow-x-auto">
-            <table className="w-full border-collapse border border-black">
+            <table className="w-full border-collapse border border-black text-sm">
               <thead>
-                <tr>
-                  <th rowSpan={2} className="border border-black px-2 py-2 text-center align-middle">Ser</th>
-                  <th rowSpan={2} className="border border-black px-2 py-2 text-center align-middle">BD/No</th>
-                  <th rowSpan={2} className="border border-black px-2 py-2 text-center align-middle">Rank</th>
-                  <th rowSpan={2} className="border border-black px-2 py-2 text-left align-middle">Name</th>
-                  <th rowSpan={2} className="border border-black px-2 py-2 text-left align-middle">Branch</th>
-                  <th colSpan={instructorCount || 1} className="border border-black px-2 py-1 text-center align-middle font-bold">
-                    Instructors (Conv. Mark)
-                  </th>
-                  <th rowSpan={2} className="border border-black px-2 py-2 text-center align-middle font-bold">Avg - {conversationMarkLimit}</th>
-                  <th rowSpan={2} className="border border-black px-2 py-2 text-center align-middle font-bold">Position</th>
-                  <th rowSpan={2} className="border border-black px-2 py-2 text-center align-middle font-bold">Remarks</th>
-                </tr>
-                <tr>
-                  {instructorSlots.map(i => (
-                    <th key={i} className="border border-black px-1 py-1 text-center align-middle font-bold">
-                      {`Instr ${i + 1}`}
+                {/* Row 1: instructor group headers (only when multiple instructors) */}
+                {instructorCount > 1 && (
+                  <tr>
+                    <th rowSpan={hasPractices ? 3 : 2} className="border border-black px-2 py-2 text-center align-middle">SL</th>
+                    <th rowSpan={hasPractices ? 3 : 2} className="border border-black px-2 py-2 text-center align-middle whitespace-nowrap">BD No.</th>
+                    <th rowSpan={hasPractices ? 3 : 2} className="border border-black px-2 py-2 text-center align-middle">Rank</th>
+                    <th rowSpan={hasPractices ? 3 : 2} className="border border-black px-2 py-2 text-left align-middle">Name</th>
+                    <th rowSpan={hasPractices ? 3 : 2} className="border border-black px-2 py-2 text-left align-middle">Branch</th>
+                    {instructorSlots.map(i => (
+                      <th key={i} colSpan={hasPractices ? practiceCount + 5 : 5} className="border border-black px-2 py-1 text-center align-middle font-bold">
+                        {`Instr ${i + 1}`}
+                      </th>
+                    ))}
+                    <th rowSpan={hasPractices ? 3 : 2} className="border border-black px-2 py-2 text-center align-middle font-bold whitespace-nowrap">
+                      Conv<br />Mark
                     </th>
+                    <th rowSpan={hasPractices ? 3 : 2} className="border border-black px-2 py-2 text-center align-middle font-bold">Position</th>
+                    <th rowSpan={hasPractices ? 3 : 2} className="border border-black px-2 py-2 text-center align-middle font-bold">Remarks</th>
+                  </tr>
+                )}
+
+                {/* Row 1 (single instr) / Row 2 (multi instr): detail column headers */}
+                <tr>
+                  {instructorCount === 1 && (
+                    <>
+                      <th rowSpan={hasPractices ? 2 : 1} className="border border-black px-2 py-2 text-center align-middle">SL</th>
+                      <th rowSpan={hasPractices ? 2 : 1} className="border border-black px-2 py-2 text-center align-middle whitespace-nowrap">BD No.</th>
+                      <th rowSpan={hasPractices ? 2 : 1} className="border border-black px-2 py-2 text-center align-middle">Rank</th>
+                      <th rowSpan={hasPractices ? 2 : 1} className="border border-black px-2 py-2 text-left align-middle">Name</th>
+                      <th rowSpan={hasPractices ? 2 : 1} className="border border-black px-2 py-2 text-left align-middle">Branch</th>
+                    </>
+                  )}
+                  {instructorSlots.map(i => (
+                    <React.Fragment key={i}>
+                      {hasPractices ? (
+                        <th colSpan={practiceCount} className="border border-black px-2 py-1 text-center align-middle font-semibold text-xs">
+                          Practices
+                        </th>
+                      ) : null}
+                      <th rowSpan={hasPractices ? 2 : 1} className="border border-black px-2 py-1 text-center align-middle whitespace-nowrap text-xs font-semibold">
+                        Avg.<br />Prac
+                      </th>
+                      <th rowSpan={hasPractices ? 2 : 1} className="border border-black px-2 py-1 text-center align-middle whitespace-nowrap text-xs font-semibold">
+                        Exam
+                      </th>
+                      <th rowSpan={hasPractices ? 2 : 1} className="border border-black px-2 py-1 text-center align-middle whitespace-nowrap text-xs font-semibold">
+                        Prac<br />({estimatedMark?.convert_of_practice || 0}%)
+                      </th>
+                      <th rowSpan={hasPractices ? 2 : 1} className="border border-black px-2 py-1 text-center align-middle whitespace-nowrap text-xs font-semibold">
+                        Exam<br />({estimatedMark?.convert_of_exam || 0}%)
+                      </th>
+                      <th rowSpan={hasPractices ? 2 : 1} className="border border-black px-2 py-1 text-center align-middle text-xs font-semibold">
+                        Total
+                      </th>
+                      <th rowSpan={hasPractices ? 2 : 1} className="border border-black px-2 py-1 text-center align-middle text-xs font-semibold whitespace-nowrap">
+                        Conv<br />({conversationMarkLimit})
+                      </th>
+                    </React.Fragment>
                   ))}
+                  {instructorCount === 1 && (
+                    <>
+                      <th rowSpan={hasPractices ? 2 : 1} className="border border-black px-2 py-2 text-center align-middle font-bold">Position</th>
+                      <th rowSpan={hasPractices ? 2 : 1} className="border border-black px-2 py-2 text-center align-middle font-bold">Remarks</th>
+                    </>
+                  )}
                 </tr>
+
+                {/* Last row: individual P1, P2, P3... columns (only if hasPractices) */}
+                {hasPractices && (
+                  <tr>
+                    {instructorSlots.map(i => (
+                      <React.Fragment key={i}>
+                        {Array.from({ length: practiceCount }, (_, p) => (
+                          <th key={p} className="border border-black px-1 py-1 text-center align-middle text-xs font-normal">
+                            P{p + 1}
+                          </th>
+                        ))}
+                        {/* Avg.Prac, Exam, Prac%, Exam%, Total already have rowSpan=2 */}
+                      </React.Fragment>
+                    ))}
+                    {instructorCount > 1 && (
+                      /* Avg, Position, Remarks already have rowSpan=3 */
+                      null
+                    )}
+                  </tr>
+                )}
               </thead>
               <tbody>
                 {rankedData.map((item, index) => (
@@ -320,20 +358,48 @@ export default function OneMileCourseSemesterResultPage() {
                     {instructorSlots.map(i => {
                       const sub = submissions[i];
                       const instructorId = sub?.instructor_details?.id;
-                      const mark = instructorId !== undefined ? item.instructorMarks[instructorId] : undefined;
+                      const instrData = instructorId !== undefined ? item.instructorData[instructorId] : undefined;
                       return (
-                        <td key={i} className="border border-black px-2 py-2 text-center">
-                          {mark !== undefined ? mark.toFixed(2) : "-"}
-                        </td>
+                        <React.Fragment key={i}>
+                          {hasPractices && Array.from({ length: practiceCount }, (_, p) => (
+                            <td key={p} className="border border-black px-2 py-2 text-center">
+                              {instrData?.practices[p] !== undefined
+                                ? instrData.practices[p].toFixed(2)
+                                : "-"}
+                            </td>
+                          ))}
+                          <td className="border border-black px-2 py-2 text-center">
+                            {instrData !== undefined ? instrData.avg_practice.toFixed(2) : "-"}
+                          </td>
+                          <td className="border border-black px-2 py-2 text-center">
+                            {instrData !== undefined ? instrData.exam_mark.toFixed(2) : "-"}
+                          </td>
+                          <td className="border border-black px-2 py-2 text-center font-semibold">
+                            {instrData !== undefined ? instrData.conv_practice.toFixed(2) : "-"}
+                          </td>
+                          <td className="border border-black px-2 py-2 text-center font-semibold">
+                            {instrData !== undefined ? instrData.conv_exam.toFixed(2) : "-"}
+                          </td>
+                          <td className="border border-black px-2 py-2 text-center font-bold">
+                            {instrData !== undefined ? instrData.finalMark.toFixed(2) : "-"}
+                          </td>
+                          <td className="border border-black px-2 py-2 text-center font-bold text-blue-700">
+                            {instrData !== undefined && estimatedMarkPerInstructor > 0
+                              ? ((instrData.finalMark * conversationMarkLimit) / estimatedMarkPerInstructor).toFixed(2)
+                              : "-"}
+                          </td>
+                        </React.Fragment>
                       );
                     })}
-                    <td className="border border-black px-2 py-2 text-center font-bold">
-                      {isComplete ? item.convertedMark.toFixed(2) : "-"}
-                    </td>
+                    {instructorCount > 1 && (
+                      <td className="border border-black px-2 py-2 text-center font-bold text-blue-700">
+                        {isComplete ? item.convertedMark.toFixed(2) : "-"}
+                      </td>
+                    )}
                     <td className="border border-black px-2 py-2 text-center">
                       {isComplete ? getOrdinal(item.position) : "-"}
                     </td>
-                    <td className={`border border-black px-2 py-2 text-center ${item.remark === "Failed" ? "text-red-600" : "text-gray-400"}`}>
+                    <td className={`border border-black px-2 py-2 text-center ${item.remark === "Failed" ? "text-red-600 font-semibold" : "text-gray-400"}`}>
                       {item.remark}
                     </td>
                   </tr>

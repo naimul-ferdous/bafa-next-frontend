@@ -11,14 +11,14 @@ import { wingService } from "@/libs/services/wingService";
 import { subWingService } from "@/libs/services/subWingService";
 import { commonService } from "@/libs/services/commonService";
 import { atwUserAssignService } from "@/libs/services/atwUserAssignService";
+import { ctwUserAssignService } from "@/libs/services/ctwUserAssignService";
+import { ftw11sqnUserAssignService } from "@/libs/services/ftw11sqnUserAssignService";
 import { useAuth } from "@/libs/hooks/useAuth";
 import type { InstructorBiodata, Role, Wing, SubWing } from "@/libs/types/user";
 import type { SystemCourse } from "@/libs/types/system";
 import {
-  AtwPenpictureAssign,
   AtwCounselingAssign,
   AtwOlqAssign,
-  AtwWarningAssign,
 } from "@/libs/types/atwAssign";
 
 interface InstructorAssignRoleModalProps {
@@ -28,20 +28,16 @@ interface InstructorAssignRoleModalProps {
   onSuccess?: () => void;
 }
 
-type AssessmentType = "penpicture" | "counseling" | "olq" | "warning";
+type AssessmentType = "counseling" | "olq";
 
 const ASSESSMENTS: { key: AssessmentType; label: string; color: string }[] = [
-  { key: "penpicture", label: "Pen Picture", color: "bg-purple-100 text-purple-700 border-purple-200" },
   { key: "counseling", label: "Counseling", color: "bg-blue-100   text-blue-700   border-blue-200" },
   { key: "olq", label: "OLQ", color: "bg-green-100  text-green-700  border-green-200" },
-  { key: "warning", label: "Warning", color: "bg-red-100    text-red-700    border-red-200" },
 ];
 
 interface ExistingAssigns {
-  penpicture: AtwPenpictureAssign | null;
   counseling: AtwCounselingAssign | null;
   olq: AtwOlqAssign | null;
-  warning: AtwWarningAssign | null;
 }
 
 export default function InstructorAssignRoleModal({
@@ -87,16 +83,12 @@ export default function InstructorAssignRoleModal({
   const [selectedCourseId, setSelectedCourseId] = useState<string>("");
   const [isMergeMode, setIsMergeMode] = useState(false);
   const [checks, setChecks] = useState<Record<AssessmentType, boolean>>({
-    penpicture: false,
     counseling: false,
     olq: false,
-    warning: false,
   });
   const [existing, setExisting] = useState<ExistingAssigns>({
-    penpicture: null,
     counseling: null,
     olq: null,
-    warning: null,
   });
   const [loadingAssigns, setLoadingAssigns] = useState(false);
 
@@ -305,6 +297,10 @@ export default function InstructorAssignRoleModal({
         wingService.getAllWings({ per_page: 100 }),
         commonService.getResultOptions(),
       ]);
+      
+      console.log("Roles Response:", rolesRes);
+      console.log("Roles Data:", rolesRes.data);
+      
       // Fix: use !!r.is_active so integer 1 is treated as active
       setRoles(rolesRes.data.filter((r) => !!r.is_active));
       setWings(wingsRes.data);
@@ -336,22 +332,23 @@ export default function InstructorAssignRoleModal({
       setLoadingAssigns(true);
       setError(null);
       try {
-        const data = await atwUserAssignService.getAll({
+        const selectedWing = wings.find(w => w.id === Number(selectedWingId));
+        const isCTWing  = selectedWing?.code === 'CTW';
+        const isFTWing  = selectedWing?.is_flying === true || selectedWing?.code === 'FTW';
+        const service   = isCTWing ? ctwUserAssignService : isFTWing ? ftw11sqnUserAssignService : atwUserAssignService;
+
+        const data = await service.getAll({
           course_id: parseInt(selectedCourseId),
         });
 
-        const pp = data.penpicture[0] || null;
         const cn = data.counseling[0] || null;
         const olq = data.olq[0] || null;
-        const wrn = data.warning[0] || null;
 
-        setExisting({ penpicture: pp, counseling: cn, olq, warning: wrn });
+        setExisting({ counseling: cn, olq });
         // Pre-check only if the CURRENT user already has the assignment
         setChecks({
-          penpicture: !!pp && pp.user_id === user.id,
           counseling: !!cn && cn.user_id === user.id,
-          olq: !!olq && olq.user_id === user.id,
-          warning: !!wrn && wrn.user_id === user.id,
+          olq:        !!olq && olq.user_id === user.id,
         });
       } catch {
         setError("Failed to load existing assignments.");
@@ -361,7 +358,7 @@ export default function InstructorAssignRoleModal({
     };
 
     fetchAssigns();
-  }, [selectedCourseId, needsAssessment, user]);
+  }, [selectedCourseId, needsAssessment, user, wings, selectedWingId]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -397,18 +394,24 @@ export default function InstructorAssignRoleModal({
         const payload = { course_id: courseId, user_id: user.id, is_active: true };
         const ops: Promise<unknown>[] = [];
 
-        (["penpicture", "counseling", "olq", "warning"] as AssessmentType[]).forEach((key) => {
+        // Determine which service to use based on selected wing
+        const selectedWing = wings.find(w => w.id === Number(selectedWingId));
+        const isCTWing  = selectedWing?.code === 'CTW';
+        const isFTWing  = selectedWing?.is_flying === true || selectedWing?.code === 'FTW';
+        const service   = isCTWing ? ctwUserAssignService : isFTWing ? ftw11sqnUserAssignService : atwUserAssignService;
+
+        (["counseling", "olq"] as AssessmentType[]).forEach((key) => {
           const isCurrentlyAssignedToThisUser = !!existing[key] && existing[key].user_id === user.id;
           
           if (checks[key]) {
             if (!existing[key]) {
               // No one assigned, create new
-              ops.push(atwUserAssignService.store(key, payload));
+              ops.push(service.store(key, payload));
             } else if (existing[key].user_id !== user.id) {
               // Someone else assigned, replace them (delete old, then store new)
               ops.push(
-                atwUserAssignService.destroy(key, existing[key].id).then(() => 
-                  atwUserAssignService.store(key, payload)
+                service.destroy(key, existing[key].id).then(() => 
+                  service.store(key, payload)
                 )
               );
             }
@@ -417,10 +420,10 @@ export default function InstructorAssignRoleModal({
             // Unchecked
             if (isCurrentlyAssignedToThisUser) {
               // Remove my assignment
-              ops.push(atwUserAssignService.destroy(key, existing[key]!.id));
+              ops.push(service.destroy(key, existing[key]!.id));
             } else if (existing[key] && userIsSuperAdmin) {
               // Admin unchecking someone else's assignment to "free" the course
-              ops.push(atwUserAssignService.destroy(key, existing[key]!.id));
+              ops.push(service.destroy(key, existing[key]!.id));
             }
           }
         });
@@ -436,7 +439,7 @@ export default function InstructorAssignRoleModal({
       setIsPrimary(false);
       setSelectedCourseId("");
       setIsMergeMode(false);
-      setChecks({ penpicture: false, counseling: false, olq: false, warning: false });
+      setChecks({ counseling: false, olq: false });
 
       onSuccess?.();
       await refreshInstructor();
@@ -468,19 +471,20 @@ export default function InstructorAssignRoleModal({
       // If it was a Course Tutor role, cleanup their assessment assignments
       if (isCourseTutorRole) {
         try {
-          const userAssigns = await atwUserAssignService.getAll({ user_id: user.id });
+          const [atwAssigns, ctwAssigns, ftw11sqnAssigns] = await Promise.all([
+            atwUserAssignService.getAll({ user_id: user.id }),
+            ctwUserAssignService.getAll({ user_id: user.id }),
+            ftw11sqnUserAssignService.getAll({ user_id: user.id }),
+          ]);
           const cleanupOps: Promise<any>[] = [];
-          
-          (["penpicture", "counseling", "olq", "warning"] as AssessmentType[]).forEach((type) => {
-            const typeAssigns = userAssigns[type] || [];
-            typeAssigns.forEach((a: any) => {
-              cleanupOps.push(atwUserAssignService.destroy(type, a.id));
-            });
+
+          (["counseling", "olq"] as AssessmentType[]).forEach((type) => {
+            (atwAssigns[type] || []).forEach((a: any) => cleanupOps.push(atwUserAssignService.destroy(type, a.id)));
+            (ctwAssigns[type] || []).forEach((a: any) => cleanupOps.push(ctwUserAssignService.destroy(type as any, a.id)));
+            (ftw11sqnAssigns[type] || []).forEach((a: any) => cleanupOps.push(ftw11sqnUserAssignService.destroy(type as any, a.id)));
           });
 
-          if (cleanupOps.length > 0) {
-            await Promise.all(cleanupOps);
-          }
+          if (cleanupOps.length > 0) await Promise.all(cleanupOps);
         } catch (cleanupErr) {
           console.error("Failed to cleanup assessment assignments:", cleanupErr);
         }
@@ -502,7 +506,7 @@ export default function InstructorAssignRoleModal({
     setIsPrimary(false);
     setSelectedCourseId("");
     setIsMergeMode(false);
-    setChecks({ penpicture: false, counseling: false, olq: false, warning: false });
+    setChecks({ counseling: false, olq: false });
     setError(null);
     onClose();
   };
@@ -646,19 +650,15 @@ export default function InstructorAssignRoleModal({
             <div className="mb-8">
               <h4 className="text-sm font-semibold text-gray-700 mb-3">Current Role</h4>
               {user?.role_assignments && user.role_assignments.filter((a) => {
-                const slug = a.role?.slug?.toLowerCase() || "";
-                const name = a.role?.name || "";
-                const instructorSlugs = ['instructor', 'atw-cic', 'atw-course-tutor'];
-                const instructorNames = ['ATW CIC', 'ATW Course Tutor', 'Instructor'];
-                return instructorSlugs.includes(slug) || instructorNames.includes(name);
+                const slug = (a.role?.slug || "").toLowerCase();
+                const name = (a.role?.name || "").toLowerCase();
+                return slug === 'instructor' || name === 'instructor' || slug.includes('cic') || name.includes('cic') || slug.includes('course-tutor') || name.includes('course tutor');
               }).length > 0 ? (
                 <div className="space-y-3 max-h-80 overflow-y-auto pr-2 custom-scrollbar">
                   {user.role_assignments.filter((a) => {
-                    const slug = a.role?.slug?.toLowerCase() || "";
-                    const name = a.role?.name || "";
-                    const instructorSlugs = ['instructor', 'atw-cic', 'atw-course-tutor'];
-                    const instructorNames = ['ATW CIC', 'ATW Course Tutor', 'Instructor'];
-                    return instructorSlugs.includes(slug) || instructorNames.includes(name);
+                    const slug = (a.role?.slug || "").toLowerCase();
+                    const name = (a.role?.name || "").toLowerCase();
+                    return slug === 'instructor' || name === 'instructor' || slug.includes('cic') || name.includes('cic') || slug.includes('course-tutor') || name.includes('course tutor');
                   }).map((assignment) => {
                     const roleName = assignment.role?.name?.toLowerCase() || "";
                     const roleSlug = assignment.role?.slug?.toLowerCase() || "";
@@ -742,8 +742,8 @@ export default function InstructorAssignRoleModal({
             )}
 
             <form onSubmit={handleSubmit} className="border-t border-gray-100 pt-6">
-              {/* <h4 className="text-sm font-semibold text-gray-700 mb-3">Add New Role</h4> */}
-              {/* <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+              <h4 className="text-sm font-semibold text-gray-700 mb-3">Add New Role</h4>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -827,7 +827,7 @@ export default function InstructorAssignRoleModal({
                     </select>
                   </div>
                 )}
-              </div> */}
+              </div>
               <div className="flex items-center gap-2 mb-6">
                 <input
                   type="checkbox"

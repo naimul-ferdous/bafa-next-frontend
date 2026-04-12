@@ -63,10 +63,10 @@ const demoNotices: NoticeItem[] = [
   },
   {
     id: 4,
-    title: "Pen Picture Submissions Open",
-    body: "Instructors can now submit pen pictures for their assigned cadets via the Pen Picture module.",
+    title: "PER Submissions Open",
+    body: "Instructors can now submit pen pictures for their assigned cadets via the PER module.",
     timestamp: "Yesterday",
-    tag: "Pen Picture",
+    tag: "PER",
     tagColor: "bg-indigo-100 text-indigo-600",
     icon: "hugeicons:edit-02",
     iconBg: "from-indigo-500 to-violet-700",
@@ -279,7 +279,7 @@ export default function AtwAssessmentPenpictureResultsPage() {
                   </div>
                   <div className="relative z-10 flex flex-col items-center px-6 py-3">
                     <p className="font-black text-slate-500 uppercase tracking-widest mt-2 text-center leading-tight">
-                      ATW <br /> Pen Picture Management
+                      ATW <br /> PER Management
                     </p>
                   </div>
                 </div>
@@ -328,8 +328,8 @@ export default function AtwAssessmentPenpictureResultsPage() {
 
         </div>
       </div>
-      <div className="lg:col-span-1 xl:col-span-2">
-        <div className="grid grid-cols-2 gap-4">
+      <div className="lg:col-span-1 xl:col-span-5">
+        <div className="grid grid-cols-5 gap-4">
           <div>
             {isInstructor && (
               <div className="hidden lg:flex flex-col gap-4">
@@ -360,9 +360,9 @@ export default function AtwAssessmentPenpictureResultsPage() {
               </div>
             )}
           </div>
-          <div>
+          {/* <div>
             <NoticesPanel />
-          </div>
+          </div> */}
         </div>
       </div>
     </div>

@@ -46,7 +46,7 @@ export default function EditOlqResultPage() {
     setLoading(true);
     try {
       await ctwAssessmentOlqResultService.updateResult(parseInt(resultId), data);
-      router.push("/ctw/assessments/olq/results");
+      router.push("/ctw/assessments/olq/results/view");
     } catch (err: any) {
       throw err;
     } finally {
@@ -55,7 +55,7 @@ export default function EditOlqResultPage() {
   };
 
   const handleCancel = () => {
-    router.push("/ctw/assessments/olq/results");
+    router.push("/ctw/assessments/olq/results/view");
   };
 
   if (loadingResult) {
@@ -74,7 +74,7 @@ export default function EditOlqResultPage() {
         <div className="text-center py-12">
           <Icon icon="hugeicons:alert-circle" className="w-10 h-10 mx-auto mb-4 text-red-500" />
           <p className="text-red-600">{error}</p>
-          <button onClick={() => router.push("/ctw/assessments/olq/results")} className="mt-4 px-6 py-2 bg-blue-500 text-white rounded-xl hover:bg-blue-600">
+          <button onClick={() => router.push("/ctw/assessments/olq/results/view")} className="mt-4 px-6 py-2 bg-blue-500 text-white rounded-xl hover:bg-blue-600">
             Back to OLQ Results
           </button>
         </div>

@@ -230,6 +230,16 @@ export default function AtwSubjectModulesPage() {
       render: (subject) => subject.subject_period
     },
     {
+      key: "semester",
+      header: "Semester",
+      className: "text-gray-700 text-sm",
+      render: (subject) => subject.semester ? (
+        <span className="inline-flex items-center px-2 py-0.5 bg-blue-50 text-blue-700 rounded text-[10px] font-medium border border-blue-100">
+          {subject.semester.name}
+        </span>
+      ) : <span className="text-gray-400 text-xs">—</span>
+    },
+    {
       key: "marksheet",
       header: "Marksheet Marks",
       render: (subject) => {

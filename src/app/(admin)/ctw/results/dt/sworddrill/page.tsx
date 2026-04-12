@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { CtwSwordDrillResult } from "@/libs/types/ctwSwordDrill";
 import { Icon } from "@iconify/react";
 import { ctwSwordDrillResultService } from "@/libs/services/ctwSwordDrillResultService";
-import { ctwResultsModuleService } from "@/libs/services/ctwResultsModuleService";
+import { ctwCommonService } from "@/libs/services/ctwCommonService";
 import { useAuth } from "@/libs/hooks/useAuth";
 import FullLogo from "@/components/ui/fulllogo";
 import DataTable, { Column } from "@/components/ui/DataTable";
@@ -44,27 +44,29 @@ export default function CtwSwordDrillResultsPage() {
   const [moduleLoading, setModuleLoading] = useState(true);
 
   useEffect(() => {
+    if (!user?.id) return;
     const fetchModuleId = async () => {
       try {
         setModuleLoading(true);
-        const modulesRes = await ctwResultsModuleService.getAllModules({ per_page: 100 });
-        const swordDrillModule = modulesRes.data.find((m: any) => m.code === SWORD_DRILL_MODULE_CODE);
-        if (swordDrillModule) {
-          setSwordDrillModuleId(swordDrillModule.id);
+        const options = await ctwCommonService.getSwordDrillFormOptions(user?.id || 0);
+        if (options?.module) {
+          setSwordDrillModuleId(options.module.id);
         } else {
-          console.error(`Module with code ${SWORD_DRILL_MODULE_CODE} not found.`);
+          setSwordDrillModuleId(null);
+          setLoading(false);
         }
       } catch (err) {
-        console.error("Failed to fetch module ID:", err);
+        setSwordDrillModuleId(null);
+        setLoading(false);
       } finally {
         setModuleLoading(false);
       }
     };
     fetchModuleId();
-  }, []);
+  }, [user?.id]);
 
   const loadResults = useCallback(async () => {
-    if (swordDrillModuleId === null || !user?.id) return;
+    if (swordDrillModuleId === null || !user?.id) { setLoading(false); return; }
     try {
       setLoading(true);
       const response = await ctwSwordDrillResultService.getAllResults(swordDrillModuleId, {
@@ -246,7 +248,7 @@ export default function CtwSwordDrillResultsPage() {
       </div>
 
       {isInstructor ? (
-        (loading || moduleLoading) ? <TableLoading /> : (
+        (loading) ? <TableLoading /> : (
           <>
             <DataTable columns={columns} data={results} keyExtractor={(result) => result.id.toString()} emptyMessage="No results found" />
             <div className="flex items-center justify-between mt-6">

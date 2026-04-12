@@ -270,7 +270,7 @@ const GraphTab: React.FC<GraphTabProps> = ({ cadetData }) => {
         enabled: true,
         formatter: (val: number) => `${val}%`,
         style: {
-          fontSize: "11px",
+          fontSize: "12px",
           fontWeight: 600,
         },
       },

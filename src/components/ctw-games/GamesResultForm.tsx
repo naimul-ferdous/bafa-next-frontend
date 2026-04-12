@@ -4,8 +4,9 @@
 import React, { useState, useEffect } from "react";
 import Label from "@/components/form/Label";
 import { commonService } from "@/libs/services/commonService";
+import { ctwCommonService } from "@/libs/services/ctwCommonService";
 import { ctwResultsModuleService } from "@/libs/services/ctwResultsModuleService";
-import { ctwInstructorAssignCadetService } from "@/libs/services/ctwInstructorAssignCadetService";
+import { cadetService } from "@/libs/services/cadetService";
 import { ctwInstructorAssignModuleService } from "@/libs/services/ctwInstructorAssignModuleService";
 import { useAuth } from "@/libs/hooks/useAuth";
 import { Icon } from "@iconify/react";
@@ -89,36 +90,37 @@ export default function GamesResultForm({ initialData, onSubmit, onCancel, loadi
   const [groups, setGroups] = useState<SystemGroup[]>([]);
   const [exams, setExams] = useState<SystemExam[]>([]);
   const [estimatedMarks, setEstimatedMarks] = useState<any[]>([]);
-  const [gamesModuleId, setGamesModuleId] = useState<number>(0);
+  const [moduleId, setModuleId] = useState<number>(0);
   const [loadingDropdowns, setLoadingDropdowns] = useState(true);
   const [loadingCadets, setLoadingCadets] = useState(false);
   const [loadingEstimatedMarks, setLoadingEstimatedMarks] = useState(false);
+  const [loadingSemesters, setLoadingSemesters] = useState(false);
   const [moduleAssigned, setModuleAssigned] = useState(false);
 
   const selectedEM = estimatedMarks.find((em: any) => em.exam_type_id === formData.exam_type_id);
   const details: any[] = selectedEM?.details || [];
   const hasScoresRow = details.some((d: any) => d.scores && d.scores.length > 0);
 
+  // Load all form options in a single API call
   useEffect(() => {
+    if (!user?.id) return;
+
     const loadDropdownData = async () => {
       try {
         setLoadingDropdowns(true);
-        const [options, modulesRes] = await Promise.all([
-          commonService.getResultOptions(),
-          ctwResultsModuleService.getAllModules({ per_page: 100 }),
-        ]);
+        const options = await ctwCommonService.getGamesFormOptions(user.id);
 
         if (options) {
           setCourses(options.courses);
-          setSemesters(options.semesters);
           setPrograms(options.programs);
           setBranches(options.branches);
           setGroups(options.groups);
           setExams(options.exams);
-        }
 
-        const gamesModule = modulesRes.data.find((m: any) => m.code === GAMES_MODULE_CODE);
-        if (gamesModule) setGamesModuleId(gamesModule.id);
+          if (options.module) {
+            setModuleId(options.module.id);
+          }
+        }
       } catch (err) {
         console.error("Failed to load dropdown data:", err);
         setError("Failed to load required data. Please refresh the page.");
@@ -126,19 +128,44 @@ export default function GamesResultForm({ initialData, onSubmit, onCancel, loadi
         setLoadingDropdowns(false);
       }
     };
+
     loadDropdownData();
-  }, []);
+  }, [user?.id]);
+
+  // Load semesters dynamically when course is selected
+  useEffect(() => {
+    if (!formData.course_id) {
+      setSemesters([]);
+      if (!initialData) setFormData(prev => ({ ...prev, semester_id: 0 }));
+      return;
+    }
+
+    const loadSemesters = async () => {
+      try {
+        setLoadingSemesters(true);
+        if (!initialData) setFormData(prev => ({ ...prev, semester_id: 0 }));
+        const result = await commonService.getSemestersByCourse(formData.course_id);
+        setSemesters(result);
+      } catch (err) {
+        console.error("Failed to load semesters:", err);
+        setSemesters([]);
+      } finally {
+        setLoadingSemesters(false);
+      }
+    };
+
+    loadSemesters();
+  }, [formData.course_id, initialData]);
 
   useEffect(() => {
     const loadEstimatedMarks = async () => {
-      if (!gamesModuleId || !formData.course_id || !formData.semester_id) {
+      if (!moduleId || !formData.course_id || !formData.semester_id) {
         setEstimatedMarks([]);
         return;
       }
       try {
         setLoadingEstimatedMarks(true);
-        const response = await ctwResultsModuleService.getEstimatedMarks(gamesModuleId, {
-          course_id: formData.course_id,
+        const response = await ctwResultsModuleService.getEstimatedMarks(moduleId, {
           semester_id: formData.semester_id,
         });
         setEstimatedMarks(response);
@@ -150,15 +177,17 @@ export default function GamesResultForm({ initialData, onSubmit, onCancel, loadi
       }
     };
     loadEstimatedMarks();
-  }, [gamesModuleId, formData.course_id, formData.semester_id]);
+  }, [moduleId, formData.course_id, formData.semester_id]);
 
   const hasEstimatedMark = (examTypeId: number): boolean => {
     return estimatedMarks.some((em: any) => em.exam_type_id === examTypeId);
   };
 
+  const simpleMaxMark = parseFloat(selectedEM?.estimated_mark_per_instructor || 0);
+
   useEffect(() => {
     const loadCadets = async () => {
-      if (!user?.id || !gamesModuleId || !formData.course_id || !formData.semester_id || !formData.exam_type_id) {
+      if (!user?.id || !moduleId || !formData.course_id || !formData.semester_id || !formData.exam_type_id) {
         setCadetRows([]);
         setModuleAssigned(false);
         return;
@@ -183,19 +212,17 @@ export default function GamesResultForm({ initialData, onSubmit, onCancel, loadi
 
         setModuleAssigned(true);
 
-        const params: any = {
+        const cadetParams: any = {
           per_page: 500,
-          instructor_id: user.id,
-          ctw_results_module_id: gamesModuleId,
           course_id: formData.course_id,
           semester_id: formData.semester_id,
-          is_active: true,
+          is_current: 1,
         };
-        if (formData.program_id) params.program_id = formData.program_id;
-        if (formData.branch_id) params.branch_id = formData.branch_id;
-        if (formData.group_id) params.group_id = formData.group_id;
+        if (formData.program_id) cadetParams.program_id = formData.program_id;
+        if (formData.branch_id) cadetParams.branch_id = formData.branch_id;
+        if (formData.group_id) cadetParams.group_id = formData.group_id;
 
-        const assignedCadetsRes = await ctwInstructorAssignCadetService.getAll(params);
+        const cadetsRes = await cadetService.getAllCadets(cadetParams);
 
         const currentEM = estimatedMarks.find((em: any) => em.exam_type_id === formData.exam_type_id);
         const currentDetails: any[] = currentEM?.details || [];
@@ -204,23 +231,20 @@ export default function GamesResultForm({ initialData, onSubmit, onCancel, loadi
           initialDetailEntries[d.id] = { detail_id: d.id, quantity: 0, mark: 0 };
         });
 
-        const rows: CadetRow[] = assignedCadetsRes.data
-          .filter((ac: any) => ac.cadet)
-          .map((ac: any) => {
-            const cadet = ac.cadet;
-            const currentRank = cadet.assigned_ranks?.find((ar: any) => ar.rank)?.rank;
-            return {
-              cadet_id: cadet.id,
-              cadet_number: cadet.cadet_number || "",
-              cadet_name: cadet.name,
-              cadet_rank: currentRank?.short_name || currentRank?.name || "Officer Cadet",
-              branch: cadet.assigned_branchs?.find((ab: any) => ab.is_current)?.branch?.name || cadet.assigned_branchs?.[0]?.branch?.name || "N/A",
-              cadet_gender: normalizeGender(cadet.gender || ""),
-              detail_entries: { ...initialDetailEntries },
-              total_mark: 0,
-              is_active: true,
-            };
-          });
+        const rows: CadetRow[] = cadetsRes.data.map((cadet: any) => {
+          const currentRank = cadet.assigned_ranks?.find((ar: any) => ar.rank)?.rank;
+          return {
+            cadet_id: cadet.id,
+            cadet_number: cadet.cadet_number || "",
+            cadet_name: cadet.name,
+            cadet_rank: currentRank?.short_name || currentRank?.name || "Officer Cadet",
+            branch: cadet.assigned_branchs?.find((ab: any) => ab.is_current)?.branch?.name || cadet.assigned_branchs?.[0]?.branch?.name || "N/A",
+            cadet_gender: normalizeGender(cadet.gender || ""),
+            detail_entries: { ...initialDetailEntries },
+            total_mark: 0,
+            is_active: true,
+          };
+        });
 
         setCadetRows(rows);
       } catch (err) {
@@ -234,7 +258,7 @@ export default function GamesResultForm({ initialData, onSubmit, onCancel, loadi
       loadCadets();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id, gamesModuleId, formData.course_id, formData.semester_id, formData.program_id, formData.branch_id, formData.group_id, formData.exam_type_id, initialData]);
+  }, [user?.id, moduleId, formData.course_id, formData.semester_id, formData.program_id, formData.branch_id, formData.group_id, formData.exam_type_id, initialData]);
 
   useEffect(() => {
     if (!initialData) return;
@@ -251,6 +275,7 @@ export default function GamesResultForm({ initialData, onSubmit, onCancel, loadi
     });
 
     if (initialData.achieved_marks && initialData.achieved_marks.length > 0) {
+      setModuleAssigned(true);
       const uniqueCadetIds = Array.from(new Set(initialData.achieved_marks.map((m: any) => m.cadet_id)));
       const rows: CadetRow[] = uniqueCadetIds.map(cadetId => {
         const mark = initialData.achieved_marks?.find((m: any) => m.cadet_id === cadetId) as any;
@@ -316,8 +341,6 @@ export default function GamesResultForm({ initialData, onSubmit, onCancel, loadi
     });
   };
 
-  const simpleMaxMark = parseFloat(selectedEM?.estimated_mark_per_instructor || 0);
-
   const handleSimpleMarkChange = (cadetIndex: number, value: number) => {
     setCadetRows(prev => {
       const updated = [...prev];
@@ -355,7 +378,7 @@ export default function GamesResultForm({ initialData, onSubmit, onCancel, loadi
         group_id: formData.group_id || undefined,
         exam_type_id: formData.exam_type_id,
         instructor_id: user.id,
-        ctw_results_module_id: gamesModuleId,
+        ctw_results_module_id: moduleId,
         remarks: formData.remarks || undefined,
         is_active: formData.is_active,
         marks,
@@ -403,8 +426,16 @@ export default function GamesResultForm({ initialData, onSubmit, onCancel, loadi
 
             <div>
               <Label>Semester <span className="text-red-500">*</span></Label>
-              <select value={formData.semester_id} onChange={(e) => handleChange("semester_id", parseInt(e.target.value))} className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500" required>
-                <option value={0}>Select Semester</option>
+              <select
+                value={formData.semester_id}
+                onChange={(e) => handleChange("semester_id", parseInt(e.target.value))}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500"
+                required
+                disabled={!formData.course_id || loadingSemesters}
+              >
+                <option value={0}>
+                  {loadingSemesters ? "Loading..." : !formData.course_id ? "Select course first" : "Select Semester"}
+                </option>
                 {semesters.map(s => <option key={s.id} value={s.id}>{s.name} ({s.code})</option>)}
               </select>
             </div>
@@ -454,6 +485,9 @@ export default function GamesResultForm({ initialData, onSubmit, onCancel, loadi
                   );
                 })}
               </select>
+              {formData.course_id && formData.semester_id && !loadingEstimatedMarks && (
+                <p className="mt-1 text-xs text-gray-500">Only exam types with estimated marks for the selected course & semester are enabled</p>
+              )}
             </div>
 
             <div className="md:col-span-2">
@@ -492,7 +526,7 @@ export default function GamesResultForm({ initialData, onSubmit, onCancel, loadi
             </div>
           ) : details.length === 0 ? (
             <div className="overflow-x-auto">
-              <table className="w-full border-collapse border border-black text-sm">
+              <table className="w-full border-collapse border border-black text-xs">
                 <thead>
                   <tr>
                     <th className="border border-black px-2 py-2 text-center whitespace-nowrap">SL</th>
@@ -508,10 +542,10 @@ export default function GamesResultForm({ initialData, onSubmit, onCancel, loadi
                 <tbody>
                   {cadetRows.map((cadet, index) => (
                     <tr key={cadet.cadet_id} className={index % 2 === 0 ? "bg-white" : "bg-gray-50"}>
-                      <td className="border border-black px-2 py-2 text-center font-medium">{index + 1}</td>
+                      <td className="border border-black px-2 py-2 text-center">{index + 1}</td>
                       <td className="border border-black px-2 py-2 text-center">{cadet.cadet_number}</td>
                       <td className="border border-black px-2 py-2 text-center">{cadet.cadet_rank}</td>
-                      <td className="border border-black px-2 py-2 font-medium">
+                      <td className="border border-black px-2 py-2">
                         {cadet.cadet_name}
                         {cadet.cadet_gender === "female" && <span className="ml-1 text-pink-600 text-xs font-semibold">(F)</span>}
                       </td>
@@ -524,7 +558,7 @@ export default function GamesResultForm({ initialData, onSubmit, onCancel, loadi
                           step={0.01}
                           value={cadet.total_mark === 0 ? "" : cadet.total_mark}
                           onChange={(e) => handleSimpleMarkChange(index, parseFloat(e.target.value) || 0)}
-                          className="w-20 px-1 py-1 border border-gray-300 rounded text-center text-sm focus:ring-1 focus:ring-blue-500 bg-white [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                          className="w-20 px-1 py-1 border border-gray-300 rounded text-center text-xs focus:ring-1 focus:ring-blue-500 bg-white [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                           placeholder="0"
                         />
                       </td>
@@ -535,7 +569,7 @@ export default function GamesResultForm({ initialData, onSubmit, onCancel, loadi
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full border-collapse border border-black text-sm">
+              <table className="w-full border-collapse border border-black text-xs">
                 <thead>
                   <tr>
                     <th rowSpan={hasScoresRow ? 2 : 1} className="border border-black px-2 py-2 text-center whitespace-nowrap">SL</th>
@@ -569,8 +603,8 @@ export default function GamesResultForm({ initialData, onSubmit, onCancel, loadi
                         const hasScores = detail.scores && detail.scores.length > 0;
                         return hasScores ? (
                           <React.Fragment key={detail.id}>
-                            <th className="border border-black px-2 py-1 text-center text-xs">Qty</th>
-                            <th className="border border-black px-2 py-1 text-center text-xs">Mark</th>
+                            <th className="border border-black px-2 py-1 text-center">Qty</th>
+                            <th className="border border-black px-2 py-1 text-center">Mark</th>
                           </React.Fragment>
                         ) : null;
                       })}
@@ -580,10 +614,10 @@ export default function GamesResultForm({ initialData, onSubmit, onCancel, loadi
                 <tbody>
                   {cadetRows.map((cadet, index) => (
                     <tr key={cadet.cadet_id} className={index % 2 === 0 ? "bg-white" : "bg-gray-50"}>
-                      <td className="border border-black px-2 py-2 text-center font-medium">{index + 1}</td>
+                      <td className="border border-black px-2 py-2 text-center">{index + 1}</td>
                       <td className="border border-black px-2 py-2 text-center">{cadet.cadet_number}</td>
                       <td className="border border-black px-2 py-2 text-center">{cadet.cadet_rank}</td>
-                      <td className="border border-black px-2 py-2 font-medium">
+                      <td className="border border-black px-2 py-2">
                         {cadet.cadet_name}
                         {cadet.cadet_gender === "female" && <span className="ml-1 text-pink-600 text-xs font-semibold">(F)</span>}
                       </td>
@@ -603,11 +637,11 @@ export default function GamesResultForm({ initialData, onSubmit, onCancel, loadi
                                   step={1}
                                   value={entry.quantity === 0 ? "" : entry.quantity}
                                   onChange={(e) => handleDetailChange(index, detail.id, "quantity", parseFloat(e.target.value) || 0)}
-                                  className="w-16 px-1 py-1 border border-gray-300 rounded text-center text-sm focus:ring-1 focus:ring-blue-500 bg-white [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                  className="w-16 px-1 py-1 border border-gray-300 rounded text-center text-xs focus:ring-1 focus:ring-blue-500 bg-white [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                                   placeholder="0"
                                 />
                               </td>
-                              <td className="border border-black px-2 py-2 text-center font-semibold text-blue-700">
+                              <td className="border border-black px-2 py-2 text-center text-blue-700">
                                 {entry.mark.toFixed(2)}
                               </td>
                             </React.Fragment>
@@ -622,14 +656,14 @@ export default function GamesResultForm({ initialData, onSubmit, onCancel, loadi
                                 step={0.01}
                                 value={entry.mark === 0 ? "" : entry.mark}
                                 onChange={(e) => handleDetailChange(index, detail.id, "mark", parseFloat(e.target.value) || 0)}
-                                className="w-16 px-1 py-1 border border-gray-300 rounded text-center text-sm focus:ring-1 focus:ring-blue-500 bg-white [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                className="w-16 px-1 py-1 border border-gray-300 rounded text-center text-xs focus:ring-1 focus:ring-blue-500 bg-white [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                                 placeholder="0"
                               />
                             </td>
                           );
                         }
                       })}
-                      <td className="border border-black px-2 py-2 text-center font-bold">
+                      <td className="border border-black px-2 py-2 text-center">
                         {cadet.total_mark.toFixed(2)}
                       </td>
                     </tr>

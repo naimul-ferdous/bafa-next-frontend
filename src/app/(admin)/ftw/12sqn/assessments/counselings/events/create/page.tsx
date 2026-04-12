@@ -14,8 +14,10 @@ export default function Ftw12sqnCreateCounselingTypePage() {
   const handleSubmit = async (data: any) => {
     setLoading(true);
     try {
-      await ftw12sqnAssessmentCounselingTypeService.createType(data);
-      router.push("/ftw/12sqn/assessments/counselings/events");
+      const res = await ftw12sqnAssessmentCounselingTypeService.createType(data);
+      if (res) {
+        router.push("/ftw/12sqn/assessments/counselings/events");
+      }
     } catch (err: any) {
       throw err;
     } finally {

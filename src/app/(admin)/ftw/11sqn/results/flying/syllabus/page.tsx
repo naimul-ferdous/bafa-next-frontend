@@ -8,8 +8,6 @@ import { ftw11sqnFlyingSyllabusService } from "@/libs/services/ftw11sqnFlyingSyl
 import FullLogo from "@/components/ui/fulllogo";
 
 interface SyllabusSummaryRow {
-    course_id: number | null;
-    course_name: string;
     semester_id: number | null;
     semester_name: string;
     total_phases: number;
@@ -19,8 +17,6 @@ interface SyllabusSummaryRow {
     solo_hours: number;
     total_sorties: number;
     total_hours: number;
-    isFirstInCourse: boolean;
-    courseRowSpan: number;
 }
 
 interface SemesterGroup {
@@ -28,13 +24,6 @@ interface SemesterGroup {
     semester_name: string;
     semester_details: any;
     syllabus: Ftw11sqnFlyingSyllabus[];
-}
-
-interface CourseGroup {
-    course_id: number | null;
-    course_name: string;
-    course_details: any;
-    semesters: SemesterGroup[];
 }
 
 // Convert decimal hours to HH:MM format
@@ -50,7 +39,7 @@ const formatHoursToHHMM = (hours: number | string | null): string => {
 
 export default function Ftw11sqnFlyingSyllabusPage() {
     const router = useRouter();
-    const [groupedData, setGroupedData] = useState<CourseGroup[]>([]);
+    const [groupedData, setGroupedData] = useState<SemesterGroup[]>([]);
     const [loading, setLoading] = useState(true);
 
     const loadSyllabus = useCallback(async () => {
@@ -70,56 +59,42 @@ export default function Ftw11sqnFlyingSyllabusPage() {
     }, [loadSyllabus]);
 
     const summaryData = useMemo((): SyllabusSummaryRow[] => {
-        const rows: SyllabusSummaryRow[] = [];
+        return groupedData.map(semesterGroup => {
+            let dualSorties = 0;
+            let dualHours = 0;
+            let soloSorties = 0;
+            let soloHours = 0;
 
-        groupedData.forEach(courseGroup => {
-            courseGroup.semesters.forEach((semesterGroup, semIndex) => {
-                let dualSorties = 0;
-                let dualHours = 0;
-                let soloSorties = 0;
-                let soloHours = 0;
+            semesterGroup.syllabus.forEach(s => {
+                const d = s.syllabus_types?.find(st => st.phase_type?.type_code?.toLowerCase() === "dual");
+                const sl = s.syllabus_types?.find(st => st.phase_type?.type_code?.toLowerCase() === "solo");
 
-                semesterGroup.syllabus.forEach(s => {
-                    const d = s.syllabus_types?.find(st => st.phase_type?.type_code?.toLowerCase() === "dual");
-                    const sl = s.syllabus_types?.find(st => st.phase_type?.type_code?.toLowerCase() === "solo");
-
-                    dualSorties += d?.sorties || 0;
-                    dualHours += parseFloat(String(d?.hours || 0));
-                    soloSorties += sl?.sorties || 0;
-                    soloHours += parseFloat(String(sl?.hours || 0));
-                });
-
-                rows.push({
-                    course_id: courseGroup.course_id,
-                    course_name: courseGroup.course_name,
-                    semester_id: semesterGroup.semester_id,
-                    semester_name: semesterGroup.semester_name,
-                    total_phases: semesterGroup.syllabus.length,
-                    dual_sorties: dualSorties,
-                    dual_hours: dualHours,
-                    solo_sorties: soloSorties,
-                    solo_hours: soloHours,
-                    total_sorties: dualSorties + soloSorties,
-                    total_hours: dualHours + soloHours,
-                    isFirstInCourse: semIndex === 0,
-                    courseRowSpan: courseGroup.semesters.length
-                });
+                dualSorties += d?.sorties || 0;
+                dualHours += parseFloat(String(d?.hours || 0));
+                soloSorties += sl?.sorties || 0;
+                soloHours += parseFloat(String(sl?.hours || 0));
             });
-        });
 
-        return rows;
+            return {
+                semester_id: semesterGroup.semester_id,
+                semester_name: semesterGroup.semester_name,
+                total_phases: semesterGroup.syllabus.length,
+                dual_sorties: dualSorties,
+                dual_hours: dualHours,
+                solo_sorties: soloSorties,
+                solo_hours: soloHours,
+                total_sorties: dualSorties + soloSorties,
+                total_hours: dualHours + soloHours,
+            };
+        });
     }, [groupedData]);
 
     const handleAddSyllabus = () => router.push("/ftw/11sqn/results/flying/syllabus/create");
     const handlePrint = () => window.print();
     const handleExport = () => console.log("Export summary");
 
-    const goToDetailedSyllabus = (courseId: number | null, semesterId: number | null) => {
-        router.push(`/ftw/11sqn/results/flying/syllabus/course/${courseId || 0}/semester/${semesterId || 0}`);
-    };
-
-    const goToFullCourseDetails = (courseId: number | null) => {
-        router.push(`/ftw/11sqn/results/flying/syllabus/details/${courseId || 0}`);
+    const goToDetailedSyllabus = (semesterId: number | null) => {
+        router.push(`/ftw/11sqn/results/flying/syllabus/semester/${semesterId || 0}`);
     };
 
     const TableLoading = () => (
@@ -171,7 +146,7 @@ export default function Ftw11sqnFlyingSyllabusPage() {
                             <table className="w-full border-collapse">
                                 <thead className="border-b border-black">
                                     <tr>
-                                        <th className="px-4 py-3 text-center text-sm font-semibold text-gray-900 uppercase border-r border-black">Course Name</th>
+                                        <th className="px-4 py-3 text-center text-sm font-semibold text-gray-900 uppercase border-r border-black">SL.</th>
                                         <th className="px-4 py-3 text-center text-sm font-semibold text-gray-900 uppercase border-r border-black">Semester</th>
                                         <th className="px-4 py-3 text-center text-sm font-semibold text-gray-900 uppercase border-r border-black">Phases</th>
                                         <th className="px-4 py-3 text-center text-sm font-semibold text-gray-900 uppercase border-r border-black">Dual (S/H)</th>
@@ -187,32 +162,12 @@ export default function Ftw11sqnFlyingSyllabusPage() {
                                         </tr>
                                     ) : (
                                         summaryData.map((row, index) => (
-                                            <tr 
-                                                key={`${row.course_id}-${row.semester_id}`} 
+                                            <tr
+                                                key={row.semester_id}
                                                 className="hover:bg-gray-50 cursor-pointer"
-                                                onClick={() => goToDetailedSyllabus(row.course_id, row.semester_id)}
+                                                onClick={() => goToDetailedSyllabus(row.semester_id)}
                                             >
-                                                {row.isFirstInCourse && (
-                                                    <td 
-                                                        rowSpan={row.courseRowSpan} 
-                                                        className="px-4 py-3 border-r border-black align-center bg-white cursor-default"
-                                                        onClick={(e) => e.stopPropagation()}
-                                                    >
-                                                        <div className="flex flex-col items-center gap-2">
-                                                            <span className="font-bold text-gray-900">{row.course_name}</span>
-                                                            <button 
-                                                                onClick={(e) => {
-                                                                    e.stopPropagation();
-                                                                    goToFullCourseDetails(row.course_id);
-                                                                }}
-                                                                className="flex items-center gap-1 text-xs px-2 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 w-fit transition-colors"
-                                                            >
-                                                                <Icon icon="hugeicons:view" className="w-3 h-3" />
-                                                                Full Details
-                                                            </button>
-                                                        </div>
-                                                    </td>
-                                                )}
+                                                <td className="px-4 py-3 text-sm text-center text-gray-700 border-r border-black">{index + 1}</td>
                                                 <td className="px-4 py-3 text-sm text-center text-gray-700 border-r border-black">{row.semester_name}</td>
                                                 <td className="px-4 py-3 text-sm text-center text-gray-700 border-r border-black">{row.total_phases}</td>
                                                 <td className="px-4 py-3 text-sm text-center text-gray-700 border-r border-black">
@@ -226,7 +181,7 @@ export default function Ftw11sqnFlyingSyllabusPage() {
                                                 </td>
                                                 <td className="px-4 py-3 text-center" onClick={(e) => e.stopPropagation()}>
                                                     <button
-                                                        onClick={() => goToDetailedSyllabus(row.course_id, row.semester_id)}
+                                                        onClick={() => goToDetailedSyllabus(row.semester_id)}
                                                         className="p-1.5 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors"
                                                         title="View Semester Details"
                                                     >

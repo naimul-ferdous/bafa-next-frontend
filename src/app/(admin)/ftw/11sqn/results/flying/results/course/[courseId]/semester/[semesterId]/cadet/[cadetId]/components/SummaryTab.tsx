@@ -38,7 +38,7 @@ const SummaryTab: React.FC<SummaryTabProps> = ({
 }) => {
   const formatDate = (date: string | undefined) => {
     if (!date) return "-";
-    return new Date(date).toLocaleDateString();
+    return new Date(date).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
   };
 
   return (
@@ -123,13 +123,13 @@ const SummaryTab: React.FC<SummaryTabProps> = ({
                     {mission.instructor?.name || "N/A"}
                   </td>
                   <td className="px-4 py-2 whitespace-nowrap text-center text-black border border-black text-sm text-gray-900">
-                    {mission.achieved_time ? mission.achieved_time.toString().replace(".", ":") : "-"}
+                    {(mission.phaseType?.id === 1 || mission.phase_type?.id === 1) && mission.achieved_time ? mission.achieved_time.toString().replace(".", ":") : "-"}
                   </td>
                   <td className="px-4 py-2 whitespace-nowrap text-center text-black border border-black text-sm text-gray-900">
-                    -
+                    {(mission.phaseType?.id === 2 || mission.phase_type?.id === 2) && mission.achieved_time ? mission.achieved_time.toString().replace(".", ":") : "-"}
                   </td>
                   <td className="px-4 py-2 whitespace-nowrap text-black border border-black text-center">
-                    {mission.achieved_mark !== null ? (
+                    {mission.achieved_mark !== null && mission.achieved_mark !== undefined ? (
                       <span
                         className={`text-sm font-bold ${
                           parseFloat(mission.achieved_mark?.toString() || "0") >= 80
@@ -139,7 +139,7 @@ const SummaryTab: React.FC<SummaryTabProps> = ({
                             : "text-red-600"
                         }`}
                       >
-                        {parseFloat(mission.achieved_mark?.toString() || "0").toFixed(2)}
+                        {isNaN(parseFloat(mission.achieved_mark)) ? mission.achieved_mark : parseFloat(mission.achieved_mark).toFixed(2)}
                       </span>
                     ) : (
                       <span className="text-gray-400">-</span>
@@ -292,13 +292,19 @@ const SummaryTab: React.FC<SummaryTabProps> = ({
 
                     if (Array.isArray(phase.exercises)) {
                       phase.exercises.forEach((exercise: any) => {
-                        const mark = parseFloat(exercise.achieved_mark?.toString() || "0");
+                        const markValue = exercise.achieved_mark;
+                        const mark = parseFloat(markValue?.toString() || "0");
                         if (!isNaN(mark) && mark > 0) {
                           groupedPhases[phaseSymbol].allMarks.push(mark);
                         }
 
-                        if (exercise.achieved_time && parseFloat(exercise.achieved_time) > 0) {
+                        // Count solo (phase_type_id = 1) and dual (phase_type_id = 2)
+                        const phaseTypeId = exercise.phaseType?.id || exercise.phase_type?.id;
+                        if (phaseTypeId === 1 && exercise.achieved_time) {
                           groupedPhases[phaseSymbol].soloCount++;
+                        }
+                        if (phaseTypeId === 2 && exercise.achieved_time) {
+                          groupedPhases[phaseSymbol].dualCount++;
                         }
                       });
                       groupedPhases[phaseSymbol].totalExercises += phase.exercises.length;

@@ -4,8 +4,9 @@
 import React, { useState, useEffect } from "react";
 import Label from "@/components/form/Label";
 import { commonService } from "@/libs/services/commonService";
+import { ctwCommonService } from "@/libs/services/ctwCommonService";
 import { ctwResultsModuleService } from "@/libs/services/ctwResultsModuleService";
-import { ctwInstructorAssignCadetService } from "@/libs/services/ctwInstructorAssignCadetService";
+import { cadetService } from "@/libs/services/cadetService";
 import { ctwInstructorAssignModuleService } from "@/libs/services/ctwInstructorAssignModuleService";
 import { useAuth } from "@/libs/hooks/useAuth";
 import { Icon } from "@iconify/react";
@@ -28,10 +29,73 @@ interface CadetRow {
   cadet_rank: string;
   cadet_gender: string;
   branch: string;
-  mark: number;
+  mark: number; // Raw total mark
+  conversation_mark: number; // Final mark
   detail_marks: { [detailId: number]: number };
+  detail_inputs: { [detailId: number]: string };
   is_active: boolean;
 }
+
+const timeToSeconds = (timeStr: string | null): number => {
+  if (!timeStr) return 0;
+  if (typeof timeStr !== 'string') return parseFloat(timeStr) || 0;
+  const parts = timeStr.split(':');
+  if (parts.length === 2) {
+    return parseInt(parts[0]) * 60 + parseInt(parts[1]);
+  }
+  return parseFloat(timeStr) || 0;
+};
+
+const secondsToTime = (seconds: number): string => {
+  if (!seconds) return "0:00";
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  return `${mins}:${secs.toString().padStart(2, '0')}`;
+};
+
+const calculateMark = (detail: any, value: string, gender: string): number => {
+  const scores = detail.scores || [];
+  const isFemale = gender.toLowerCase() === 'female';
+
+  if (scores.length === 0) return 0;
+
+  const firstScore = scores[0];
+  const hasTime = isFemale ? !!firstScore?.female_time : !!firstScore?.male_time;
+  const hasQty = isFemale ? !!firstScore?.female_quantity : !!firstScore?.male_quantity;
+
+  // If no time and no quantity, treat as direct mark input
+  if (!hasTime && !hasQty) {
+    return parseFloat(value) || 0;
+  }
+
+  if (hasTime) {
+    const cadetSeconds = timeToSeconds(value);
+    if (cadetSeconds === 0) return 0;
+
+    let bestMark = 0;
+    scores.forEach((s: any) => {
+      const scoreTime = timeToSeconds(isFemale ? s.female_time : s.male_time);
+      const scoreMark = parseFloat(isFemale ? s.female_mark : s.male_mark);
+      if (cadetSeconds <= scoreTime) {
+        if (scoreMark > bestMark) bestMark = scoreMark;
+      }
+    });
+    return bestMark;
+  } else {
+    const cadetQty = parseFloat(value) || 0;
+    if (cadetQty === 0) return 0;
+
+    let bestMark = 0;
+    scores.forEach((s: any) => {
+      const scoreQty = parseFloat(isFemale ? s.female_quantity : s.male_quantity) || 0;
+      const scoreMark = parseFloat(isFemale ? s.female_mark : s.male_mark);
+      if (cadetQty >= scoreQty) {
+        if (scoreMark > bestMark) bestMark = scoreMark;
+      }
+    });
+    return bestMark;
+  }
+};
 
 const HURDLES_MODULE_CODE = "hurdle_test";
 
@@ -58,37 +122,34 @@ export default function HurdlesResultForm({ initialData, onSubmit, onCancel, loa
   const [groups, setGroups] = useState<SystemGroup[]>([]);
   const [exams, setExams] = useState<SystemExam[]>([]);
   const [estimatedMarks, setEstimatedMarks] = useState<any[]>([]);
-  const [hurdlesModuleId, setHurdlesModuleId] = useState<number>(0);
+  const [moduleId, setModuleId] = useState<number>(0);
   const [loadingDropdowns, setLoadingDropdowns] = useState(true);
   const [loadingCadets, setLoadingCadets] = useState(false);
   const [loadingEstimatedMarks, setLoadingEstimatedMarks] = useState(false);
+  const [loadingSemesters, setLoadingSemesters] = useState(false);
   const [moduleAssigned, setModuleAssigned] = useState(false);
 
-  // Get current estimated mark details based on selected exam type
   const currentEstimatedMark = estimatedMarks.find((em: any) => em.exam_type_id === formData.exam_type_id);
   const hurdleDetails = currentEstimatedMark?.details || [];
 
   useEffect(() => {
+    if (!user?.id) return;
+
     const loadDropdownData = async () => {
       try {
         setLoadingDropdowns(true);
-        const [options, modulesRes] = await Promise.all([
-          commonService.getResultOptions(),
-          ctwResultsModuleService.getAllModules({ per_page: 100 }),
-        ]);
+        const options = await ctwCommonService.getHurdlesFormOptions(user.id);
 
         if (options) {
           setCourses(options.courses);
-          setSemesters(options.semesters);
           setPrograms(options.programs);
           setBranches(options.branches);
           setGroups(options.groups);
           setExams(options.exams);
-        }
 
-        const hurdlesModule = modulesRes.data.find((m: any) => m.code === HURDLES_MODULE_CODE);
-        if (hurdlesModule) {
-          setHurdlesModuleId(hurdlesModule.id);
+          if (options.module) {
+            setModuleId(options.module.id);
+          }
         }
       } catch (err) {
         console.error("Failed to load dropdown data:", err);
@@ -99,19 +160,42 @@ export default function HurdlesResultForm({ initialData, onSubmit, onCancel, loa
     };
 
     loadDropdownData();
-  }, []);
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (!formData.course_id) {
+      setSemesters([]);
+      if (!initialData) setFormData(prev => ({ ...prev, semester_id: 0 }));
+      return;
+    }
+
+    const loadSemesters = async () => {
+      try {
+        setLoadingSemesters(true);
+        if (!initialData) setFormData(prev => ({ ...prev, semester_id: 0 }));
+        const result = await commonService.getSemestersByCourse(formData.course_id);
+        setSemesters(result);
+      } catch (err) {
+        console.error("Failed to load semesters:", err);
+        setSemesters([]);
+      } finally {
+        setLoadingSemesters(false);
+      }
+    };
+
+    loadSemesters();
+  }, [formData.course_id, initialData]);
 
   useEffect(() => {
     const loadEstimatedMarks = async () => {
-      if (!hurdlesModuleId || !formData.course_id || !formData.semester_id) {
+      if (!moduleId || !formData.course_id || !formData.semester_id) {
         setEstimatedMarks([]);
         return;
       }
 
       try {
         setLoadingEstimatedMarks(true);
-        const response = await ctwResultsModuleService.getEstimatedMarks(hurdlesModuleId, {
-          course_id: formData.course_id,
+        const response = await ctwResultsModuleService.getEstimatedMarks(moduleId, {
           semester_id: formData.semester_id,
         });
         setEstimatedMarks(response);
@@ -124,25 +208,27 @@ export default function HurdlesResultForm({ initialData, onSubmit, onCancel, loa
     };
 
     loadEstimatedMarks();
-  }, [hurdlesModuleId, formData.course_id, formData.semester_id]);
+  }, [moduleId, formData.course_id, formData.semester_id]);
 
   const hasEstimatedMark = (examTypeId: number): boolean => {
     return estimatedMarks.some((em: any) => em.exam_type_id === examTypeId);
   };
 
-  const getMaxMark = (): number => {
+  const getMaxConvMark = (): number => {
     if (!formData.exam_type_id) return 0;
     const em = estimatedMarks.find((em: any) => em.exam_type_id === formData.exam_type_id);
-    // If there are details, the max mark is the sum of conversation marks in details? 
-    // Or it's conversation_mark in the estimated mark.
-    return em?.conversation_mark ? parseFloat(em.conversation_mark) : (em?.estimated_mark || em?.mark || 0);
+    return em?.conversation_mark ? parseFloat(em.conversation_mark) : 0;
   };
 
-  const maxMark = getMaxMark();
+  const getTotalRawMax = (gender: string): number => {
+    return hurdleDetails.reduce((sum: number, d: any) => {
+      return sum + parseFloat(gender.toLowerCase() === 'female' ? d.female_marks : d.male_marks);
+    }, 0);
+  };
 
   useEffect(() => {
     const loadCadets = async () => {
-      if (!user?.id || !hurdlesModuleId || !formData.course_id || !formData.semester_id || !formData.exam_type_id) {
+      if (!user?.id || !moduleId || !formData.course_id || !formData.semester_id || !formData.exam_type_id) {
         setCadetRows([]);
         setModuleAssigned(false);
         return;
@@ -167,37 +253,45 @@ export default function HurdlesResultForm({ initialData, onSubmit, onCancel, loa
 
         setModuleAssigned(true);
 
-        const params: any = {
+        const cadetParams: any = {
           per_page: 500,
-          instructor_id: user.id,
-          ctw_results_module_id: hurdlesModuleId,
           course_id: formData.course_id,
           semester_id: formData.semester_id,
-          is_active: true,
+          is_current: 1,
         };
-        if (formData.program_id) params.program_id = formData.program_id;
-        if (formData.branch_id) params.branch_id = formData.branch_id;
-        if (formData.group_id) params.group_id = formData.group_id;
+        if (formData.program_id) cadetParams.program_id = formData.program_id;
+        if (formData.branch_id) cadetParams.branch_id = formData.branch_id;
+        if (formData.group_id) cadetParams.group_id = formData.group_id;
 
-        const assignedCadetsRes = await ctwInstructorAssignCadetService.getAll(params);
+        const cadetsRes = await cadetService.getAllCadets(cadetParams);
 
-        const rows: CadetRow[] = assignedCadetsRes.data
-          .filter((ac: any) => ac.cadet)
-          .map((ac: any) => {
-            const cadet = ac.cadet;
-            const currentRank = cadet.assigned_ranks?.find((ar: any) => ar.rank)?.rank;
-            return {
-              cadet_id: cadet.id,
-              cadet_number: cadet.cadet_number || "",
-              cadet_name: cadet.name,
-              cadet_rank: currentRank?.short_name || currentRank?.name || "Officer Cadet",
-              cadet_gender: cadet.gender || "Male",
-              branch: cadet.assigned_branchs?.find((ab: any) => ab.is_current)?.branch?.name || cadet.assigned_branchs?.[0]?.branch?.name || "N/A",
-              mark: 0,
-              detail_marks: {},
-              is_active: true,
-            };
-          });
+        const convMax = getMaxConvMark();
+
+        const rows: CadetRow[] = cadetsRes.data.map((cadet: any) => {
+          const currentRank = cadet.assigned_ranks?.find((ar: any) => ar.rank)?.rank;
+          const isFemale = (cadet.gender || "Male").toLowerCase() === "female";
+          
+          const cadetTotalMaxRaw = hurdleDetails.reduce((sum: number, d: any) => {
+            return sum + parseFloat(isFemale ? d.female_marks : d.male_marks);
+          }, 0);
+          
+          const detailMarks: { [key: number]: number } = {};
+          const detailInputs: { [key: number]: string } = {};
+          
+          return {
+            cadet_id: cadet.id,
+            cadet_number: cadet.cadet_number || "",
+            cadet_name: cadet.name,
+            cadet_rank: currentRank?.short_name || currentRank?.name || "Officer Cadet",
+            cadet_gender: cadet.gender || "Male",
+            branch: cadet.assigned_branchs?.find((ab: any) => ab.is_current)?.branch?.name || cadet.assigned_branchs?.[0]?.branch?.name || "N/A",
+            mark: 0,
+            conversation_mark: 0,
+            detail_marks: {},
+            detail_inputs: {},
+            is_active: true,
+          };
+        });
 
         setCadetRows(rows);
       } catch (err) {
@@ -210,68 +304,131 @@ export default function HurdlesResultForm({ initialData, onSubmit, onCancel, loa
     if (!initialData) {
       loadCadets();
     }
-  }, [user?.id, hurdlesModuleId, formData.course_id, formData.semester_id, formData.program_id, formData.branch_id, formData.group_id, formData.exam_type_id, initialData]);
+  }, [user?.id, moduleId, formData.course_id, formData.semester_id, formData.program_id, formData.branch_id, formData.group_id, formData.exam_type_id, initialData]);
 
+  // Step 1: set formData immediately when initialData arrives (no stationDetails dependency)
   useEffect(() => {
-    if (initialData) {
-      setFormData({
-        course_id: initialData.course_id,
-        semester_id: initialData.semester_id,
-        program_id: initialData.program_id || 0,
-        branch_id: initialData.branch_id || 0,
-        group_id: initialData.group_id || 0,
-        exam_type_id: initialData.exam_type_id,
-        remarks: initialData.remarks || "",
-        is_active: initialData.is_active,
-      });
-
-      if (initialData.achieved_marks && initialData.achieved_marks.length > 0) {
-        const uniqueCadets = Array.from(new Set(initialData.achieved_marks.map(m => m.cadet_id)));
-        const rows: CadetRow[] = uniqueCadets.map(cadetId => {
-          const mark = initialData.achieved_marks?.find(m => m.cadet_id === cadetId);
-          const currentRank = mark?.cadet?.assigned_ranks?.find((ar: any) => ar.rank)?.rank;
-
-          return {
-            cadet_id: cadetId,
-            cadet_number: mark?.cadet?.cadet_number || "",
-            cadet_name: mark?.cadet?.name || "Unknown",
-            cadet_rank: currentRank?.short_name || currentRank?.name || "Officer Cadet",
-            cadet_gender: mark?.cadet?.gender || "Male",
-            branch: initialData.branch?.name || "N/A",
-            mark: mark?.achieved_mark || 0,
-            detail_marks: {}, // If we had detailed results stored we'd load them here
-            is_active: mark?.is_active || true,
-          };
-        });
-        setCadetRows(rows);
-      }
-    }
+    if (!initialData) return;
+    setFormData({
+      course_id: initialData.course_id,
+      semester_id: initialData.semester_id,
+      program_id: initialData.program_id || 0,
+      branch_id: initialData.branch_id || 0,
+      group_id: initialData.group_id || 0,
+      exam_type_id: initialData.exam_type_id,
+      remarks: initialData.remarks || "",
+      is_active: initialData.is_active,
+    });
   }, [initialData]);
+
+  // Step 2: populate cadetRows once hurdleDetails are loaded
+  useEffect(() => {
+    if (!initialData || hurdleDetails.length === 0) return;
+
+    if (initialData.achieved_marks && initialData.achieved_marks.length > 0) {
+      setModuleAssigned(true);
+      const uniqueCadets = Array.from(new Set(initialData.achieved_marks.map(m => m.cadet_id)));
+      const rows: CadetRow[] = uniqueCadets.map(cadetId => {
+        const mark = initialData.achieved_marks?.find(m => m.cadet_id === cadetId);
+        const currentRank = mark?.cadet?.assigned_ranks?.find((ar: any) => ar.rank)?.rank;
+
+        const detailMarks: { [key: number]: number } = {};
+        const detailInputs: { [key: number]: string } = {};
+
+        mark?.details?.forEach((d: any) => {
+          const detailId = d.ctw_results_module_estimated_marks_details_id;
+          if (detailId) {
+            detailMarks[detailId] = parseFloat(d.marks) || 0;
+            const stationDetail = hurdleDetails.find((sd: any) => sd.id === detailId);
+            const isFemale = mark?.cadet?.gender?.toLowerCase() === 'female';
+            const firstScore = stationDetail?.scores?.[0];
+            const hasTime = isFemale ? !!firstScore?.female_time : !!firstScore?.male_time;
+            const hasQty = isFemale ? !!firstScore?.female_quantity : !!firstScore?.male_quantity;
+
+            if (hasTime && d.qty) {
+              detailInputs[detailId] = secondsToTime(parseFloat(d.qty));
+            } else if (!hasTime && !hasQty) {
+              detailInputs[detailId] = d.qty?.toString() || "0";
+            } else {
+              detailInputs[detailId] = d.achieved_time || d.qty?.toString() || "0";
+            }
+          }
+        });
+
+        const rawSum = Object.values(detailMarks).reduce((sum, m) => sum + m, 0);
+
+        return {
+          cadet_id: cadetId,
+          cadet_number: mark?.cadet?.cadet_number || "",
+          cadet_name: mark?.cadet?.name || "Unknown",
+          cadet_rank: currentRank?.short_name || currentRank?.name || "Officer Cadet",
+          cadet_gender: mark?.cadet?.gender || "Male",
+          branch: mark?.cadet?.assigned_branchs?.find((ab: any) => ab.is_current)?.branch?.name || mark?.cadet?.assigned_branchs?.[0]?.branch?.name || "N/A",
+          mark: rawSum,
+          conversation_mark: mark?.achieved_mark || 0,
+          detail_marks: detailMarks,
+          detail_inputs: detailInputs,
+          is_active: mark?.is_active || true,
+        };
+      });
+      setCadetRows(rows);
+    }
+  }, [initialData, hurdleDetails.length]);
 
   const handleChange = (field: string, value: any) => {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
-  const handleCadetDetailChange = (cadetIndex: number, detailId: number, value: number, gender: string) => {
+  const handleCadetInputChange = (cadetIndex: number, detailId: number, value: string, gender: string) => {
     const detail = hurdleDetails.find((d: any) => d.id === detailId);
     if (!detail) return;
 
-    const maxDetailMark = gender.toLowerCase() === 'female' ? parseFloat(detail.female_marks) : parseFloat(detail.male_marks);
-    let finalValue = value;
-    if (finalValue > maxDetailMark) finalValue = maxDetailMark;
-    if (finalValue < 0) finalValue = 0;
+    const firstScore = detail.scores?.[0];
+    const hasTime = !!firstScore?.male_time || !!firstScore?.female_time;
+    let mark = calculateMark(detail, value, gender);
+
+    if (!hasTime) {
+      const maxMark = gender.toLowerCase() === 'female' 
+        ? parseFloat(detail.female_marks) || 0 
+        : parseFloat(detail.male_marks) || 0;
+      const inputVal = parseFloat(value);
+      if (!value || value === "" || isNaN(inputVal)) {
+        mark = maxMark;
+        value = maxMark.toString();
+      } else if (inputVal > maxMark) {
+        mark = maxMark;
+        value = maxMark.toString();
+      }
+    }
 
     setCadetRows(prev => {
       const updated = [...prev];
-      const updatedDetailMarks = { ...updated[cadetIndex].detail_marks, [detailId]: finalValue };
-      
-      // Calculate total mark
-      const totalMark = Object.values(updatedDetailMarks).reduce((sum: number, m: any) => sum + m, 0);
-      
+      const cadet = updated[cadetIndex];
+      const updatedDetailInputs = { ...cadet.detail_inputs, [detailId]: value };
+      const updatedDetailMarks = { ...cadet.detail_marks, [detailId]: mark };
+
+      const totalRawMark = Object.values(updatedDetailMarks).reduce((sum: number, m: any) => sum + m, 0);
+      const isFemale = gender.toLowerCase() === 'female';
+      const cadetTotalMaxRaw = hurdleDetails.reduce((sum: number, d: any) => {
+        return sum + parseFloat(isFemale ? d.female_marks : d.male_marks);
+      }, 0);
+
+      const convMax = getMaxConvMark();
+      let calculatedConvMark = 0;
+      if (cadetTotalMaxRaw > 0 && convMax > 0) {
+        calculatedConvMark = (totalRawMark / cadetTotalMaxRaw) * convMax;
+      } else {
+        calculatedConvMark = totalRawMark;
+      }
+
+      const finalConvMark = calculatedConvMark;
+
       updated[cadetIndex] = {
-        ...updated[cadetIndex],
+        ...cadet,
+        detail_inputs: updatedDetailInputs,
         detail_marks: updatedDetailMarks,
-        mark: totalMark
+        mark: totalRawMark,
+        conversation_mark: parseFloat(finalConvMark.toFixed(2))
       };
       return updated;
     });
@@ -280,13 +437,9 @@ export default function HurdlesResultForm({ initialData, onSubmit, onCancel, loa
   const handleCadetChange = (cadetIndex: number, field: keyof CadetRow, value: any) => {
     setCadetRows(prev => {
       const updated = [...prev];
-      let finalValue = value;
-      if (field === "mark" && maxMark > 0 && typeof value === "number" && value > maxMark) {
-        finalValue = maxMark;
-      }
       updated[cadetIndex] = {
         ...updated[cadetIndex],
-        [field]: finalValue
+        [field]: value
       };
       return updated;
     });
@@ -305,18 +458,40 @@ export default function HurdlesResultForm({ initialData, onSubmit, onCancel, loa
       const marks: any[] = [];
       cadetRows.filter(c => c.cadet_id > 0).forEach(c => {
         const details: any[] = [];
-        
-        // Add hurdles to details
+
         Object.entries(c.detail_marks).forEach(([detailId, val]) => {
-          details.push({
-            ctw_results_module_estimated_marks_details_id: parseInt(detailId),
-            marks: val
-          });
+          const detail = hurdleDetails.find((d: any) => d.id === parseInt(detailId));
+          if (!detail) return;
+          
+          const isFemale = c.cadet_gender.toLowerCase() === 'female';
+          const firstScore = detail.scores?.[0];
+          const hasTime = isFemale ? !!firstScore?.female_time : !!firstScore?.male_time;
+          const hasQty = isFemale ? !!firstScore?.female_quantity : !!firstScore?.male_quantity;
+          
+          const detailInput = c.detail_inputs[parseInt(detailId)];
+          const isAutoMark = !hasTime && !hasQty;
+          const inputVal = detailInput ? parseFloat(detailInput) : 0;
+          
+          if (isAutoMark) {
+            details.push({
+              ctw_results_module_estimated_marks_details_id: parseInt(detailId),
+              marks: inputVal,
+              qty: null,
+              achieved_time: null
+            });
+          } else {
+            details.push({
+              ctw_results_module_estimated_marks_details_id: parseInt(detailId),
+              marks: val,
+              qty: hasTime ? timeToSeconds(detailInput || "0") : (parseFloat(detailInput || "0") || 0),
+              achieved_time: hasTime ? detailInput : null
+            });
+          }
         });
 
         marks.push({
           cadet_id: c.cadet_id,
-          achieved_mark: c.mark || 0,
+          achieved_mark: c.conversation_mark || 0,
           details: details
         });
       });
@@ -329,7 +504,7 @@ export default function HurdlesResultForm({ initialData, onSubmit, onCancel, loa
         group_id: formData.group_id || undefined,
         exam_type_id: formData.exam_type_id,
         instructor_id: user.id,
-        ctw_results_module_id: hurdlesModuleId,
+        ctw_results_module_id: moduleId,
         remarks: formData.remarks || undefined,
         is_active: formData.is_active,
         marks: marks,
@@ -377,33 +552,17 @@ export default function HurdlesResultForm({ initialData, onSubmit, onCancel, loa
 
             <div>
               <Label>Semester <span className="text-red-500">*</span></Label>
-              <select value={formData.semester_id} onChange={(e) => handleChange("semester_id", parseInt(e.target.value))} className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500" required>
-                <option value={0}>Select Semester</option>
+              <select
+                value={formData.semester_id}
+                onChange={(e) => handleChange("semester_id", parseInt(e.target.value))}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500"
+                required
+                disabled={!formData.course_id || loadingSemesters}
+              >
+                <option value={0}>
+                  {loadingSemesters ? "Loading..." : !formData.course_id ? "Select course first" : "Select Semester"}
+                </option>
                 {semesters.map(semester => (<option key={semester.id} value={semester.id}>{semester.name} ({semester.code})</option>))}
-              </select>
-            </div>
-
-            <div>
-              <Label>Program</Label>
-              <select value={formData.program_id} onChange={(e) => handleChange("program_id", parseInt(e.target.value))} className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500">
-                <option value={0}>Select Program (Optional)</option>
-                {programs.map(program => (<option key={program.id} value={program.id}>{program.name} ({program.code})</option>))}
-              </select>
-            </div>
-
-            <div>
-              <Label>Branch</Label>
-              <select value={formData.branch_id} onChange={(e) => handleChange("branch_id", parseInt(e.target.value))} className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500">
-                <option value={0}>Select Branch (Optional)</option>
-                {branches.map(branch => (<option key={branch.id} value={branch.id}>{branch.name} ({branch.code})</option>))}
-              </select>
-            </div>
-
-            <div>
-              <Label>Group</Label>
-              <select value={formData.group_id} onChange={(e) => handleChange("group_id", parseInt(e.target.value))} className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500">
-                <option value={0}>Select Group (Optional)</option>
-                {groups.map(group => (<option key={group.id} value={group.id}>{group.name} ({group.code})</option>))}
               </select>
             </div>
 
@@ -463,7 +622,6 @@ export default function HurdlesResultForm({ initialData, onSubmit, onCancel, loa
             <div className="text-center py-12 text-red-500">
               <Icon icon="hugeicons:alert-circle" className="w-10 h-10 mx-auto mb-2" />
               <p className="font-medium">You are not assigned to the Hurdles module for the selected course & semester.</p>
-              <p className="text-sm text-gray-500 mt-1">Please contact admin to assign you to this module.</p>
             </div>
           ) : cadetRows.length === 0 ? (
             <div className="text-center py-12 text-gray-500">
@@ -472,72 +630,111 @@ export default function HurdlesResultForm({ initialData, onSubmit, onCancel, loa
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full border-collapse border border-black">
+              <table className="w-full border-collapse border border-black text-xs">
                 <thead>
                   <tr>
-                    <th className="border border-black px-3 py-2 text-center uppercase whitespace-nowrap" rowSpan={2}>SL</th>
-                    <th className="border border-black px-3 py-2 text-center uppercase whitespace-nowrap" rowSpan={2}>CADET NO.</th>
-                    <th className="border border-black px-3 py-2 text-center uppercase whitespace-nowrap" rowSpan={2}>RANK</th>
-                    <th className="border border-black px-3 py-2 text-left uppercase whitespace-nowrap" rowSpan={2}>NAME</th>
-                    <th className="border border-black px-3 py-2 text-left uppercase whitespace-nowrap" rowSpan={2}>BRANCH</th>
-                    {hurdleDetails.length > 0 ? (
-                      <th className="border border-black px-3 py-2 text-center uppercase" colSpan={hurdleDetails.length}>Hurdles</th>
-                    ) : null}
-                    <th className="border border-black px-3 py-2 text-center uppercase whitespace-nowrap" rowSpan={2}>Total MARK{maxMark > 0 ? ` (Max: ${maxMark})` : ""}</th>
-                  </tr>
-                  {hurdleDetails.length > 0 && (
-                    <tr>
-                      {hurdleDetails.map((detail: any) => (
-                        <th key={detail.id} className="border border-black px-3 py-2 text-center uppercase text-xs">
-                          {detail.name}
-                          <div className="text-[10px] text-gray-500 font-normal">
-                            M:{detail.male_marks} / F:{detail.female_marks}
+                    <th className="border border-black px-2 py-2 text-center whitespace-nowrap" rowSpan={2}>SL</th>
+                    <th className="border border-black px-2 py-2 text-center whitespace-nowrap" rowSpan={2}>BD</th>
+                    <th className="border border-black px-2 py-2 text-center whitespace-nowrap" rowSpan={2}>Rk</th>
+                    <th className="border border-black px-2 py-2 text-left whitespace-nowrap" rowSpan={2}>Name</th>
+                    <th className="border border-black px-2 py-2 text-left whitespace-nowrap" rowSpan={2}>Br</th>
+                    {hurdleDetails.map((detail: any) => {
+                      const firstScore = detail.scores?.[0];
+                      const hasTime = !!firstScore?.male_time || !!firstScore?.female_time;
+                      const maleMark = parseFloat(detail.male_marks) || 0;
+                      const femaleMark = parseFloat(detail.female_marks) || 0;
+                      return (
+                        <th key={detail.id} className={`border border-black px-1 py-2 text-center`} colSpan={hasTime ? 2 : 1} rowSpan={hasTime ? 1 : 2}>
+                          <div className="h-32 flex flex-col items-center justify-center w-12 mx-auto">
+                            <span className="font-semibold [writing-mode:vertical-rl] rotate-180">{detail.name} - {maleMark}/{femaleMark}</span>
                           </div>
                         </th>
-                      ))}
-                    </tr>
-                  )}
+                      );
+                    })}
+                    <th className="border border-black px-2 py-2 text-center whitespace-nowrap" rowSpan={2}>
+                      Total {getTotalRawMax(cadetRows[0]?.cadet_gender || 'male')}
+                    </th>
+                    <th className="border border-black px-2 py-2 text-center whitespace-nowrap" rowSpan={2}>
+                      Out of {getMaxConvMark()}
+                    </th>
+                  </tr>
+                  <tr>
+                    {hurdleDetails.map((detail: any) => {
+                      const firstScore = detail.scores?.[0];
+                      const hasTime = !!firstScore?.male_time || !!firstScore?.female_time;
+                      if (!hasTime) return null;
+                      return (
+                        <React.Fragment key={detail.id}>
+                          <th className="border border-black px-1 py-1 text-center font-normal">
+                            Time
+                          </th>
+                          <th className="border border-black px-1 py-1 text-center font-normal">
+                            Mark
+                          </th>
+                        </React.Fragment>
+                      );
+                    })}
+                  </tr>
                 </thead>
                 <tbody>
                   {cadetRows.map((cadet, index) => (
                     <tr key={cadet.cadet_id}>
-                      <td className="border border-black px-3 py-2 text-center font-medium">{index + 1}</td>
-                      <td className="border border-black px-3 py-2 text-center">{cadet.cadet_number}</td>
-                      <td className="border border-black px-3 py-2 text-center">{cadet.cadet_rank}</td>
-                      <td className="border border-black px-3 py-2 font-medium">{cadet.cadet_name}</td>
-                      <td className="border border-black px-3 py-2 font-medium">{cadet.branch}</td>
-                      
+                      <td className="border border-black px-2 py-1 text-center">{index + 1}</td>
+                      <td className="border border-black px-2 py-1 text-center">{cadet.cadet_number}</td>
+                      <td className="border border-black px-2 py-1 text-center">{cadet.cadet_rank}</td>
+                      <td className="border border-black px-2 py-1 font-medium">
+                        {cadet.cadet_name}
+                        {cadet.cadet_gender?.toLowerCase() === "female" && (
+                          <span className="ml-1 text-pink-600 font-semibold text-xs">(F)</span>
+                        )}
+                      </td>
+                      <td className="border border-black px-2 py-1">{cadet.branch}</td>
+
                       {hurdleDetails.map((detail: any) => {
-                        const isFemale = cadet.cadet_gender.toLowerCase() === 'female';
-                        const maxDMark = isFemale ? parseFloat(detail.female_marks) : parseFloat(detail.male_marks);
+                        const firstScore = detail.scores?.[0];
+                        const hasTime = !!firstScore?.male_time || !!firstScore?.female_time;
+
+                        if (!hasTime) {
+                          const maxMark = cadet.cadet_gender.toLowerCase() === 'female' 
+                            ? parseFloat(detail.female_marks) || 0 
+                            : parseFloat(detail.male_marks) || 0;
+                          return (
+                            <td key={detail.id} className="border border-black px-1 py-1 text-center">
+                              <input
+                                type="number"
+                                min="0"
+                                max={maxMark}
+                                value={cadet.detail_inputs[detail.id] || ""}
+                                onChange={(e) => handleCadetInputChange(index, detail.id, e.target.value, cadet.cadet_gender)}
+                                className="w-12 px-1 py-1 border border-gray-300 rounded text-center text-xs focus:ring-2 focus:ring-blue-500"
+                                placeholder="0"
+                              />
+                            </td>
+                          );
+                        }
                         return (
-                          <td key={detail.id} className="border border-black px-2 py-1 text-center">
-                            <input
-                              type="number"
-                              min={0}
-                              max={maxDMark}
-                              step={0.01}
-                              value={cadet.detail_marks[detail.id] || 0}
-                              onChange={(e) => handleCadetDetailChange(index, detail.id, parseFloat(e.target.value) || 0, cadet.cadet_gender)}
-                              className="w-16 px-1 py-1 border border-gray-300 rounded text-center text-sm focus:ring-2 focus:ring-blue-500 bg-white [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                              placeholder="0"
-                            />
-                          </td>
+                          <React.Fragment key={detail.id}>
+                            <td className="border border-black px-1 py-1 text-center">
+                              <input
+                                type="text"
+                                value={cadet.detail_inputs[detail.id] || ""}
+                                onChange={(e) => handleCadetInputChange(index, detail.id, e.target.value, cadet.cadet_gender)}
+                                className="w-12 px-1 py-1 border border-gray-300 rounded text-center text-xs focus:ring-2 focus:ring-blue-500 bg-white"
+                                placeholder="0:00"
+                              />
+                            </td>
+                            <td className="border border-black px-1 py-1 text-center">
+                              {cadet.detail_marks[detail.id] || 0}
+                            </td>
+                          </React.Fragment>
                         );
                       })}
 
-                      <td className="border border-black px-2 py-1 text-center">
-                        <input
-                          type="number"
-                          min={0}
-                          max={maxMark > 0 ? maxMark : undefined}
-                          step={0.01}
-                          value={cadet.mark || 0}
-                          readOnly={hurdleDetails.length > 0}
-                          onChange={(e) => !hurdleDetails.length && handleCadetChange(index, "mark", parseFloat(e.target.value) || 0)}
-                          className={`w-20 px-2 py-1 border border-gray-300 rounded text-center text-sm font-bold focus:ring-2 focus:ring-blue-500 ${hurdleDetails.length > 0 ? 'bg-gray-100' : 'bg-white'}`}
-                          placeholder="0"
-                        />
+                      <td className="border border-black px-1 py-1 text-center font-bold">
+                        {cadet.mark || 0}
+                      </td>
+                      <td className="border border-black px-1 py-1 text-center font-bold">
+                        {cadet.conversation_mark || 0}
                       </td>
                     </tr>
                   ))}

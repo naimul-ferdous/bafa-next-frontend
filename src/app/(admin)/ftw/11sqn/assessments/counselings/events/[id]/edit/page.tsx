@@ -5,17 +5,17 @@ import React, { useState, useEffect, use } from "react";
 import { useRouter } from "next/navigation";
 import { ftw11sqnAssessmentCounselingTypeService } from "@/libs/services/ftw11sqnAssessmentCounselingTypeService";
 import FullLogo from "@/components/ui/fulllogo";
-import CounselingTypeForm from "@/components/ftw-11sqn-assessment-counseling/CounselingTypeForm";
-import type { Ftw11sqnAssessmentCounselingType } from "@/libs/types/system";
+import type { Ftw11SqnAssessmentCounselingType, Ftw11SqnAssessmentCounselingTypeCreateData } from "@/libs/types/ftw11sqnAssessmentCounseling";
 import { Icon } from "@iconify/react";
+import CounselingTypeForm from "@/components/ftw-11sqn-assessment-counseling/CounselingTypeForm";
 
-export default function Ftw11sqnEditCounselingTypePage({ params }: { params: Promise<{ id: string }> }) {
+export default function EditCounselingTypePage({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = use(params);
   const id = parseInt(resolvedParams.id);
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(true);
-  const [initialData, setInitialData] = useState<Ftw11sqnAssessmentCounselingType | null>(null);
+  const [initialData, setInitialData] = useState<Ftw11SqnAssessmentCounselingType | null>(null);
 
   useEffect(() => {
     const fetchType = async () => {
@@ -37,7 +37,7 @@ export default function Ftw11sqnEditCounselingTypePage({ params }: { params: Pro
     fetchType();
   }, [id, router]);
 
-  const handleSubmit = async (data: any) => {
+  const handleSubmit = async (data: Ftw11SqnAssessmentCounselingTypeCreateData) => {
     setLoading(true);
     try {
       await ftw11sqnAssessmentCounselingTypeService.updateType(id, data);
@@ -66,7 +66,7 @@ export default function Ftw11sqnEditCounselingTypePage({ params }: { params: Pro
       <div className="text-center mb-8">
         <div className="flex justify-center mb-4"><FullLogo /></div>
         <h1 className="text-xl font-bold text-gray-900 uppercase">Bangladesh Air Force Academy</h1>
-        <h2 className="text-md font-semibold text-gray-700 mt-2 uppercase">FTW 11 SQN Edit Counseling Type</h2>
+        <h2 className="text-md font-semibold text-gray-700 mt-2 uppercase">Edit Counseling Type</h2>
       </div>
 
       <CounselingTypeForm

@@ -54,6 +54,7 @@ export interface CtwSwimmingResult {
   instructor?: User;
   creator?: User;
   result_marks?: CtwSwimmingResultMark[]; // Note: written uses 'achieved_marks' in interface but 'result_marks' in form logic. Let's be consistent with what API returns.
+  achieved_marks?: CtwSwimmingResultMark[]; // API actually returns this field
 }
 
 export interface CtwSwimmingResultCreateData {

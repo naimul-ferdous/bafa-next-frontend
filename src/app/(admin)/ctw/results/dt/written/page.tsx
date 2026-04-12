@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { CtwWrittenResult } from "@/libs/types/ctwWritten";
 import { Icon } from "@iconify/react";
 import { ctwWrittenResultService } from "@/libs/services/ctwWrittenResultService";
-import { ctwResultsModuleService } from "@/libs/services/ctwResultsModuleService";
+import { ctwCommonService } from "@/libs/services/ctwCommonService";
 import { useAuth } from "@/libs/hooks/useAuth";
 import FullLogo from "@/components/ui/fulllogo";
 import DataTable, { Column } from "@/components/ui/DataTable";
@@ -44,27 +44,29 @@ export default function CtwWrittenResultsPage() {
   const [moduleLoading, setModuleLoading] = useState(true);
 
   useEffect(() => {
+    if (!user?.id) return;
     const fetchModuleId = async () => {
       try {
         setModuleLoading(true);
-        const modulesRes = await ctwResultsModuleService.getAllModules({ per_page: 100 });
-        const writtenModule = modulesRes.data.find((m: any) => m.code === WRITTEN_MODULE_CODE);
-        if (writtenModule) {
-          setWrittenModuleId(writtenModule.id);
+        const options = await ctwCommonService.getWrittenFormOptions(user?.id || 0);
+        if (options?.module) {
+          setWrittenModuleId(options.module.id);
         } else {
-          console.error(`Module with code ${WRITTEN_MODULE_CODE} not found.`);
+          setWrittenModuleId(null);
+          setLoading(false);
         }
       } catch (err) {
-        console.error("Failed to fetch module ID:", err);
+        setWrittenModuleId(null);
+        setLoading(false);
       } finally {
         setModuleLoading(false);
       }
     };
     fetchModuleId();
-  }, []);
+  }, [user?.id]);
 
   const loadResults = useCallback(async () => {
-    if (writtenModuleId === null || !user?.id) return;
+    if (writtenModuleId === null || !user?.id) { setLoading(false); return; }
     try {
       setLoading(true);
       const response = await ctwWrittenResultService.getAllResults(writtenModuleId, {
@@ -246,7 +248,7 @@ export default function CtwWrittenResultsPage() {
       </div>
 
       {isInstructor ? (
-        (loading || moduleLoading) ? <TableLoading /> : (
+        (loading) ? <TableLoading /> : (
           <>
             <DataTable columns={columns} data={results} keyExtractor={(result) => result.id.toString()} emptyMessage="No results found" />
             <div className="flex items-center justify-between mt-6">

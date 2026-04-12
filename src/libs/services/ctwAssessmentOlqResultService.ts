@@ -19,8 +19,6 @@ interface ResultQueryParams {
   per_page?: number;
   course_id?: number;
   semester_id?: number;
-  program_id?: number;
-  branch_id?: number;
   group_id?: number;
   olq_type_id?: number;
 }
@@ -97,8 +95,6 @@ export const ctwAssessmentOlqResultService = {
       if (params?.per_page) query.append('per_page', params.per_page.toString());
       if (params?.course_id) query.append('course_id', params.course_id.toString());
       if (params?.semester_id) query.append('semester_id', params.semester_id.toString());
-      if (params?.program_id) query.append('program_id', params.program_id.toString());
-      if (params?.branch_id) query.append('branch_id', params.branch_id.toString());
       if (params?.group_id) query.append('group_id', params.group_id.toString());
       if (params?.olq_type_id) query.append('olq_type_id', params.olq_type_id.toString());
 
@@ -306,6 +302,38 @@ export const ctwAssessmentOlqResultService = {
       return result.data || null;
     } catch (error) {
       console.error('Failed to save marks:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Bulk approve cadets
+   */
+  async bulkApprove(data: { result_id: number; cadet_ids: number[]; authority_id: number }): Promise<boolean> {
+    try {
+      const token = getToken();
+      if (!token) throw new Error('Authentication token not found.');
+
+      const result = await apiClient.post<any>('/ctw-assessment-olq-results/bulk-approve', data, token);
+      return result?.success || false;
+    } catch (error) {
+      console.error('Failed to bulk approve:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Bulk reject cadets
+   */
+  async bulkReject(data: { result_id: number; cadet_ids: number[]; authority_id: number; reason?: string }): Promise<boolean> {
+    try {
+      const token = getToken();
+      if (!token) throw new Error('Authentication token not found.');
+
+      const result = await apiClient.post<any>('/ctw-assessment-olq-results/bulk-reject', data, token);
+      return result?.success || false;
+    } catch (error) {
+      console.error('Failed to bulk reject:', error);
       throw error;
     }
   },

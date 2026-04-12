@@ -294,6 +294,73 @@ export const ftw11sqnGroundExaminationMarkService = {
       return [];
     }
   },
+
+  /**
+   * Get all form data in one call - courses, semesters, exams, grounds, cadets, instructors
+   */
+  async getFormData(params: {
+    instructor_id?: number;
+    semester_id?: number;
+    course_id?: number;
+    cadet_id?: number;
+    exam_type_id?: number;
+  }): Promise<{
+    courses: any[];
+    semesters: any[];
+    exams: any[];
+    ground_types: any[];
+    syllabuses: any[];
+    instructors: any[];
+    cadets: any[];
+    instructor_assigned: {
+      grounds: any[];
+      exercises: number[];
+      cadets: any[];
+    };
+    existing_marks: any[];
+  } | null> {
+    try {
+      const query = new URLSearchParams();
+      if (params.instructor_id) query.append('instructor_id', params.instructor_id.toString());
+      if (params.semester_id) query.append('semester_id', params.semester_id.toString());
+      if (params.course_id) query.append('course_id', params.course_id.toString());
+      if (params.cadet_id) query.append('cadet_id', params.cadet_id.toString());
+      if (params.exam_type_id) query.append('exam_type_id', params.exam_type_id.toString());
+
+      const endpoint = `/ftw-11sqn-ground-result-form${query.toString() ? `?${query.toString()}` : ''}`;
+      const token = getToken();
+      const result = await apiClient.get<{ success: boolean; data: any }>(endpoint, token);
+      return result?.data || null;
+    } catch (error) {
+      console.error('Failed to fetch form data:', error);
+      return null;
+    }
+  },
+
+  /**
+   * Get marks for a specific cadet
+   */
+  async getCadetMarks(params: {
+    cadet_id: number;
+    course_id?: number;
+    semester_id?: number;
+    exam_type_id?: number;
+  }): Promise<{ marks: Ftw11sqnGroundExaminationMark[] }> {
+    try {
+      const query = new URLSearchParams();
+      if (params.course_id) query.append('course_id', params.course_id.toString());
+      if (params.semester_id) query.append('semester_id', params.semester_id.toString());
+      if (params.exam_type_id) query.append('exam_type_id', params.exam_type_id.toString());
+
+      const endpoint = `/ftw-11sqn-ground-examination-marks/cadet/${params.cadet_id}${query.toString() ? `?${query.toString()}` : ''}`;
+      const token = getToken();
+      const result = await apiClient.get<ApiResponse>(endpoint, token);
+      return { marks: result?.data || [] };
+    } catch (error) {
+      console.error('Failed to fetch cadet marks:', error);
+      return { marks: [] };
+    }
+  },
 };
 
 export default ftw11sqnGroundExaminationMarkService;

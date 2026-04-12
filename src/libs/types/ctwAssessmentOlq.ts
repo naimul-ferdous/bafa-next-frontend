@@ -7,11 +7,11 @@ import type { User } from './user';
 import type {
   SystemCourse,
   SystemSemester,
-  SystemProgram,
-  SystemBranch,
   SystemGroup,
   SystemExam
 } from './system';
+import type { CtwOlqCadetApproval } from './ctwOlqCadetApproval';
+import type { CtwOlqSemesterApproval } from './ctwOlqSemesterApproval';
 
 // OLQ Type Estimated Mark
 export interface CtwAssessmentOlqTypeEstimatedMark {
@@ -36,6 +36,18 @@ export interface CtwAssessmentOlqTypeSemester {
   created_at?: string;
   updated_at?: string;
   semester?: SystemSemester;
+}
+
+// OLQ Type Assignment
+export interface CtwAssessmentOlqTypeAssignment {
+  id: number;
+  ctw_assessment_olq_type_id: number;
+  course_id: number;
+  is_active: boolean;
+  created_at?: string;
+  updated_at?: string;
+  course?: SystemCourse;
+  olq_type?: CtwAssessmentOlqType;
 }
 
 // OLQ Type
@@ -118,8 +130,6 @@ export interface CtwAssessmentOlqResult {
   id: number;
   course_id: number;
   semester_id: number;
-  program_id: number;
-  branch_id: number;
   group_id?: number;
   exam_type_id?: number;
   ctw_assessment_olq_type_id: number;
@@ -130,13 +140,18 @@ export interface CtwAssessmentOlqResult {
   updated_at?: string;
   course?: SystemCourse;
   semester?: SystemSemester;
-  program?: SystemProgram;
-  branch?: SystemBranch;
   group?: SystemGroup;
   exam_type?: SystemExam;
   olq_type?: CtwAssessmentOlqType;
   creator?: User;
   result_cadets?: CtwAssessmentOlqResultCadet[];
+  grouped_cadets?: {
+    name: string;
+    is_flying_group?: boolean;
+    cadets: CtwAssessmentOlqResultCadet[];
+  }[];
+  cadet_approvals?: CtwOlqCadetApproval[];
+  semester_approvals?: CtwOlqSemesterApproval[];
 }
 
 // Create/Update Data Types
@@ -160,8 +175,6 @@ export interface CtwAssessmentOlqTypeCreateData {
 export interface CtwAssessmentOlqResultCreateData {
   course_id: number;
   semester_id: number;
-  program_id: number;
-  branch_id: number;
   group_id?: number;
   exam_type_id?: number;
   ctw_assessment_olq_type_id: number;

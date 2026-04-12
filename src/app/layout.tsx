@@ -1,11 +1,7 @@
-import { Outfit } from 'next/font/google';
+import '@fontsource/outfit';
 import './globals.css';
 import type { Metadata } from 'next';
 import Providers from '@/components/Providers';
-
-const outfit = Outfit({
-  subsets: ["latin"],
-});
 
 export const metadata: Metadata = {
   title: {
@@ -34,7 +30,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={`${outfit.className} dark:bg-gray-900`} suppressHydrationWarning>
+      <body className="dark:bg-gray-900" suppressHydrationWarning>
         <Providers>{children}</Providers>
       </body>
     </html>

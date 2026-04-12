@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, use, useMemo } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { Icon } from "@iconify/react";
 import { cptcService, CptcCtwConsolidatedData } from "@/libs/services/cptcService";
 import FullLogo from "@/components/ui/fulllogo";
@@ -10,7 +11,7 @@ import { calculateCtwSyllabusTotals } from "@/hooks/consoidated/ctwSyllabusTotal
 
 // ─── Sub-Components ────────────────────────────────────────────────────────
 
-const OverallCourseConsolidatedTable = ({ data }: { data: any | null }) => {
+const OverallCourseConsolidatedTable = ({ data, courseId }: { data: any | null; courseId: number }) => {
     const [filter, setFilter] = useState<"gdp" | "others">("gdp");
 
     const semesters = useMemo(() => data?.course_details?.semesters || [], [data]);
@@ -97,8 +98,7 @@ const OverallCourseConsolidatedTable = ({ data }: { data: any | null }) => {
 
     return (
         <div className="mt-8 mb-12">
-            <div className="flex justify-between items-end gap-4 border-b border-dashed border-gray-400 mb-4 pb-2">
-                <h2 className="text-lg font-bold text-gray-900 uppercase text-base">Overall Course Result</h2>
+            <div className="flex justify-end items-end gap-4 mb-2">
                 <div className="flex items-center gap-1 bg-gray-100 border border-gray-200 p-1 rounded-full text-xs no-print">
                     <button
                         onClick={() => setFilter("gdp")}
@@ -116,7 +116,7 @@ const OverallCourseConsolidatedTable = ({ data }: { data: any | null }) => {
             </div>
 
             <div className="overflow-x-auto">
-                <table className="w-full border-collapse border border-black text-xs sm:text-sm lg:text-base">
+                <table className="w-full border-collapse border border-black text-xs sm:text-sm">
                     <thead>
                         <tr>
                             <th className="border border-black px-1 py-2 text-center w-10" rowSpan={3}>Ser</th>
@@ -134,14 +134,24 @@ const OverallCourseConsolidatedTable = ({ data }: { data: any | null }) => {
                             {/* Semester Headers */}
                             {semesters.map((sem: any) => (
                                 <th key={sem.id} className="border border-black px-2 py-2 text-center">
-                                    {sem.name}
+                                    <Link
+                                        href={`/cptc/consolidated/course/${courseId}/ctw/semester/${sem.id}`}
+                                        className="text-blue-600 hover:text-blue-800 hover:underline"
+                                    >
+                                        {sem.name}
+                                    </Link>
                                 </th>
                             ))}
                         </tr>
                         <tr className="text-xs">
                             {semesters.map((sem: any) => (
                                 <th key={sem.id} className="border border-black px-2 py-2 text-center">
-                                    {semesterTotals.get(sem.id)?.toFixed(0) || 0}
+                                    <Link
+                                        href={`/cptc/consolidated/course/${courseId}/ctw/semester/${sem.id}`}
+                                        className="text-blue-600 hover:text-blue-800 hover:underline"
+                                    >
+                                        {semesterTotals.get(sem.id)?.toFixed(0) || 0}
+                                    </Link>
                                 </th>
                             ))}
                             <th className="border border-black px-2 py-2 text-center">{totalCourseMarks.toFixed(0)}</th>
@@ -255,35 +265,12 @@ export default function CptcCtwConsolidatedPage({ params }: { params: Promise<{ 
                 <div className="mb-8">
                     <div className="flex justify-center mb-4"><FullLogo /></div>
                     <h1 className="text-center text-xl font-bold text-gray-900 uppercase tracking-wider">Bangladesh Air Force Academy</h1>
-                    <p className="text-center font-medium text-gray-900 uppercase tracking-wider pb-2 inline-block w-full">CTW Consolidated Result Sheet</p>
-                </div>
-
-                {/* Course Info */}
-                <div className="mb-6">
-                    <h2 className="text-lg font-bold text-gray-900 mb-4 pb-1 border-b border-dashed border-gray-400 uppercase text-base">Course Information</h2>
-                    <div className="grid grid-cols-2 gap-x-12 gap-y-3 text-base">
-                        <div className="flex"><span className="w-64 text-gray-900 font-bold uppercase">Course</span><span className="mr-4">:</span><span className="text-gray-900 flex-1">{data.course_details?.name} ({data.course_details?.code})</span></div>
-                        {/* Removed activeSemesterName since this is consolidated for course */}
-                        <div className="flex"><span className="w-64 text-gray-900 font-bold uppercase">Total Semesters</span><span className="mr-4">:</span><span className="text-gray-900 flex-1">{data.course_details?.semesters.length}</span></div>
-                    </div>
+                    <p className="text-center font-medium text-gray-900 uppercase tracking-wider inline-block w-full underline">CTW Consolidated Result Sheet</p>
+                    <p className="text-center font-medium text-gray-900 uppercase tracking-wider pb-2 inline-block w-full underline">Course : {data.course_details?.name} ({data.course_details?.code})</p>
                 </div>
 
                 {/* Overall Table */}
-                <OverallCourseConsolidatedTable data={data} />
-
-                {/* System Information */}
-                <div className="mb-6">
-                    <h2 className="text-lg font-bold text-gray-900 mb-4 pb-1 border-b border-dashed border-gray-400 uppercase text-base">System Information</h2>
-                    <div className="grid grid-cols-2 gap-x-12 gap-y-3 text-base">
-                        <div className="flex"><span className="w-64 text-gray-900 font-bold uppercase">Status</span><span className="mr-4">:</span><span className="flex-1 text-green-600 font-bold uppercase">Consolidated & Verified</span></div>
-                        <div className="flex">
-                            <span className="w-64 text-gray-900 font-bold uppercase">Generated At</span><span className="mr-4">:</span>
-                            <span className="text-gray-900 flex-1 font-medium">
-                                {new Date().toLocaleString("en-GB", { day: "2-digit", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" })}
-                            </span>
-                        </div>
-                    </div>
-                </div>
+                <OverallCourseConsolidatedTable data={data} courseId={courseId} />
 
                 {/* Signature Section for Print */}
                 <div className="hidden print:grid grid-cols-3 gap-12 mt-24">

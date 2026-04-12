@@ -9,7 +9,8 @@ import type {
   CtwAssessmentOlqType,
   CtwAssessmentOlqTypeEstimatedMark,
   CtwAssessmentOlqTypeSemester,
-  CtwAssessmentOlqTypeCreateData
+  CtwAssessmentOlqTypeCreateData,
+  CtwAssessmentOlqTypeAssignment
 } from '@/libs/types/ctwAssessmentOlq';
 
 interface TypeQueryParams {
@@ -78,6 +79,30 @@ interface SingleSemesterApiResponse {
   success: boolean;
   message: string;
   data: CtwAssessmentOlqTypeSemester;
+}
+
+interface AssignmentPaginatedResponse {
+  data: CtwAssessmentOlqTypeAssignment[];
+  current_page: number;
+  per_page: number;
+  total: number;
+  last_page: number;
+  from: number;
+  to: number;
+}
+
+interface AssignmentApiResponse {
+  success: boolean;
+  message: string;
+  data: CtwAssessmentOlqTypeAssignment[];
+  pagination?: {
+    current_page: number;
+    per_page: number;
+    total: number;
+    last_page: number;
+    from: number;
+    to: number;
+  };
 }
 
 export const ctwAssessmentOlqTypeService = {
@@ -318,6 +343,79 @@ export const ctwAssessmentOlqTypeService = {
       return result?.success || false;
     } catch (error) {
       console.error('Failed to remove semester:', error);
+      return false;
+    }
+  },
+
+  // ==================== Assignment Management ====================
+
+  /**
+   * Get all OLQ type assignments
+   */
+  async getAllAssignments(params?: {
+    page?: number;
+    per_page?: number;
+    course_id?: number;
+    ctw_assessment_olq_type_id?: number;
+  }): Promise<AssignmentPaginatedResponse> {
+    try {
+      const query = new URLSearchParams();
+      if (params?.page) query.append('page', params.page.toString());
+      if (params?.per_page) query.append('per_page', params.per_page.toString());
+      if (params?.course_id) query.append('course_id', params.course_id.toString());
+      if (params?.ctw_assessment_olq_type_id) query.append('ctw_assessment_olq_type_id', params.ctw_assessment_olq_type_id.toString());
+
+      const endpoint = `/ctw-assessment-olq-assigned${query.toString() ? `?${query.toString()}` : ''}`;
+      const token = getToken();
+      const result = await apiClient.get<AssignmentApiResponse>(endpoint, token);
+
+      if (!result) {
+        return { data: [], current_page: 1, per_page: 10, total: 0, last_page: 1, from: 0, to: 0 };
+      }
+
+      return {
+        data: result.data || [],
+        current_page: result.pagination?.current_page || 1,
+        per_page: result.pagination?.per_page || 10,
+        total: result.pagination?.total || 0,
+        last_page: result.pagination?.last_page || 1,
+        from: result.pagination?.from || 0,
+        to: result.pagination?.to || 0,
+      };
+    } catch (error) {
+      console.error('Failed to fetch assignments:', error);
+      return { data: [], current_page: 1, per_page: 10, total: 0, last_page: 1, from: 0, to: 0 };
+    }
+  },
+
+  /**
+   * Assign OLQ type to course
+   */
+  async assignType(data: {
+    ctw_assessment_olq_type_id: number;
+    course_id: number;
+    is_active?: boolean;
+  }): Promise<CtwAssessmentOlqTypeAssignment | null> {
+    try {
+      const token = getToken();
+      const result = await apiClient.post<{ success: boolean; data: CtwAssessmentOlqTypeAssignment }>('/ctw-assessment-olq-assigned', data, token);
+      return result?.data || null;
+    } catch (error) {
+      console.error('Failed to assign OLQ type:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Delete assignment
+   */
+  async deleteAssignment(id: number): Promise<boolean> {
+    try {
+      const token = getToken();
+      const result = await apiClient.delete<{ success: boolean }>(`/ctw-assessment-olq-assigned/${id}`, token);
+      return result?.success || false;
+    } catch (error) {
+      console.error(`Failed to delete assignment ${id}:`, error);
       return false;
     }
   },

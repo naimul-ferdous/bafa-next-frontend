@@ -168,22 +168,12 @@ export default function CtwCourseSemesterDtConsolidatedPage() {
                 <div className="mb-8">
                     <div className="flex justify-center mb-4"><FullLogo /></div>
                     <h1 className="text-center text-xl font-bold text-gray-900 uppercase tracking-wider">Bangladesh Air Force Academy</h1>
-                    <p className="text-center font-medium text-gray-900 uppercase tracking-wider pb-2 inline-block w-full text-blue-700">CTW DT Consolidated Result Sheet</p>
+                     <p className="text-center font-medium text-gray-900 uppercase tracking-wider inline-block w-full text-blue-700">Breakdown of DT Result : {course?.name}</p>
+                    <p className="text-center font-medium text-gray-900 uppercase tracking-wider pb-2 inline-block w-full text-blue-700">{semester?.name}</p>
                 </div>
 
                 <div className="mb-6">
-                    <h2 className="text-lg font-bold text-gray-900 mb-4 pb-1 border-b border-dashed border-gray-400 uppercase text-base">Course Information</h2>
-                    <div className="grid grid-cols-2 gap-x-12 gap-y-3">
-                        <div className="flex"><span className="w-64 text-gray-900 font-bold uppercase">Course</span><span className="mr-4">:</span><span className="text-gray-900 flex-1">{course?.name || "N/A"}</span></div>
-                        <div className="flex"><span className="w-64 text-gray-900 font-bold uppercase">Semester</span><span className="mr-4">:</span><span className="text-gray-900 flex-1">{semester?.name || "N/A"}</span></div>
-                        <div className="flex"><span className="w-64 text-gray-900 font-bold uppercase">Assessment Category</span><span className="mr-4">:</span><span className="text-gray-900 flex-1 font-bold text-blue-600">DT (Departmental Training)</span></div>
-                        <div className="flex"><span className="w-64 text-gray-900 font-bold uppercase">Exam Type</span><span className="mr-4">:</span><span className="text-gray-900 flex-1 font-bold uppercase">End Final Examination</span></div>
-                    </div>
-                </div>
-
-                <div className="mb-6">
-                    <div className="flex justify-between items-center gap-4 border-b border-dashed border-gray-400 mb-4 no-print">
-                        <h2 className="text-lg font-bold text-gray-900 pb-1 uppercase text-base">Performance Matrix</h2>
+                    <div className="flex justify-end items-center gap-4 mb-4 no-print">
                         <div className="flex items-center gap-1 p-1 rounded-full border border-gray-200 text-xs mb-2">
                             <button onClick={() => setConsolidateTab("main")} className={`px-4 py-1 rounded-full transition-all ${consolidateTab === "main" ? "bg-blue-600 text-white" : "hover:bg-gray-100"}`}>
                                 Summary

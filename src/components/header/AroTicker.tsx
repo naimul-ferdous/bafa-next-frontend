@@ -2,11 +2,9 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
-import { Tiro_Bangla } from "next/font/google";
+import "@fontsource/tiro-bangla";
 import { aroService } from "@/libs/services/aroService";
 import type { Aro } from "@/libs/types/aro";
-
-const tiroBangla = Tiro_Bangla({ weight: "400", subsets: ["latin"] });
 
 export default function AroTicker() {
   const [aros, setAros] = useState<Aro[]>([]);
@@ -40,8 +38,8 @@ export default function AroTicker() {
       {/* Scrolling area */}
       <div className="relative overflow-hidden flex-1 py-1.5">
         <div
-          className={`aro-ticker-track inline-flex items-center whitespace-nowrap ${tiroBangla.className}`}
-          style={{ animationDuration: `${durationSec}s` }}
+          className="aro-ticker-track inline-flex items-center whitespace-nowrap"
+          style={{ fontFamily: "'Tiro Bangla', sans-serif", animationDuration: `${durationSec}s` }}
         >
           {doubled.map((aro, i) => (
             <span key={i} className="inline-flex items-center">

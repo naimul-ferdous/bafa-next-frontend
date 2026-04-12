@@ -4,8 +4,9 @@
 import React, { useState, useEffect } from "react";
 import Label from "@/components/form/Label";
 import { commonService } from "@/libs/services/commonService";
+import { ctwCommonService } from "@/libs/services/ctwCommonService";
 import { ctwResultsModuleService } from "@/libs/services/ctwResultsModuleService";
-import { ctwInstructorAssignCadetService } from "@/libs/services/ctwInstructorAssignCadetService";
+import { cadetService } from "@/libs/services/cadetService";
 import { ctwInstructorAssignModuleService } from "@/libs/services/ctwInstructorAssignModuleService";
 import { useAuth } from "@/libs/hooks/useAuth";
 import { Icon } from "@iconify/react";
@@ -28,6 +29,8 @@ interface CadetRow {
   cadet_rank: string;
   branch: string;
   mark: number;
+  currentInstructorMark: number;
+  marksByInstructor: { [instructorId: number]: number };
   is_active: boolean;
 }
 
@@ -57,35 +60,37 @@ export default function ArmsDrillResultForm({ initialData, onSubmit, onCancel, l
   const [groups, setGroups] = useState<SystemGroup[]>([]);
   const [exams, setExams] = useState<SystemExam[]>([]);
   const [estimatedMarks, setEstimatedMarks] = useState<any[]>([]);
-  const [armsDrillModuleId, setArmsDrillModuleId] = useState<number>(0);
+  const [footDrillModuleId, setArmsDrillModuleId] = useState<number>(0);
+  const [footDrillModule, setArmsDrillModule] = useState<any>(null);
   const [loadingDropdowns, setLoadingDropdowns] = useState(true);
   const [loadingCadets, setLoadingCadets] = useState(false);
   const [loadingEstimatedMarks, setLoadingEstimatedMarks] = useState(false);
+  const [loadingSemesters, setLoadingSemesters] = useState(false);
   const [moduleAssigned, setModuleAssigned] = useState(false);
+  const [moduleInstructors, setModuleInstructors] = useState<any[]>([]);
+  const [allExistingMarks, setAllExistingMarks] = useState<any[]>([]);
 
-  // Load dropdown data + find arms drill module
+
+  // Load all form options in a single API call
   useEffect(() => {
+    if (!user?.id) return;
+
     const loadDropdownData = async () => {
       try {
         setLoadingDropdowns(true);
-        const [options, modulesRes] = await Promise.all([
-          commonService.getResultOptions(),
-          ctwResultsModuleService.getAllModules({ per_page: 100 }),
-        ]);
+        const options = await ctwCommonService.getArmsDrillFormOptions(user.id);
 
         if (options) {
           setCourses(options.courses);
-          setSemesters(options.semesters);
           setPrograms(options.programs);
           setBranches(options.branches);
           setGroups(options.groups);
           setExams(options.exams);
-        }
 
-        // Find arms drill module id
-        const armsDrillModule = modulesRes.data.find((m: any) => m.code === ARMS_DRILL_MODULE_CODE);
-        if (armsDrillModule) {
-          setArmsDrillModuleId(armsDrillModule.id);
+          if (options.module) {
+            setArmsDrillModuleId(options.module.id);
+            setArmsDrillModule(options.module);
+          }
         }
       } catch (err) {
         console.error("Failed to load dropdown data:", err);
@@ -96,20 +101,44 @@ export default function ArmsDrillResultForm({ initialData, onSubmit, onCancel, l
     };
 
     loadDropdownData();
-  }, []);
+  }, [user?.id]);
+
+  // Load semesters dynamically when course is selected
+  useEffect(() => {
+    if (!formData.course_id) {
+      setSemesters([]);
+      if (!initialData) setFormData(prev => ({ ...prev, semester_id: 0 }));
+      return;
+    }
+
+    const loadSemesters = async () => {
+      try {
+        setLoadingSemesters(true);
+        if (!initialData) setFormData(prev => ({ ...prev, semester_id: 0 }));
+        const result = await commonService.getSemestersByCourse(formData.course_id);
+        setSemesters(result);
+      } catch (err) {
+        console.error("Failed to load semesters:", err);
+        setSemesters([]);
+      } finally {
+        setLoadingSemesters(false);
+      }
+    };
+
+    loadSemesters();
+  }, [formData.course_id, initialData]);
 
   // Load estimated marks from DB when course + semester are selected
   useEffect(() => {
     const loadEstimatedMarks = async () => {
-      if (!armsDrillModuleId || !formData.course_id || !formData.semester_id) {
+      if (!footDrillModuleId || !formData.course_id || !formData.semester_id) {
         setEstimatedMarks([]);
         return;
       }
 
       try {
         setLoadingEstimatedMarks(true);
-        const response = await ctwResultsModuleService.getEstimatedMarks(armsDrillModuleId, {
-          course_id: formData.course_id,
+        const response = await ctwResultsModuleService.getEstimatedMarks(footDrillModuleId, {
           semester_id: formData.semester_id,
         });
         setEstimatedMarks(response);
@@ -122,28 +151,29 @@ export default function ArmsDrillResultForm({ initialData, onSubmit, onCancel, l
     };
 
     loadEstimatedMarks();
-  }, [armsDrillModuleId, formData.course_id, formData.semester_id]);
+  }, [footDrillModuleId, formData.course_id, formData.semester_id]);
 
   // Check if exam type exists in the fetched estimated marks
   const hasEstimatedMark = (examTypeId: number): boolean => {
     return estimatedMarks.some((em: any) => em.exam_type_id === examTypeId);
   };
 
-  // Get estimated mark value for the selected exam type
-  const getMaxMark = (): number => {
-    if (!formData.exam_type_id) return 0;
-    const em = estimatedMarks.find((em: any) => em.exam_type_id === formData.exam_type_id);
-    return em?.estimated_mark || em?.mark || 0;
+  // Get estimated mark info for the selected exam type
+  const getEstimatedMarkInfo = () => {
+    if (!formData.exam_type_id) return null;
+    return estimatedMarks.find((em: any) => em.exam_type_id === formData.exam_type_id);
   };
 
-  const maxMark = getMaxMark();
+  const estimatedMarkInfo = getEstimatedMarkInfo();
+  const maxMark = estimatedMarkInfo ? parseFloat(estimatedMarkInfo.estimated_mark_per_instructor || estimatedMarkInfo.mark || 0) : 0;
+  const conversationMark = estimatedMarkInfo ? parseFloat(estimatedMarkInfo.conversation_mark || 0) : 0;
 
   // Auto-load cadets from ctw_instructor_assign_cadets after exam type selected
   // First check if instructor is assigned to this module via ctw_instructor_assign_modules
   useEffect(() => {
     const loadCadets = async () => {
       // Required: user, module, course, semester, exam_type
-      if (!user?.id || !armsDrillModuleId || !formData.course_id || !formData.semester_id || !formData.exam_type_id) {
+      if (!user?.id || !footDrillModuleId || !formData.course_id || !formData.semester_id || !formData.exam_type_id) {
         setCadetRows([]);
         setModuleAssigned(false);
         return;
@@ -152,7 +182,7 @@ export default function ArmsDrillResultForm({ initialData, onSubmit, onCancel, l
       try {
         setLoadingCadets(true);
 
-        // First check if instructor is assigned to this arms_drill module
+        // First check if instructor is assigned to this foot_drill module
         const moduleAssignRes = await ctwInstructorAssignModuleService.getAll({
           instructor_id: user.id,
           module_code: ARMS_DRILL_MODULE_CODE,
@@ -170,37 +200,33 @@ export default function ArmsDrillResultForm({ initialData, onSubmit, onCancel, l
 
         setModuleAssigned(true);
 
-        // Instructor is assigned — now fetch cadets
-        const params: any = {
+        // Fetch cadets directly by course + semester
+        const cadetParams: any = {
           per_page: 500,
-          instructor_id: user.id,
-          ctw_results_module_id: armsDrillModuleId,
           course_id: formData.course_id,
           semester_id: formData.semester_id,
-          is_active: true,
+          is_current: 1,
         };
-        // Optional filters
-        if (formData.program_id) params.program_id = formData.program_id;
-        if (formData.branch_id) params.branch_id = formData.branch_id;
-        if (formData.group_id) params.group_id = formData.group_id;
+        if (formData.program_id) cadetParams.program_id = formData.program_id;
+        if (formData.branch_id) cadetParams.branch_id = formData.branch_id;
+        if (formData.group_id) cadetParams.group_id = formData.group_id;
 
-        const assignedCadetsRes = await ctwInstructorAssignCadetService.getAll(params);
+        const cadetsRes = await cadetService.getAllCadets(cadetParams);
 
-        const rows: CadetRow[] = assignedCadetsRes.data
-          .filter((ac: any) => ac.cadet)
-          .map((ac: any) => {
-            const cadet = ac.cadet;
-            const currentRank = cadet.assigned_ranks?.find((ar: any) => ar.rank)?.rank;
-            return {
-              cadet_id: cadet.id,
-              cadet_number: cadet.cadet_number || "",
-              cadet_name: cadet.name,
-              cadet_rank: currentRank?.short_name || currentRank?.name || "Officer Cadet",
-              branch: cadet.assigned_branchs?.find((ab: any) => ab.is_current)?.branch?.name || cadet.assigned_branchs?.[0]?.branch?.name || "N/A",
-              mark: 0,
-              is_active: true,
-            };
-          });
+        const rows: CadetRow[] = cadetsRes.data.map((cadet: any) => {
+          const currentRank = cadet.assigned_ranks?.find((ar: any) => ar.rank)?.rank;
+          return {
+            cadet_id: cadet.id,
+            cadet_number: cadet.cadet_number || "",
+            cadet_name: cadet.name,
+            cadet_rank: currentRank?.short_name || currentRank?.name || "Officer Cadet",
+            branch: cadet.assigned_branchs?.find((ab: any) => ab.is_current)?.branch?.name || cadet.assigned_branchs?.[0]?.branch?.name || "N/A",
+            mark: 0,
+            currentInstructorMark: 0,
+            marksByInstructor: {},
+            is_active: true,
+          };
+        });
 
         setCadetRows(rows);
       } catch (err) {
@@ -213,7 +239,7 @@ export default function ArmsDrillResultForm({ initialData, onSubmit, onCancel, l
     if (!initialData) {
       loadCadets();
     }
-  }, [user?.id, armsDrillModuleId, formData.course_id, formData.semester_id, formData.program_id, formData.branch_id, formData.group_id, formData.exam_type_id, initialData]);
+  }, [user?.id, footDrillModuleId, formData.course_id, formData.semester_id, formData.program_id, formData.branch_id, formData.group_id, formData.exam_type_id, initialData]);
 
   // Populate form with initial data
   useEffect(() => {
@@ -230,6 +256,7 @@ export default function ArmsDrillResultForm({ initialData, onSubmit, onCancel, l
       });
 
       if (initialData.achieved_marks && initialData.achieved_marks.length > 0) {
+        setModuleAssigned(true); // Module is assigned if initial data exists
         const uniqueCadets = Array.from(new Set(initialData.achieved_marks.map(m => m.cadet_id)));
         const rows: CadetRow[] = uniqueCadets.map(cadetId => {
           const mark = initialData.achieved_marks?.find(m => m.cadet_id === cadetId);
@@ -239,9 +266,11 @@ export default function ArmsDrillResultForm({ initialData, onSubmit, onCancel, l
             cadet_id: cadetId,
             cadet_number: mark?.cadet?.cadet_number || "",
             cadet_name: mark?.cadet?.name || "Unknown",
-            cadet_rank: currentRank?.short_name || currentRank?.name || "Officer Cadet",
-            branch: initialData.branch?.name || "N/A",
+            cadet_rank: currentRank?.short_name || currentRank?.name || "-",
+            branch: mark?.cadet?.assigned_branchs?.find((ab: any) => ab.is_current)?.branch?.name || mark?.cadet?.assigned_branchs?.[0]?.branch?.name || "N/A",
             mark: mark?.achieved_mark || 0,
+            currentInstructorMark: 0,
+            marksByInstructor: {},
             is_active: mark?.is_active || true,
           };
         });
@@ -295,7 +324,7 @@ export default function ArmsDrillResultForm({ initialData, onSubmit, onCancel, l
         group_id: formData.group_id || undefined,
         exam_type_id: formData.exam_type_id,
         instructor_id: user.id,
-        ctw_results_module_id: armsDrillModuleId,
+        ctw_results_module_id: footDrillModuleId,
         remarks: formData.remarks || undefined,
         is_active: formData.is_active,
         marks: marks,
@@ -344,8 +373,16 @@ export default function ArmsDrillResultForm({ initialData, onSubmit, onCancel, l
 
             <div>
               <Label>Semester <span className="text-red-500">*</span></Label>
-              <select value={formData.semester_id} onChange={(e) => handleChange("semester_id", parseInt(e.target.value))} className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500" required>
-                <option value={0}>Select Semester</option>
+              <select
+                value={formData.semester_id}
+                onChange={(e) => handleChange("semester_id", parseInt(e.target.value))}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500"
+                required
+                disabled={!formData.course_id || loadingSemesters}
+              >
+                <option value={0}>
+                  {loadingSemesters ? "Loading..." : !formData.course_id ? "Select course first" : "Select Semester"}
+                </option>
                 {semesters.map(semester => (<option key={semester.id} value={semester.id}>{semester.name} ({semester.code})</option>))}
               </select>
             </div>
@@ -448,13 +485,24 @@ export default function ArmsDrillResultForm({ initialData, onSubmit, onCancel, l
               <table className="w-full border-collapse border border-black">
                 <thead>
                   <tr>
-                    <th className="border border-black px-3 py-2 text-center uppercase">SL</th>
-                    <th className="border border-black px-3 py-2 text-center uppercase">CADET NO.</th>
-                    <th className="border border-black px-3 py-2 text-center uppercase">RANK</th>
-                    <th className="border border-black px-3 py-2 text-left uppercase">NAME</th>
-                    <th className="border border-black px-3 py-2 text-left uppercase">BRANCH</th>
-                    <th className="border border-black px-3 py-2 text-center uppercase">MARK{maxMark > 0 ? ` (Max: ${maxMark})` : ""}</th>
+                    <th className="border border-black px-3 py-2 text-center" rowSpan={2}>SL</th>
+                    <th className="border border-black px-3 py-2 text-center" rowSpan={2}>BD No.</th>
+                    <th className="border border-black px-3 py-2 text-center" rowSpan={2}>Rank</th>
+                    <th className="border border-black px-3 py-2 text-left" rowSpan={2}>Name</th>
+                    <th className="border border-black px-3 py-2 text-left" rowSpan={2}>Branch</th>
+                    {footDrillModule && footDrillModule.instructor_count > 0 && (
+                      <th className="border border-black px-3 py-2 text-center" colSpan={footDrillModule.instructor_count}>Instructors</th>
+                    )}
+                    <th className="border border-black px-3 py-2 text-center" rowSpan={2}>Total</th>
+                    <th className="border border-black px-3 py-2 text-center" rowSpan={2}>Conv - {conversationMark.toFixed(2)}</th>
                   </tr>
+                  {footDrillModule && footDrillModule.instructor_count > 0 && (
+                    <tr>
+                      {Array.from({ length: footDrillModule.instructor_count }, (_, i) => i + 1).map(instrNum => (
+                        <th key={instrNum} className="border border-black px-3 py-2 text-center">Inst {instrNum}</th>
+                      ))}
+                    </tr>
+                  )}
                 </thead>
                 <tbody>
                   {cadetRows.map((cadet, index) => (
@@ -462,20 +510,29 @@ export default function ArmsDrillResultForm({ initialData, onSubmit, onCancel, l
                       <td className="border border-black px-3 py-2 text-center font-medium">{index + 1}</td>
                       <td className="border border-black px-3 py-2 text-center">{cadet.cadet_number}</td>
                       <td className="border border-black px-3 py-2 text-center">{cadet.cadet_rank}</td>
-                      <td className="border border-black px-3 py-2 font-medium">{cadet.cadet_name}</td>
-                      <td className="border border-black px-3 py-2 font-medium">{cadet.branch}</td>
-                      <td className="border border-black px-2 py-1 text-center">
-                        <input
-                          type="number"
-                          min={0}
-                          max={maxMark > 0 ? maxMark : undefined}
-                          step={0.01}
-                          value={cadet.mark || 0}
-                          onChange={(e) => handleCadetChange(index, "mark", parseFloat(e.target.value) || 0)}
-                          className="w-full px-2 py-1 border border-gray-300 rounded text-center text-sm focus:ring-2 focus:ring-blue-500 bg-white"
-                          placeholder="0"
-                        />
-                      </td>
+                      <td className="border border-black px-3 py-2">{cadet.cadet_name}</td>
+                      <td className="border border-black px-3 py-2">{cadet.branch}</td>
+                      
+                      {footDrillModule && footDrillModule.instructor_count > 0 && (
+                        Array.from({ length: footDrillModule.instructor_count }, (_, i) => (
+                          <td key={i} className="border border-black px-2 py-1 text-center">
+                            {i === 0 ? ( // Only show input for the first instructor
+                              <input
+                                type="number"
+                                min={0}
+                                max={maxMark > 0 ? maxMark : undefined}
+                                step={0.01}
+                                value={cadet.mark || 0}
+                                onChange={(e) => handleCadetChange(index, "mark", parseFloat(e.target.value) || 0)}
+                                className="w-full px-2 py-1 border border-gray-300 rounded text-center text-sm focus:ring-2 focus:ring-blue-500 bg-white"
+                                placeholder="0"
+                              />
+                            ) : (
+                              "-" // Placeholder for other instructors
+                            )}
+                          </td>
+                        ))
+                      )}
                     </tr>
                   ))}
                 </tbody>

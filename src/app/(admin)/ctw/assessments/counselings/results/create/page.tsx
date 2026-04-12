@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
 import React, { useState } from "react";
@@ -14,7 +15,7 @@ export default function CreateResultPage() {
     setLoading(true);
     try {
       await ctwAssessmentCounselingResultService.createResult(data);
-      router.push("/ctw/assessments/counselings/results");
+      router.push(`/ctw/assessments/counselings/results/course/${data.course_id}/semester/${data.semester_id}`);
     } catch (err: any) {
       throw err;
     } finally {
@@ -23,7 +24,7 @@ export default function CreateResultPage() {
   };
 
   const handleCancel = () => {
-    router.push("/ctw/assessments/counselings/results");
+    router.back();
   };
 
   return (

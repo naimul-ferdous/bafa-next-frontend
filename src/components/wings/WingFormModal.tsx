@@ -15,8 +15,12 @@ export default function WingFormModal() {
     name: "",
     code: "",
     description: "",
-    location: "",
     is_active: true,
+    is_academy: false,
+    is_gst: false,
+    is_flying: false,
+    is_professional: false,
+    is_central: false,
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -28,8 +32,12 @@ export default function WingFormModal() {
         name: editingWing.name,
         code: editingWing.code || "",
         description: editingWing.description || "",
-        location: editingWing.location || "",
         is_active: editingWing.is_active !== false,
+        is_academy: !!editingWing.is_academy,
+        is_gst: !!editingWing.is_gst,
+        is_flying: !!editingWing.is_flying,
+        is_professional: !!editingWing.is_professional,
+        is_central: !!editingWing.is_central,
       });
     } else {
       // Reset form for new wing
@@ -37,8 +45,12 @@ export default function WingFormModal() {
         name: "",
         code: "",
         description: "",
-        location: "",
         is_active: true,
+        is_academy: false,
+        is_gst: false,
+        is_flying: false,
+        is_professional: false,
+        is_central: false,
       });
     }
     setError("");
@@ -119,23 +131,37 @@ export default function WingFormModal() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <Label>Description</Label>
-              <Input
-                value={formData.description}
-                onChange={(e) => handleChange("description", e.target.value)}
-                placeholder="Enter description (optional)"
-              />
-            </div>
+          <div>
+            <Label>Description</Label>
+            <Input
+              value={formData.description}
+              onChange={(e) => handleChange("description", e.target.value)}
+              placeholder="Enter description (optional)"
+            />
+          </div>
 
-            <div>
-              <Label>Location</Label>
-              <Input
-                value={formData.location}
-                onChange={(e) => handleChange("location", e.target.value)}
-                placeholder="Enter location (optional)"
-              />
+          <div>
+            <Label className="mb-3">Wing Type</Label>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              {(
+                [
+                  { field: "is_academy", label: "Academy" },
+                  { field: "is_gst", label: "GST" },
+                  { field: "is_flying", label: "Flying" },
+                  { field: "is_professional", label: "Professional" },
+                  { field: "is_central", label: "Central" },
+                ] as { field: keyof typeof formData; label: string }[]
+              ).map(({ field, label }) => (
+                <label key={field} className="flex items-center gap-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={!!formData[field]}
+                    onChange={(e) => handleChange(field, e.target.checked)}
+                    className="w-4 h-4 accent-blue-600"
+                  />
+                  <span className="text-sm text-gray-700 dark:text-gray-300">{label}</span>
+                </label>
+              ))}
             </div>
           </div>
 

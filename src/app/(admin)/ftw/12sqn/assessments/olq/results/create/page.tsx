@@ -5,18 +5,18 @@ import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import { ftw12sqnAssessmentOlqResultService } from "@/libs/services/ftw12sqnAssessmentOlqResultService";
 import FullLogo from "@/components/ui/fulllogo";
-import Ftw12sqnOlqResultForm from "@/components/ftw-12sqn-assessment-olq/Ftw12sqnOlqResultForm";
-import type { Ftw12sqnAssessmentOlqResultCreateData } from "@/libs/types/ftw12sqnAssessmentOlq";
+import OlqResultForm from "@/components/ftw-12sqn-assessment-olq/OlqResultForm";
+import type { Ftw12SqnAssessmentOlqResultCreateData } from "@/libs/types/ftw12sqnAssessmentOlq";
 
-export default function CreateFtw12sqnOlqResultPage() {
+export default function CreateOlqResultPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
 
-  const handleSubmit = async (data: Ftw12sqnAssessmentOlqResultCreateData) => {
+  const handleSubmit = async (data: Ftw12SqnAssessmentOlqResultCreateData) => {
     setLoading(true);
     try {
       await ftw12sqnAssessmentOlqResultService.createResult(data);
-      router.push("/ftw/12sqn/assessments/olq/results");
+      router.push("/ftw/12sqn/assessments/olq/results/");
     } catch (err: any) {
       throw err;
     } finally {
@@ -25,7 +25,7 @@ export default function CreateFtw12sqnOlqResultPage() {
   };
 
   const handleCancel = () => {
-    router.push("/ftw/12sqn/assessments/olq/results");
+    router.push("/ftw/12sqn/assessments/olq/results/");
   };
 
   return (
@@ -33,10 +33,10 @@ export default function CreateFtw12sqnOlqResultPage() {
       <div className="text-center mb-8">
         <div className="flex justify-center mb-4"><FullLogo /></div>
         <h1 className="text-xl font-bold text-gray-900 uppercase">Bangladesh Air Force Academy</h1>
-        <h2 className="text-md font-semibold text-gray-700 mt-2 uppercase">Create FTW 12sqn OLQ Result</h2>
+        <h2 className="text-md font-semibold text-gray-700 mt-2 uppercase">Create OLQ Result</h2>
       </div>
 
-      <Ftw12sqnOlqResultForm
+      <OlqResultForm
         onSubmit={handleSubmit}
         onCancel={handleCancel}
         loading={loading}

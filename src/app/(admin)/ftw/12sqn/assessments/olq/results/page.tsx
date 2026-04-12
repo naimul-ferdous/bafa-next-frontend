@@ -2,19 +2,26 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import { Ftw12SqnAssessmentOlqResult } from "@/libs/types/ftw12sqnAssessmentOlq";
 import { Icon } from "@iconify/react";
+import { ftw12sqnAssessmentOlqResultService } from "@/libs/services/ftw12sqnAssessmentOlqResultService";
+import { ftw12sqnUserAssignService } from "@/libs/services/ftw12sqnUserAssignService";
+import { useAuth } from "@/libs/hooks/useAuth";
 import FullLogo from "@/components/ui/fulllogo";
 import DataTable, { Column } from "@/components/ui/DataTable";
 import ConfirmationModal from "@/components/ui/modal/ConfirmationModal";
-import { Ftw12sqnAssessmentOlqResult } from "@/libs/types/ftw12sqnAssessmentOlq";
-import ftw12sqnAssessmentOlqResultService from "@/libs/services/ftw12sqnAssessmentOlqResultService";
+import { useCan } from "@/context/PagePermissionsContext";
 
-export default function Ftw12sqnAssessmentOlqResultsPage() {
+export default function Ftw12SqnViewAssessmentOlqResultsPage() {
   const router = useRouter();
-  const [results, setResults] = useState<Ftw12sqnAssessmentOlqResult[]>([]);
+  const { user } = useAuth();
+  const can = useCan();
+
+  const [hasOlqAssign, setHasOlqAssign] = useState(false);
+  const [results, setResults] = useState<Ftw12SqnAssessmentOlqResult[]>([]);
   const [loading, setLoading] = useState(true);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
-  const [deletingResult, setDeletingResult] = useState<Ftw12sqnAssessmentOlqResult | null>(null);
+  const [deletingResult, setDeletingResult] = useState<Ftw12SqnAssessmentOlqResult | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [perPage, setPerPage] = useState(10);
   const [currentPage, setCurrentPage] = useState(1);
@@ -54,10 +61,19 @@ export default function Ftw12sqnAssessmentOlqResultsPage() {
     loadResults();
   }, [loadResults]);
 
+  // Load OLQ assigns for current user
+  useEffect(() => {
+    if (!user?.id) return;
+    ftw12sqnUserAssignService.getAll({ user_id: user.id }).then((data) => {
+      console.log("OLQ assigns for user", user.id, data.olq);
+      setHasOlqAssign(data.olq.length > 0);
+    });
+  }, [user?.id]);
+
   const handleAddResult = () => router.push("/ftw/12sqn/assessments/olq/results/create");
-  const handleEditResult = (result: Ftw12sqnAssessmentOlqResult) => router.push(`/ftw/12sqn/assessments/olq/results/${result.id}/edit`);
-  const handleViewResult = (result: Ftw12sqnAssessmentOlqResult) => router.push(`/ftw/12sqn/assessments/olq/results/${result.id}`);
-  const handleDeleteResult = (result: Ftw12sqnAssessmentOlqResult) => {
+  const handleEditResult = (result: Ftw12SqnAssessmentOlqResult) => router.push(`/ftw/12sqn/assessments/olq/results/${result.id}/edit`);
+  const handleViewResult = (result: Ftw12SqnAssessmentOlqResult) => router.push(`/ftw/12sqn/assessments/olq/results/${result.id}`);
+  const handleDeleteResult = (result: Ftw12SqnAssessmentOlqResult) => {
     setDeletingResult(result);
     setDeleteModalOpen(true);
   };
@@ -90,8 +106,8 @@ export default function Ftw12sqnAssessmentOlqResultsPage() {
     </div>
   );
 
-  const columns: Column<Ftw12sqnAssessmentOlqResult>[] = [
-    { key: "id", header: "SL.", headerAlign:"center", className: "text-center text-gray-900", render: (result, index) => (pagination.from || 0) + (index + 1) - 1 },
+  const columns: Column<Ftw12SqnAssessmentOlqResult>[] = [
+    { key: "id", header: "SL.", headerAlign:"center", className: "text-center text-gray-900", render: (result, index) => (pagination.from || 0) + (index) },
     {
       key: "course",
       header: "Course",
@@ -103,18 +119,6 @@ export default function Ftw12sqnAssessmentOlqResultsPage() {
       header: "Semester",
       className: "text-gray-700",
       render: (result) => result.semester?.name || "—"
-    },
-    {
-      key: "program",
-      header: "Program",
-      className: "text-gray-700",
-      render: (result) => result.program?.name || "—"
-    },
-    {
-      key: "branch",
-      header: "Branch",
-      className: "text-gray-700",
-      render: (result) => result.branch?.name || "—"
     },
     {
       key: "olq_type",
@@ -132,6 +136,33 @@ export default function Ftw12sqnAssessmentOlqResultsPage() {
           {result.result_cadets?.length || 0} cadets
         </span>
       ),
+    },
+    {
+      key: "approval_status",
+      header: "Approval Status",
+      headerAlign: "center",
+      className: "text-center",
+      render: (result) => {
+        const semApprovals = result.semester_approvals ?? [];
+        const isActive = semApprovals.length > 0;
+        const forwardedByMe = semApprovals.some((a: any) => a.forwarded_by === user?.id);
+        return (
+          <div className="flex flex-col items-center gap-1">
+            <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase border ${
+              isActive
+                ? "bg-blue-50 text-blue-700 border-blue-100"
+                : "bg-yellow-50 text-yellow-700 border-yellow-100"
+            }`}>
+              {isActive ? "In Progress" : "Not Started"}
+            </span>
+            {forwardedByMe && (
+              <span className="text-[9px] text-blue-600 font-bold flex items-center gap-0.5">
+                <Icon icon="hugeicons:checkmark-circle-02" className="w-2.5 h-2.5" /> Forwarded by me
+              </span>
+            )}
+          </div>
+        );
+      },
     },
     {
       key: "is_active",
@@ -155,13 +186,22 @@ export default function Ftw12sqnAssessmentOlqResultsPage() {
       header: "Actions",
       headerAlign: "center",
       className: "text-center no-print",
-      render: (result) => (
-        <div className="flex items-center justify-center gap-1">
-          <button onClick={() => handleViewResult(result)} className="p-1 text-blue-600 hover:bg-blue-50 rounded" title="View"><Icon icon="hugeicons:view" className="w-4 h-4" /></button>
-          <button onClick={() => handleEditResult(result)} className="p-1 text-yellow-600 hover:bg-yellow-50 rounded" title="Edit"><Icon icon="hugeicons:pencil-edit-01" className="w-4 h-4" /></button>
-          <button onClick={() => handleDeleteResult(result)} className="p-1 text-red-600 hover:bg-red-50 rounded" title="Delete"><Icon icon="hugeicons:delete-02" className="w-4 h-4" /></button>
-        </div>
-      ),
+      render: (result) => {
+        const isForwarded = (result.semester_approvals?.length ?? 0) > 0;
+        return (
+          <div className="flex items-center justify-center gap-1" onClick={(e) => e.stopPropagation()}>
+            {can('view') && (
+              <button onClick={() => handleViewResult(result)} className="p-1.5 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-lg" title="View"><Icon icon="hugeicons:view" className="w-4 h-4" /></button>
+            )}
+            {!isForwarded && can('edit') && result.created_by === user?.id && (
+              <button onClick={() => handleEditResult(result)} className="p-1.5 bg-yellow-50 text-yellow-600 hover:bg-yellow-100 rounded-lg" title="Edit"><Icon icon="hugeicons:pencil-edit-01" className="w-4 h-4" /></button>
+            )}
+            {!isForwarded && can('delete') && result.created_by === user?.id && (
+              <button onClick={() => handleDeleteResult(result)} className="p-1.5 bg-red-50 text-red-600 hover:bg-red-100 rounded-lg" title="Delete"><Icon icon="hugeicons:delete-02" className="w-4 h-4" /></button>
+            )}
+          </div>
+        );
+      },
     },
   ];
 
@@ -170,12 +210,14 @@ export default function Ftw12sqnAssessmentOlqResultsPage() {
       <div className="text-center mb-8">
         <div className="flex justify-center mb-4"><FullLogo /></div>
         <h1 className="text-xl font-bold text-gray-900 uppercase">Bangladesh Air Force Academy</h1>
-        <h2 className="text-md font-semibold text-gray-700 mt-2 uppercase">FTW 12sqn Assessment OLQ Results</h2>
+        <h2 className="text-md font-semibold text-gray-700 mt-2 uppercase">12Sqn Assessment OLQ Results</h2>
       </div>
 
       <div className="flex items-center justify-end gap-4 mb-6">
         <div className="flex items-center gap-3">
-          <button onClick={handleAddResult} className="px-4 py-2 rounded-lg text-white flex items-center gap-1 bg-blue-600 hover:bg-blue-700"><Icon icon="hugeicons:add-circle" className="w-4 h-4 mr-2" />Add Result</button>
+          {can('add') && hasOlqAssign && (
+            <button onClick={handleAddResult} className="px-4 py-2 rounded-lg text-white flex items-center gap-1 bg-blue-600 hover:bg-blue-700"><Icon icon="hugeicons:add-circle" className="w-4 h-4 mr-2" />Add Result</button>
+          )}
           <button onClick={handleExport} className="px-4 py-2 rounded-lg text-white flex items-center gap-1 bg-green-600 hover:bg-green-700"><Icon icon="hugeicons:download-04" className="w-4 h-4 mr-2" />Export</button>
         </div>
       </div>
@@ -188,7 +230,7 @@ export default function Ftw12sqnAssessmentOlqResultsPage() {
           data={results}
           keyExtractor={(result) => result.id.toString()}
           emptyMessage="No OLQ results found"
-          onRowClick={handleViewResult}
+          onRowClick={can('view') ? handleViewResult : undefined}
         />
       )}
 

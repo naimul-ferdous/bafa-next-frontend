@@ -4,16 +4,17 @@
 import React, { useState, useEffect } from "react";
 import Label from "@/components/form/Label";
 import { commonService } from "@/libs/services/commonService";
+import { ctwCommonService } from "@/libs/services/ctwCommonService";
 import { ctwResultsModuleService } from "@/libs/services/ctwResultsModuleService";
-import { ctwInstructorAssignCadetService } from "@/libs/services/ctwInstructorAssignCadetService";
+import { cadetService } from "@/libs/services/cadetService";
 import { ctwInstructorAssignModuleService } from "@/libs/services/ctwInstructorAssignModuleService";
 import { useAuth } from "@/libs/hooks/useAuth";
 import { Icon } from "@iconify/react";
 import type { SystemCourse, SystemSemester, SystemProgram, SystemBranch, SystemGroup, SystemExam } from "@/libs/types/system";
-import type { CtwOneMileResult } from "@/libs/types/ctwOneMile";
+import type { Ctw2kmFiveStationResult } from "@/libs/types/ctw2kmFiveStation";
 
 interface ResultFormProps {
-  initialData?: CtwOneMileResult | null;
+  initialData?: Ctw2kmFiveStationResult | null;
   onSubmit: (data: any) => Promise<void>;
   onCancel: () => void;
   loading: boolean;
@@ -26,16 +27,69 @@ interface CadetRow {
   cadet_number: string;
   cadet_name: string;
   cadet_rank: string;
-  cadet_gender?: string;
+  cadet_gender: string;
   branch: string;
-  practices: { [key: number]: number };
-  avg_practice: number;
-  conv_practice: number;
-  test_mark: number;
-  conv_exam: number;
-  mark: number;
+  mark: number; // Raw total mark
+  conversation_mark: number; // Final mark (out of conversation_mark)
+  detail_marks: { [detailId: number]: number };
+  detail_inputs: { [detailId: number]: string }; // Stores time or qty
   is_active: boolean;
 }
+
+const timeToSeconds = (timeStr: string | null): number => {
+  if (!timeStr) return 0;
+  if (typeof timeStr !== 'string') return parseFloat(timeStr) || 0;
+  const parts = timeStr.split(':');
+  if (parts.length === 2) {
+    return parseInt(parts[0]) * 60 + parseInt(parts[1]);
+  }
+  return parseFloat(timeStr) || 0;
+};
+
+const secondsToTime = (seconds: number): string => {
+  if (!seconds) return "0:00";
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  return `${mins}:${secs.toString().padStart(2, '0')}`;
+};
+
+const calculateMark = (detail: any, value: string, gender: string): number => {
+  const scores = detail.scores || [];
+  const isFemale = gender.toLowerCase() === 'female';
+  
+  if (scores.length === 0) return 0;
+
+  const firstScore = scores[0];
+  const isTimeBased = isFemale ? !!firstScore.female_time : !!firstScore.male_time;
+
+  if (isTimeBased) {
+    const cadetSeconds = timeToSeconds(value);
+    if (cadetSeconds === 0) return 0;
+
+    let bestMark = 0;
+    scores.forEach((s: any) => {
+      const scoreTime = timeToSeconds(isFemale ? s.female_time : s.male_time);
+      const scoreMark = parseFloat(isFemale ? s.female_mark : s.male_mark);
+      if (cadetSeconds <= scoreTime) {
+        if (scoreMark > bestMark) bestMark = scoreMark;
+      }
+    });
+    return bestMark;
+  } else {
+    const cadetQty = parseFloat(value) || 0;
+    if (cadetQty === 0) return 0;
+
+    let bestMark = 0;
+    scores.forEach((s: any) => {
+      const scoreQty = parseFloat(isFemale ? s.female_quantity : s.male_quantity) || 0;
+      const scoreMark = parseFloat(isFemale ? s.female_mark : s.male_mark);
+      if (cadetQty >= scoreQty) {
+        if (scoreMark > bestMark) bestMark = scoreMark;
+      }
+    });
+    return bestMark;
+  }
+};
 
 const TWO_KM_5_STATION_MODULE_CODE = "2km_5_station";
 
@@ -55,7 +109,6 @@ export default function TwoKmFiveStationResultForm({ initialData, onSubmit, onCa
   const [cadetRows, setCadetRows] = useState<CadetRow[]>([]);
   const [error, setError] = useState("");
 
-  // Dropdown data
   const [courses, setCourses] = useState<SystemCourse[]>([]);
   const [semesters, setSemesters] = useState<SystemSemester[]>([]);
   const [programs, setPrograms] = useState<SystemProgram[]>([]);
@@ -63,37 +116,34 @@ export default function TwoKmFiveStationResultForm({ initialData, onSubmit, onCa
   const [groups, setGroups] = useState<SystemGroup[]>([]);
   const [exams, setExams] = useState<SystemExam[]>([]);
   const [estimatedMarks, setEstimatedMarks] = useState<any[]>([]);
-  const [twoKmModule, setTwoKmModule] = useState<any>(null);
-  const [twoKmModuleId, setTwoKmModuleId] = useState<number>(0);
+  const [moduleId, setModuleId] = useState<number>(0);
   const [loadingDropdowns, setLoadingDropdowns] = useState(true);
   const [loadingCadets, setLoadingCadets] = useState(false);
   const [loadingEstimatedMarks, setLoadingEstimatedMarks] = useState(false);
+  const [loadingSemesters, setLoadingSemesters] = useState(false);
   const [moduleAssigned, setModuleAssigned] = useState(false);
 
-  // Load dropdown data + find 2km 5 station module
+  const currentEstimatedMark = estimatedMarks.find((em: any) => em.exam_type_id === formData.exam_type_id);
+  const stationDetails = currentEstimatedMark?.details || [];
+
   useEffect(() => {
+    if (!user?.id) return;
+
     const loadDropdownData = async () => {
       try {
         setLoadingDropdowns(true);
-        const [options, modulesRes] = await Promise.all([
-          commonService.getResultOptions(),
-          ctwResultsModuleService.getAllModules({ per_page: 100 }),
-        ]);
+        const options = await ctwCommonService.getTwoKmFiveStationFormOptions(user.id);
 
         if (options) {
           setCourses(options.courses);
-          setSemesters(options.semesters);
           setPrograms(options.programs);
           setBranches(options.branches);
           setGroups(options.groups);
           setExams(options.exams);
-        }
 
-        // Find 2km 5 station module
-        const moduleData = modulesRes.data.find((m: any) => m.code === TWO_KM_5_STATION_MODULE_CODE);
-        if (moduleData) {
-          setTwoKmModule(moduleData);
-          setTwoKmModuleId(moduleData.id);
+          if (options.module) {
+            setModuleId(options.module.id);
+          }
         }
       } catch (err) {
         console.error("Failed to load dropdown data:", err);
@@ -104,20 +154,42 @@ export default function TwoKmFiveStationResultForm({ initialData, onSubmit, onCa
     };
 
     loadDropdownData();
-  }, []);
+  }, [user?.id]);
 
-  // Load estimated marks from DB when course + semester are selected
+  useEffect(() => {
+    if (!formData.course_id) {
+      setSemesters([]);
+      if (!initialData) setFormData(prev => ({ ...prev, semester_id: 0 }));
+      return;
+    }
+
+    const loadSemesters = async () => {
+      try {
+        setLoadingSemesters(true);
+        if (!initialData) setFormData(prev => ({ ...prev, semester_id: 0 }));
+        const result = await commonService.getSemestersByCourse(formData.course_id);
+        setSemesters(result);
+      } catch (err) {
+        console.error("Failed to load semesters:", err);
+        setSemesters([]);
+      } finally {
+        setLoadingSemesters(false);
+      }
+    };
+
+    loadSemesters();
+  }, [formData.course_id, initialData]);
+
   useEffect(() => {
     const loadEstimatedMarks = async () => {
-      if (!twoKmModuleId || !formData.course_id || !formData.semester_id) {
+      if (!moduleId || !formData.course_id || !formData.semester_id) {
         setEstimatedMarks([]);
         return;
       }
 
       try {
         setLoadingEstimatedMarks(true);
-        const response = await ctwResultsModuleService.getEstimatedMarks(twoKmModuleId, {
-          course_id: formData.course_id,
+        const response = await ctwResultsModuleService.getEstimatedMarks(moduleId, {
           semester_id: formData.semester_id,
         });
         setEstimatedMarks(response);
@@ -130,27 +202,27 @@ export default function TwoKmFiveStationResultForm({ initialData, onSubmit, onCa
     };
 
     loadEstimatedMarks();
-  }, [twoKmModuleId, formData.course_id, formData.semester_id]);
+  }, [moduleId, formData.course_id, formData.semester_id]);
 
-  // Check if exam type exists in the fetched estimated marks
   const hasEstimatedMark = (examTypeId: number): boolean => {
     return estimatedMarks.some((em: any) => em.exam_type_id === examTypeId);
   };
 
-  // Get estimated mark value for the selected exam type
-  const getEstimatedMarkInfo = () => {
-    if (!formData.exam_type_id) return null;
-    return estimatedMarks.find((em: any) => em.exam_type_id === formData.exam_type_id);
+  const getMaxConvMark = (): number => {
+    if (!formData.exam_type_id) return 0;
+    const em = estimatedMarks.find((em: any) => em.exam_type_id === formData.exam_type_id);
+    return em?.conversation_mark ? parseFloat(em.conversation_mark) : 0;
   };
 
-  const estimatedMarkInfo = getEstimatedMarkInfo();
-  const maxTestMark = estimatedMarkInfo ? parseFloat(estimatedMarkInfo.estimated_mark_per_instructor || estimatedMarkInfo.mark || 0) : 0;
-  const conversationMark = estimatedMarkInfo ? parseFloat(estimatedMarkInfo.conversation_mark || 0) : 0;
+  const getTotalRawMax = (gender: string): number => {
+    return stationDetails.reduce((sum: number, d: any) => {
+      return sum + parseFloat(gender.toLowerCase() === 'female' ? d.female_marks : d.male_marks);
+    }, 0);
+  };
 
-  // Auto-load cadets from ctw_instructor_assign_cadets after exam type selected
   useEffect(() => {
     const loadCadets = async () => {
-      if (!user?.id || !twoKmModuleId || !formData.course_id || !formData.semester_id || !formData.exam_type_id) {
+      if (!user?.id || !moduleId || !formData.course_id || !formData.semester_id || !formData.exam_type_id) {
         setCadetRows([]);
         setModuleAssigned(false);
         return;
@@ -175,41 +247,34 @@ export default function TwoKmFiveStationResultForm({ initialData, onSubmit, onCa
 
         setModuleAssigned(true);
 
-        const params: any = {
+        const cadetParams: any = {
           per_page: 500,
-          instructor_id: user.id,
-          ctw_results_module_id: twoKmModuleId,
           course_id: formData.course_id,
           semester_id: formData.semester_id,
-          is_active: true,
+          is_current: 1,
         };
-        if (formData.program_id) params.program_id = formData.program_id;
-        if (formData.branch_id) params.branch_id = formData.branch_id;
-        if (formData.group_id) params.group_id = formData.group_id;
+        if (formData.program_id) cadetParams.program_id = formData.program_id;
+        if (formData.branch_id) cadetParams.branch_id = formData.branch_id;
+        if (formData.group_id) cadetParams.group_id = formData.group_id;
 
-        const assignedCadetsRes = await ctwInstructorAssignCadetService.getAll(params);
+        const cadetsRes = await cadetService.getAllCadets(cadetParams);
 
-        const rows: CadetRow[] = assignedCadetsRes.data
-          .filter((ac: any) => ac.cadet)
-          .map((ac: any) => {
-            const cadet = ac.cadet;
-            const currentRank = cadet.assigned_ranks?.find((ar: any) => ar.rank)?.rank;
-            return {
-              cadet_id: cadet.id,
-              cadet_number: cadet.cadet_number || "",
-              cadet_name: cadet.name,
-              cadet_rank: currentRank?.short_name || currentRank?.name || "-",
-              cadet_gender: cadet.gender,
-              branch: cadet.assigned_branchs?.find((ab: any) => ab.is_current)?.branch?.name || cadet.assigned_branchs?.[0]?.branch?.name || "N/A",
-              practices: {},
-              avg_practice: 0,
-              conv_practice: 0,
-              test_mark: 0,
-              conv_exam: 0,
-              mark: 0,
-              is_active: true,
-            };
-          });
+        const rows: CadetRow[] = cadetsRes.data.map((cadet: any) => {
+          const currentRank = cadet.assigned_ranks?.find((ar: any) => ar.rank)?.rank;
+          return {
+            cadet_id: cadet.id,
+            cadet_number: cadet.cadet_number || "",
+            cadet_name: cadet.name,
+            cadet_rank: currentRank?.short_name || currentRank?.name || "Officer Cadet",
+            cadet_gender: cadet.gender || "Male",
+            branch: cadet.assigned_branchs?.find((ab: any) => ab.is_current)?.branch?.name || cadet.assigned_branchs?.[0]?.branch?.name || "N/A",
+            mark: 0,
+            conversation_mark: 0,
+            detail_marks: {},
+            detail_inputs: {},
+            is_active: true,
+          };
+        });
 
         setCadetRows(rows);
       } catch (err) {
@@ -222,136 +287,125 @@ export default function TwoKmFiveStationResultForm({ initialData, onSubmit, onCa
     if (!initialData) {
       loadCadets();
     }
-  }, [user?.id, twoKmModuleId, formData.course_id, formData.semester_id, formData.program_id, formData.branch_id, formData.group_id, formData.exam_type_id, initialData]);
+  }, [user?.id, moduleId, formData.course_id, formData.semester_id, formData.program_id, formData.branch_id, formData.group_id, formData.exam_type_id, initialData]);
 
-  // Populate form with initial data
+  // Step 1: set formData immediately when initialData arrives (no stationDetails dependency)
   useEffect(() => {
-    if (initialData) {
-      setFormData({
-        course_id: initialData.course_id,
-        semester_id: initialData.semester_id,
-        program_id: initialData.program_id || 0,
-        branch_id: initialData.branch_id || 0,
-        group_id: initialData.group_id || 0,
-        exam_type_id: initialData.exam_type_id,
-        remarks: initialData.remarks || "",
-        is_active: initialData.is_active,
-      });
+    if (!initialData) return;
+    setFormData({
+      course_id: initialData.course_id,
+      semester_id: initialData.semester_id,
+      program_id: initialData.program_id || 0,
+      branch_id: initialData.branch_id || 0,
+      group_id: initialData.group_id || 0,
+      exam_type_id: initialData.exam_type_id,
+      remarks: initialData.remarks || "",
+      is_active: initialData.is_active,
+    });
+  }, [initialData]);
 
-      if (initialData.achieved_marks && initialData.achieved_marks.length > 0) {
-        setModuleAssigned(true);
-        const uniqueCadets = Array.from(new Set(initialData.achieved_marks.map(m => m.cadet_id)));
-        const rows: CadetRow[] = uniqueCadets.map(cadetId => {
-          const mark = initialData.achieved_marks?.find(m => m.cadet_id === cadetId);
-          const currentRank = mark?.cadet?.assigned_ranks?.find((ar: any) => ar.rank)?.rank;
+  // Step 2: populate cadetRows once stationDetails are loaded
+  useEffect(() => {
+    if (!initialData || stationDetails.length === 0) return;
 
-          const test_mark = parseFloat(String(mark?.achieved_mark || 0));
+    if (initialData.achieved_marks && initialData.achieved_marks.length > 0) {
+      setModuleAssigned(true);
+      const uniqueCadets = Array.from(new Set(initialData.achieved_marks.map(m => m.cadet_id)));
+      const rows: CadetRow[] = uniqueCadets.map(cadetId => {
+        const mark = initialData.achieved_marks?.find(m => m.cadet_id === cadetId);
+        const currentRank = mark?.cadet?.assigned_ranks?.find((ar: any) => ar.rank)?.rank;
 
-          const practices: { [key: number]: number } = {};
-          let pIdx = 1;
-          let practicesTotalForAvg = 0;
-          let practicesCountForAvg = 0;
+        const detailMarks: { [key: number]: number } = {};
+        const detailInputs: { [key: number]: string } = {};
 
-          if (mark?.details) {
-            mark.details.forEach(det => {
-              if (det.practices_marks !== null && det.practices_marks !== undefined) {
-                const practiceVal = parseFloat(String(det.practices_marks));
-                practices[pIdx] = practiceVal;
-                practicesTotalForAvg += practiceVal;
-                practicesCountForAvg++;
-                pIdx++;
-              }
-            });
+        mark?.details?.forEach((d: any) => {
+          const detailId = d.ctw_results_module_estimated_marks_details_id;
+          if (detailId) {
+            detailMarks[detailId] = parseFloat(d.marks) || 0;
+
+            const stationDetail = stationDetails.find((sd: any) => sd.id === detailId);
+            const isFemale = mark?.cadet?.gender?.toLowerCase() === 'female';
+            const firstScore = stationDetail?.scores?.[0];
+            const isTimeBased = isFemale ? !!firstScore?.female_time : !!firstScore?.male_time;
+
+            if (isTimeBased && d.qty) {
+              detailInputs[detailId] = secondsToTime(parseFloat(d.qty));
+            } else {
+              detailInputs[detailId] = d.achieved_time || d.qty?.toString() || d.marks?.toString() || "0";
+            }
           }
-          const avg_practice = practicesCountForAvg > 0 ? practicesTotalForAvg / practicesCountForAvg : 0;
-
-          const row: CadetRow = {
-            cadet_id: cadetId,
-            cadet_number: mark?.cadet?.cadet_number || "",
-            cadet_name: mark?.cadet?.name || "Unknown",
-            cadet_rank: currentRank?.short_name || currentRank?.name || "-",
-            cadet_gender: mark?.cadet?.gender,
-            branch: initialData.branch?.name || "N/A",
-            practices: practices,
-            avg_practice: avg_practice,
-            conv_practice: 0,
-            test_mark: test_mark,
-            conv_exam: 0,
-            mark: 0,
-            is_active: mark?.is_active || true,
-          };
-
-          return updateCalculatedMarks(row);
         });
-        setCadetRows(rows);
-      }
+
+        const rawSum = Object.values(detailMarks).reduce((sum, m) => sum + m, 0);
+
+        return {
+          cadet_id: cadetId,
+          cadet_number: mark?.cadet?.cadet_number || "",
+          cadet_name: mark?.cadet?.name || "Unknown",
+          cadet_rank: currentRank?.short_name || currentRank?.name || "Officer Cadet",
+          cadet_gender: mark?.cadet?.gender || "Male",
+          branch: mark?.cadet?.assigned_branchs?.find((ab: any) => ab.is_current)?.branch?.name || mark?.cadet?.assigned_branchs?.[0]?.branch?.name || "N/A",
+          mark: rawSum,
+          conversation_mark: mark?.achieved_mark || 0,
+          detail_marks: detailMarks,
+          detail_inputs: detailInputs,
+          is_active: mark?.is_active || true,
+        };
+      });
+      setCadetRows(rows);
     }
-  }, [initialData, twoKmModule]);
-
-  const updateCalculatedMarks = (cadet: CadetRow): CadetRow => {
-    if (!twoKmModule) return cadet;
-
-    const practiceCount = parseInt(twoKmModule.practice_count || 0);
-    const convPracticeWeight = parseFloat(twoKmModule.convert_of_practice || 0);
-    const convExamWeight = parseFloat(twoKmModule.convert_of_exam || 0);
-
-    // 1. Calculate Average Practice Mark
-    let totalPracticeMark = 0;
-    let actualCount = 0;
-    for (let i = 1; i <= practiceCount; i++) {
-      if (cadet.practices[i] !== undefined && !isNaN(cadet.practices[i])) {
-        totalPracticeMark += cadet.practices[i];
-        actualCount++;
-      }
-    }
-    const avgPractice = actualCount > 0 ? totalPracticeMark / actualCount : cadet.avg_practice;
-
-    // 2. Convert Practice: (AvgPractice * Weight / 100)
-    const conv_practice = (avgPractice * convPracticeWeight) / 100;
-
-    // 3. Convert Exam: (TestMark * Weight / 100)
-    const conv_exam = (cadet.test_mark * convExamWeight) / 100;
-
-    // 4. Final Total
-    let finalMark = conv_practice + conv_exam;
-
-    // Cap by conversationMark if defined
-    if (conversationMark > 0 && finalMark > conversationMark) {
-      finalMark = conversationMark;
-    }
-
-    return {
-      ...cadet,
-      avg_practice: parseFloat(avgPractice.toFixed(2)),
-      conv_practice: parseFloat(conv_practice.toFixed(2)),
-      conv_exam: parseFloat(conv_exam.toFixed(2)),
-      mark: parseFloat(finalMark.toFixed(2))
-    };
-  };
-
-  const handlePracticeChange = (cadetIndex: number, practiceIndex: number, value: number) => {
-    setCadetRows(prev => {
-      const updated = [...prev];
-      updated[cadetIndex].practices = { ...updated[cadetIndex].practices, [practiceIndex]: value };
-      updated[cadetIndex] = updateCalculatedMarks(updated[cadetIndex]);
-      return updated;
-    });
-  };
-
-  const handleTestMarkChange = (cadetIndex: number, value: number) => {
-    let finalValue = value;
-    if (maxTestMark > 0 && finalValue > maxTestMark) finalValue = maxTestMark;
-
-    setCadetRows(prev => {
-      const updated = [...prev];
-      updated[cadetIndex].test_mark = finalValue;
-      updated[cadetIndex] = updateCalculatedMarks(updated[cadetIndex]);
-      return updated;
-    });
-  };
+  }, [initialData, stationDetails.length]);
 
   const handleChange = (field: string, value: any) => {
     setFormData(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleCadetInputChange = (cadetIndex: number, detailId: number, value: string, gender: string) => {
+    const detail = stationDetails.find((d: any) => d.id === detailId);
+    if (!detail) return;
+
+    const mark = calculateMark(detail, value, gender);
+
+    setCadetRows(prev => {
+      const updated = [...prev];
+      const cadet = updated[cadetIndex];
+      const updatedDetailInputs = { ...cadet.detail_inputs, [detailId]: value };
+      const updatedDetailMarks = { ...cadet.detail_marks, [detailId]: mark };
+
+      const totalRawMark = Object.values(updatedDetailMarks).reduce((sum: number, m: any) => sum + m, 0);
+      const isFemale = gender.toLowerCase() === 'female';
+      const cadetTotalMaxRaw = stationDetails.reduce((sum: number, d: any) => {
+        return sum + parseFloat(isFemale ? d.female_marks : d.male_marks);
+      }, 0);
+
+      const convMax = getMaxConvMark();
+      let calculatedConvMark = 0;
+      if (cadetTotalMaxRaw > 0 && convMax > 0) {
+        calculatedConvMark = (totalRawMark / cadetTotalMaxRaw) * convMax;
+      } else {
+        calculatedConvMark = totalRawMark;
+      }
+
+      updated[cadetIndex] = {
+        ...cadet,
+        detail_inputs: updatedDetailInputs,
+        detail_marks: updatedDetailMarks,
+        mark: totalRawMark,
+        conversation_mark: parseFloat(calculatedConvMark.toFixed(2))
+      };
+      return updated;
+    });
+  };
+
+  const handleCadetChange = (cadetIndex: number, field: keyof CadetRow, value: any) => {
+    setCadetRows(prev => {
+      const updated = [...prev];
+      updated[cadetIndex] = {
+        ...updated[cadetIndex],
+        [field]: value
+      };
+      return updated;
+    });
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -368,17 +422,24 @@ export default function TwoKmFiveStationResultForm({ initialData, onSubmit, onCa
       cadetRows.filter(c => c.cadet_id > 0).forEach(c => {
         const details: any[] = [];
 
-        // Add each practice as a separate row in details
-        Object.values(c.practices).forEach(val => {
+        Object.entries(c.detail_marks).forEach(([detailId, val]) => {
+          const detailInput = c.detail_inputs[parseInt(detailId)] || "0";
+          const detail = stationDetails.find((d: any) => d.id === parseInt(detailId));
+          const isFemale = c.cadet_gender.toLowerCase() === 'female';
+          const firstScore = detail?.scores?.[0];
+          const isTimeBased = isFemale ? !!firstScore?.female_time : !!firstScore?.male_time;
+
           details.push({
-            practices_marks: val,
-            ctw_results_module_estimated_marks_details_id: estimatedMarkInfo?.details?.[0]?.id
+            ctw_results_module_estimated_marks_details_id: parseInt(detailId),
+            marks: val,
+            qty: isTimeBased ? timeToSeconds(detailInput) : parseFloat(detailInput) || 0,
+            achieved_time: isTimeBased ? detailInput : null
           });
         });
 
         marks.push({
           cadet_id: c.cadet_id,
-          achieved_mark: c.test_mark || 0,
+          achieved_mark: c.conversation_mark || 0,
           details: details
         });
       });
@@ -391,12 +452,11 @@ export default function TwoKmFiveStationResultForm({ initialData, onSubmit, onCa
         group_id: formData.group_id || undefined,
         exam_type_id: formData.exam_type_id,
         instructor_id: user.id,
-        ctw_results_module_id: twoKmModuleId,
+        ctw_results_module_id: moduleId,
         remarks: formData.remarks || undefined,
         is_active: formData.is_active,
         marks: marks,
       };
-      console.log("Submitting data:", submitData);
       await onSubmit(submitData);
     } catch (err: any) {
       setError(err.message || `Failed to ${isEdit ? 'update' : 'create'} result`);
@@ -404,9 +464,6 @@ export default function TwoKmFiveStationResultForm({ initialData, onSubmit, onCa
   };
 
   const filtersSelected = formData.course_id && formData.semester_id && formData.exam_type_id;
-  const practiceCount = twoKmModule ? parseInt(twoKmModule.practice_count || 0) : 0;
-  const convPracticeWeight = twoKmModule ? parseFloat(twoKmModule.convert_of_practice || 0) : 0;
-  const convExamWeight = twoKmModule ? parseFloat(twoKmModule.convert_of_exam || 0) : 0;
 
   if (loadingDropdowns) {
     return (
@@ -443,8 +500,16 @@ export default function TwoKmFiveStationResultForm({ initialData, onSubmit, onCa
 
             <div>
               <Label>Semester <span className="text-red-500">*</span></Label>
-              <select value={formData.semester_id} onChange={(e) => handleChange("semester_id", parseInt(e.target.value))} className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500" required>
-                <option value={0}>Select Semester</option>
+              <select
+                value={formData.semester_id}
+                onChange={(e) => handleChange("semester_id", parseInt(e.target.value))}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500"
+                required
+                disabled={!formData.course_id || loadingSemesters}
+              >
+                <option value={0}>
+                  {loadingSemesters ? "Loading..." : !formData.course_id ? "Select course first" : "Select Semester"}
+                </option>
                 {semesters.map(semester => (<option key={semester.id} value={semester.id}>{semester.name} ({semester.code})</option>))}
               </select>
             </div>
@@ -529,7 +594,6 @@ export default function TwoKmFiveStationResultForm({ initialData, onSubmit, onCa
             <div className="text-center py-12 text-red-500">
               <Icon icon="hugeicons:alert-circle" className="w-10 h-10 mx-auto mb-2" />
               <p className="font-medium">You are not assigned to the 2KM 5 Station module for the selected course & semester.</p>
-              <p className="text-sm text-gray-500 mt-1">Please contact admin to assign you to this module.</p>
             </div>
           ) : cadetRows.length === 0 ? (
             <div className="text-center py-12 text-gray-500">
@@ -538,79 +602,86 @@ export default function TwoKmFiveStationResultForm({ initialData, onSubmit, onCa
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full border-collapse border border-black">
+              <table className="w-full border-collapse border border-black text-xs">
                 <thead>
                   <tr>
-                    <th className="border border-black px-3 py-2 text-center text-sm whitespace-nowrap" rowSpan={2}>SL</th>
-                    <th className="border border-black px-3 py-2 text-center text-sm whitespace-nowrap" rowSpan={2}>BD No.</th>
-                    <th className="border border-black px-3 py-2 text-center text-sm whitespace-nowrap" rowSpan={2}>Rank</th>
-                    <th className="border border-black px-3 py-2 text-left text-sm whitespace-nowrap" rowSpan={2}>Name</th>
-                    <th className="border border-black px-3 py-2 text-left text-sm whitespace-nowrap" rowSpan={2}>Branch</th>
-                    {practiceCount > 0 && (
-                      <th className="border border-black px-3 py-2 text-center text-sm" colSpan={practiceCount}>Practices</th>
-                    )}
-                    <th className="border border-black px-3 py-2 text-center text-sm whitespace-nowrap" rowSpan={2}>Avg. <br/> Practice</th>
-                    <th className="border border-black px-3 py-2 text-center text-sm whitespace-nowrap" rowSpan={2}>Exam <br/> {maxTestMark > 0 ? `${maxTestMark}` : ""}</th>
-                    <th className="border border-black px-3 py-2 text-center text-sm whitespace-nowrap" rowSpan={2}>Prac <br/> ({convPracticeWeight}%)</th>
-                    <th className="border border-black px-3 py-2 text-center text-sm whitespace-nowrap" rowSpan={2}>Exam <br/> ({convExamWeight}%)</th>
-                    <th className="border border-black px-3 py-2 text-center text-sm whitespace-nowrap" rowSpan={2}>Total</th>
+                    <th className="border border-black px-2 py-2 text-center uppercase whitespace-nowrap" rowSpan={2}>SL</th>
+                    <th className="border border-black px-2 py-2 text-center uppercase whitespace-nowrap" rowSpan={2}>BD</th>
+                    <th className="border border-black px-2 py-2 text-center uppercase whitespace-nowrap" rowSpan={2}>Rk</th>
+                    <th className="border border-black px-2 py-2 text-left uppercase whitespace-nowrap" rowSpan={2}>Name</th>
+                    <th className="border border-black px-2 py-2 text-left uppercase whitespace-nowrap" rowSpan={2}>Br</th>
+                    {stationDetails.map((detail: any) => (
+                      <th key={detail.id} className="border border-black px-1 py-2 text-center uppercase" colSpan={2}>
+                        {detail.name}
+                      </th>
+                    ))}
+                    <th className="border border-black px-2 py-2 text-center uppercase whitespace-nowrap" rowSpan={2}>
+                      Total {getTotalRawMax(cadetRows[0]?.cadet_gender || 'male')}
+                    </th>
+                    <th className="border border-black px-2 py-2 text-center uppercase whitespace-nowrap" rowSpan={2}>
+                      Out of {getMaxConvMark()}
+                    </th>
                   </tr>
-                  {practiceCount > 0 && (
-                    <tr>
-                      {Array.from({ length: practiceCount }, (_, i) => i + 1).map(p => (
-                        <th key={p} className="border border-black px-3 py-2 text-center text-xs">P{p}</th>
-                      ))}
-                    </tr>
-                  )}
+                  <tr>
+                    {stationDetails.map((detail: any) => {
+                      const isFemale = (cadetRows[0]?.cadet_gender || 'male').toLowerCase() === 'female';
+                      const firstScore = detail.scores?.[0];
+                      const isTimeBased = isFemale ? !!firstScore?.female_time : !!firstScore?.male_time;
+                      return (
+                        <React.Fragment key={detail.id}>
+                          <th className="border border-black px-1 py-1 text-center uppercase font-normal">
+                            {isTimeBased ? "Time" : "Qty"}
+                          </th>
+                          <th className="border border-black px-1 py-1 text-center uppercase font-normal bg-gray-50">
+                            Mks
+                          </th>
+                        </React.Fragment>
+                      );
+                    })}
+                  </tr>
                 </thead>
                 <tbody>
                   {cadetRows.map((cadet, index) => (
                     <tr key={cadet.cadet_id}>
-                      <td className="border border-black px-3 py-2 text-center font-medium">{index + 1}</td>
-                      <td className="border border-black px-3 py-2 text-center">{cadet.cadet_number}</td>
-                      <td className="border border-black px-3 py-2 text-center">{cadet.cadet_rank}</td>
-                      <td className="border border-black px-3 py-2 font-medium">{cadet.cadet_name}</td>
-                      <td className="border border-black px-3 py-2 font-medium">{cadet.branch}</td>
+                      <td className="border border-black px-2 py-1 text-center">{index + 1}</td>
+                      <td className="border border-black px-2 py-1 text-center">{cadet.cadet_number}</td>
+                      <td className="border border-black px-2 py-1 text-center">{cadet.cadet_rank}</td>
+                      <td className="border border-black px-2 py-1 font-medium">
+                        {cadet.cadet_name}
+                        {cadet.cadet_gender?.toLowerCase() === "female" && (
+                          <span className="ml-1 text-pink-600 font-semibold text-xs">(F)</span>
+                        )}
+                      </td>
+                      <td className="border border-black px-2 py-1">{cadet.branch}</td>
 
-                      {Array.from({ length: practiceCount }, (_, i) => i + 1).map(p => (
-                        <td key={p} className="border border-black px-2 py-1 text-center">
-                          <input
-                            type="number"
-                            min={0}
-                            step={0.01}
-                            value={cadet.practices[p] || 0}
-                            onChange={(e) => handlePracticeChange(index, p, parseFloat(e.target.value) || 0)}
-                            className="w-16 px-1 py-1 border border-gray-300 rounded text-center text-sm focus:ring-2 focus:ring-blue-500 bg-white [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                            placeholder="0"
-                          />
-                        </td>
-                      ))}
+                      {stationDetails.map((detail: any) => {
+                        const isFemale = cadet.cadet_gender.toLowerCase() === 'female';
+                        const firstScore = detail.scores?.[0];
+                        const isTimeBased = isFemale ? !!firstScore?.female_time : !!firstScore?.male_time;
+                        
+                        return (
+                          <React.Fragment key={detail.id}>
+                            <td className="border border-black px-1 py-1 text-center">
+                              <input
+                                type="text"
+                                value={cadet.detail_inputs[detail.id] || ""}
+                                onChange={(e) => handleCadetInputChange(index, detail.id, e.target.value, cadet.cadet_gender)}
+                                className="w-12 px-1 py-1 border border-gray-300 rounded text-center text-xs focus:ring-2 focus:ring-blue-500 bg-white"
+                                placeholder={isTimeBased ? "0:00" : "0"}
+                              />
+                            </td>
+                            <td className="border border-black px-1 py-1 text-center bg-gray-50">
+                              {cadet.detail_marks[detail.id] || 0}
+                            </td>
+                          </React.Fragment>
+                        );
+                      })}
 
-                      {/* Avg Practice */}
-                      <td className="border border-black px-2 py-1 text-center font-medium">
-                        {cadet.avg_practice}
+                      <td className="border border-black px-1 py-1 text-center bg-blue-50 font-bold">
+                        {cadet.mark || 0}
                       </td>
-
-                      <td className="border border-black px-2 py-1 text-center">
-                        <input
-                          type="number"
-                          min={0}
-                          max={maxTestMark > 0 ? maxTestMark : undefined}
-                          step={0.01}
-                          value={cadet.test_mark || 0}
-                          onChange={(e) => handleTestMarkChange(index, parseFloat(e.target.value) || 0)}
-                          className="w-16 px-1 py-1 border border-gray-300 rounded text-center text-sm focus:ring-2 focus:ring-blue-500 bg-white [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                          placeholder="0"
-                        />
-                      </td>
-                      <td className="border border-black px-2 py-1 text-center font-semibold">
-                        {cadet.conv_practice}
-                      </td>
-                      <td className="border border-black px-2 py-1 text-center font-semibold">
-                        {cadet.conv_exam}
-                      </td>
-                      <td className="border border-black px-2 py-1 text-center font-semibold">
-                        {cadet.mark}
+                      <td className="border border-black px-1 py-1 text-center bg-green-50 font-bold">
+                        {cadet.conversation_mark || 0}
                       </td>
                     </tr>
                   ))}

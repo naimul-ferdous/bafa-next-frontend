@@ -12,6 +12,7 @@ interface QueryParams {
   per_page?: number;
   search?: string;
   flying_phase_type_id?: number;
+  semester_id?: number;
   is_active?: boolean;
 }
 
@@ -59,6 +60,7 @@ export const ftw11sqnFlyingSyllabusService = {
       if (params?.per_page) query.append('per_page', params.per_page.toString());
       if (params?.search) query.append('search', params.search);
       if (params?.flying_phase_type_id) query.append('flying_phase_type_id', params.flying_phase_type_id.toString());
+      if (params?.semester_id) query.append('semester_id', params.semester_id.toString());
       if (params?.is_active !== undefined) query.append('is_active', params.is_active.toString());
 
       const endpoint = `/ftw-11sqn-flying-syllabus${query.toString() ? `?${query.toString()}` : ''}`;
@@ -153,12 +155,9 @@ export const ftw11sqnFlyingSyllabusService = {
     }
   },
 
-  async getCourseGrouped(params?: { course_id?: number }): Promise<any[]> {
+  async getCourseGrouped(): Promise<any[]> {
     try {
-      const query = new URLSearchParams();
-      if (params?.course_id) query.append('course_id', params.course_id.toString());
-
-      const endpoint = `/ftw-11sqn-flying-syllabus/grouped/course${query.toString() ? `?${query.toString()}` : ''}`;
+      const endpoint = `/ftw-11sqn-flying-syllabus/grouped/course`;
       const token = getToken();
       const result = await apiClient.get<{ success: boolean; data: any[] }>(endpoint, token);
       return result?.data || [];

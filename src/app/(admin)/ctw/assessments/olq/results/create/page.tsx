@@ -17,7 +17,7 @@ export default function CreateOlqResultPage() {
     try {
       const res = await ctwAssessmentOlqResultService.createResult(data);
       if (res) {
-        router.push("/ctw/assessments/olq/results");
+        router.push("/ctw/assessments/olq/results/view");
       }
     } catch (err: any) {
       throw err;
@@ -27,7 +27,7 @@ export default function CreateOlqResultPage() {
   };
 
   const handleCancel = () => {
-    router.push("/ctw/assessments/olq/results");
+    router.push("/ctw/assessments/olq/results/view");
   };
 
   return (

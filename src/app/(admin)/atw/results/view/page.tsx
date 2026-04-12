@@ -967,7 +967,7 @@ export default function AtwViewResultsPage() {
 
                       if (!isProgramForwarded) {
                         return (
-                          <tr key={`waiting-cons-${pNode.program?.id}`} className="bg-yellow-50/30">
+                          <tr key={`waiting-cons-${pNode.program?.id}-${firstRes?.system_programs_changeable_semester_id ?? 'main'}`} className="bg-yellow-50/30">
                             {isFirstInCourse && (
                               <td rowSpan={courseProgCount} className="px-4 py-2 border border-black font-bold text-gray-900 align-middle bg-white cursor-default">
                                 {cNode.course?.name || "—"}
@@ -1001,9 +1001,14 @@ export default function AtwViewResultsPage() {
 
                       return (
                         <tr
-                          key={`${firstRes?.course_id}-${firstRes?.semester_id}-${pNode.program?.id}`}
+                          key={`${firstRes?.course_id}-${firstRes?.semester_id}-${pNode.program?.id}-${firstRes?.system_programs_changeable_semester_id ?? 'main'}`}
                           className={`transition-colors group ${hasResultsInputted ? 'hover:bg-indigo-50/20 cursor-pointer' : 'cursor-default'}`}
-                          onClick={() => hasResultsInputted && router.push(`/atw/results/course/${firstRes?.course_id}/semester/${firstRes?.semester_id}/program/${firstRes?.program_id}`)}
+                          onClick={() => {
+                            if (!hasResultsInputted) return;
+                            const csId = firstRes?.system_programs_changeable_semester_id;
+                            const base = `/atw/results/course/${firstRes?.course_id}/semester/${firstRes?.semester_id}/program/${firstRes?.program_id}`;
+                            router.push(csId ? `${base}?changeable=${csId}` : `${base}?main=1`);
+                          }}
                         >
                           {isFirstInCourse && (
                             <td rowSpan={courseProgCount} className="px-4 py-2 border border-black font-bold text-gray-900 align-middle bg-white cursor-default" onClick={(e) => e.stopPropagation()}>
@@ -1162,7 +1167,12 @@ export default function AtwViewResultsPage() {
                           <td className="px-4 py-2 border border-black text-center no-print" onClick={(e) => e.stopPropagation()}>
                             <div className="flex items-center justify-center gap-2">
                               <button
-                                onClick={() => hasResultsInputted && router.push(`/atw/results/course/${firstRes?.course_id}/semester/${firstRes?.semester_id}/program/${firstRes?.program_id}`)}
+                                onClick={() => {
+                                  if (!hasResultsInputted) return;
+                                  const csId = firstRes?.system_programs_changeable_semester_id;
+                                  const base = `/atw/results/course/${firstRes?.course_id}/semester/${firstRes?.semester_id}/program/${firstRes?.program_id}`;
+                                  router.push(csId ? `${base}?changeable=${csId}` : `${base}?main=1`);
+                                }}
                                 disabled={!hasResultsInputted}
                                 className={`${hasResultsInputted ? 'text-indigo-600 hover:bg-indigo-50' : 'text-gray-300 cursor-not-allowed'} rounded-lg transition-colors`}
                                 title={hasResultsInputted ? "View Consolidated Result & Approve" : "No results inputted yet"}
@@ -1295,7 +1305,7 @@ export default function AtwViewResultsPage() {
                         if (!isProgramForwarded) {
                           globalIdx++;
                           return (
-                            <tr key={`waiting-prog-${pNode.program?.id}`} className="bg-yellow-50/30">
+                            <tr key={`waiting-prog-${pNode.program?.id}-${firstRes?.system_programs_changeable_semester_id ?? 'main'}`} className="bg-yellow-50/30">
                               {isFirstInCourse && (
                                 <td rowSpan={effCRowSpan} className="px-4 py-3 border border-black text-gray-900 font-medium align-middle bg-white cursor-default">
                                   {cNode.course?.name || "—"}
@@ -1851,7 +1861,7 @@ export default function AtwViewResultsPage() {
                       if (!isProgramForwarded) {
                         globalIdx++;
                         return (
-                          <tr key={`waiting-prog-${pNode.program?.id}`} className="bg-yellow-50/30">
+                          <tr key={`waiting-prog-${pNode.program?.id}-${firstResProg?.system_programs_changeable_semester_id ?? 'main'}`} className="bg-yellow-50/30">
                             {isFirstInCourse && (
                               <td rowSpan={effCRowSpan} className="px-4 py-3 border border-black text-gray-900 font-medium align-middle bg-white cursor-default">
                                 {cNode.course?.name || "—"}

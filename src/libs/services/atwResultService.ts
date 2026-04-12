@@ -223,10 +223,14 @@ export const atwResultService = {
   /**
    * Get subject-wise grouped results for a specific course, semester and program
    */
-  async getSubjectWiseByProgram(courseId: number, semesterId: number, programId: number): Promise<any> {
+  async getSubjectWiseByProgram(courseId: number, semesterId: number, programId: number, changeableId?: number, mainOnly?: boolean): Promise<any> {
     try {
       const token = getToken();
-      const result = await apiClient.get<any>(`/atw-results/course/${courseId}/semester/${semesterId}/program/${programId}`, token);
+      const params = new URLSearchParams();
+      if (changeableId) params.append('changeable_id', changeableId.toString());
+      if (mainOnly) params.append('main_only', '1');
+      const query = params.toString() ? `?${params.toString()}` : '';
+      const result = await apiClient.get<any>(`/atw-results/course/${courseId}/semester/${semesterId}/program/${programId}${query}`, token);
       return result?.data || null;
     } catch (error) {
       console.error('Failed to fetch subject-wise results:', error);

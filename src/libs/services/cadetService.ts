@@ -6,6 +6,8 @@
 import apiClient from '@/libs/auth/api-client';
 import { getToken } from '@/libs/auth/auth-token';
 import type { CadetProfile } from '@/libs/types/user';
+import type { SystemCourse, SystemSemester, SystemProgram, SystemBranch, SystemGroup } from '@/libs/types/system';
+import type { Rank } from '@/libs/types';
 
 interface CadetQueryParams {
   page?: number;
@@ -56,6 +58,34 @@ interface CadetActionApiResponse {
   success: boolean;
   message: string;
   data?: CadetProfile;
+}
+
+interface CadetListDataResponse {
+  cadets: {
+    data: CadetProfile[];
+    pagination: {
+      current_page: number;
+      last_page: number;
+      per_page: number;
+      total: number;
+      from: number;
+      to: number;
+    };
+  };
+  options: {
+    courses: SystemCourse[];
+    semesters: SystemSemester[];
+    programs: SystemProgram[];
+    branches: SystemBranch[];
+    groups: SystemGroup[];
+    ranks: Rank[];
+  };
+}
+
+interface CadetListDataApiResponse {
+  success: boolean;
+  message: string;
+  data: CadetListDataResponse;
 }
 
 interface CadetCreateData {
@@ -117,6 +147,31 @@ export const cadetService = {
     } catch (error) {
       console.error('Failed to fetch cadets:', error);
       return { data: [], current_page: 1, per_page: 10, total: 0, last_page: 1, from: 0, to: 0 };
+    }
+  },
+
+  async getListData(params?: CadetQueryParams): Promise<CadetListDataResponse | null> {
+    try {
+      const query = new URLSearchParams();
+      if (params?.page) query.append('page', params.page.toString());
+      if (params?.per_page) query.append('per_page', params.per_page.toString());
+      if (params?.search) query.append('search', params.search);
+      if (params?.course_id) query.append('course_id', params.course_id.toString());
+      if (params?.semester_id) query.append('semester_id', params.semester_id.toString());
+      if (params?.program_id) query.append('program_id', params.program_id.toString());
+      if (params?.changeable_program_id) query.append('changeable_program_id', params.changeable_program_id.toString());
+      if (params?.exclude_changeable) query.append('exclude_changeable', params.exclude_changeable.toString());
+      if (params?.branch_id) query.append('branch_id', params.branch_id.toString());
+      if (params?.group_id) query.append('group_id', params.group_id.toString());
+      if (params?.rank_id) query.append('rank_id', params.rank_id.toString());
+
+      const endpoint = `/cadets/list-data${query.toString() ? `?${query.toString()}` : ''}`;
+      const token = getToken();
+      const result = await apiClient.get<CadetListDataApiResponse>(endpoint, token);
+      return result?.data || null;
+    } catch (error) {
+      console.error('Failed to fetch cadet list data:', error);
+      return null;
     }
   },
 

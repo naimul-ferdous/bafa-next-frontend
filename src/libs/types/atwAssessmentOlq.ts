@@ -7,11 +7,10 @@ import type { User } from './user';
 import type {
   SystemCourse,
   SystemSemester,
-  SystemProgram,
-  SystemBranch,
-  SystemGroup,
   SystemExam
 } from './system';
+import { AtwOlqCadetApproval } from './atwOlqCadetApproval';
+import { AtwOlqSemesterApproval } from './atwOlqSemesterApproval';
 
 // OLQ Type Estimated Mark
 export interface AtwAssessmentOlqTypeEstimatedMark {
@@ -129,7 +128,6 @@ export interface AtwAssessmentOlqResult {
   id: number;
   course_id: number;
   semester_id: number;
-  program_id: number;
   exam_type_id?: number;
   atw_assessment_olq_type_id: number;
   remarks?: string;
@@ -139,7 +137,6 @@ export interface AtwAssessmentOlqResult {
   updated_at?: string;
   course?: SystemCourse;
   semester?: SystemSemester;
-  program?: SystemProgram;
   exam_type?: SystemExam;
   olq_type?: AtwAssessmentOlqType;
   creator?: User;
@@ -173,7 +170,6 @@ export interface AtwAssessmentOlqTypeCreateData {
 export interface AtwAssessmentOlqResultCreateData {
   course_id: number;
   semester_id: number;
-  program_id: number;
   exam_type_id?: number;
   atw_assessment_olq_type_id: number;
   remarks?: string;

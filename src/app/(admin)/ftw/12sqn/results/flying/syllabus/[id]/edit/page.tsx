@@ -22,7 +22,7 @@ export default function EditFlyingSyllabusPage() {
     const loadSyllabus = async () => {
       try {
         setLoadingData(true);
-        const data = await ftw12sqnFlyingSyllabusService.get(id);
+        const data = await ftw12sqnFlyingSyllabusService.get(id, { include_inactive: true });
         setSyllabus(data);
       } catch (error) {
         console.error("Failed to load syllabus:", error);
@@ -39,6 +39,8 @@ export default function EditFlyingSyllabusPage() {
   const handleSubmit = async (data: Ftw12sqnFlyingSyllabusCreateData) => {
     setLoading(true);
     try {
+      // When editing, we update the existing record with the first item
+      // (edit mode only works with single syllabus)
       await ftw12sqnFlyingSyllabusService.update(id, data);
       router.push("/ftw/12sqn/results/flying/syllabus");
     } catch (err: any) {

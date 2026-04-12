@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { CtwAssessmentCounselingType } from "@/libs/types/ctw";
+import { CtwAssessmentCounselingType } from "@/libs/types/ctwAssessmentCounseling";
 import { Icon } from "@iconify/react";
 import { ctwAssessmentCounselingTypeService } from "@/libs/services/ctwAssessmentCounselingTypeService";
 import FullLogo from "@/components/ui/fulllogo";
@@ -11,9 +11,12 @@ import ConfirmationModal from "@/components/ui/modal/ConfirmationModal";
 
 import type { SystemCourse } from "@/libs/types/system";
 import { commonService } from "@/libs/services/commonService";
+import { useCan } from "@/context/PagePermissionsContext";
 
 export default function CtwAssessmentCounselingTypesPage() {
   const router = useRouter();
+  const can = useCan();
+
   const [types, setTypes] = useState<CtwAssessmentCounselingType[]>([]);
   const [loading, setLoading] = useState(true);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
@@ -54,7 +57,6 @@ export default function CtwAssessmentCounselingTypesPage() {
         page: currentPage,
         per_page: perPage,
         search: searchTerm || undefined,
-        course_id: selectedCourseId ? parseInt(selectedCourseId) : undefined,
       });
       setTypes(response.data);
       setPagination({
@@ -117,13 +119,7 @@ export default function CtwAssessmentCounselingTypesPage() {
   );
 
   const columns: Column<CtwAssessmentCounselingType>[] = [
-    { key: "id", header: "SL.", headerAlign:"center", className: "text-center text-gray-900", render: (type, index) => (pagination.from || 0) + (index + 1) },
-    { 
-      key: "course", 
-      header: "Course", 
-      className: "text-gray-900 font-semibold",
-      render: (type) => type.course ? `${type.course.name} (${type.course.code})` : "—"
-    },
+    { key: "id", header: "SL.", headerAlign:"center", className: "text-center text-gray-900", render: (type, index) => (pagination.from || 0) + (index) },
     { key: "type_name", header: "Type Name", className: "font-medium text-gray-900" },
     { key: "type_code", header: "Type Code", className: "text-gray-700 font-mono text-sm" },
     {
@@ -172,8 +168,12 @@ export default function CtwAssessmentCounselingTypesPage() {
       className: "text-center no-print",
       render: (type) => (
         <div className="flex items-center justify-center gap-1" onClick={(e) => e.stopPropagation()}>
-          <button onClick={() => handleEditType(type)} className="p-1 text-yellow-600 hover:bg-yellow-50 rounded" title="Edit"><Icon icon="hugeicons:pencil-edit-01" className="w-4 h-4" /></button>
-          <button onClick={() => handleDeleteType(type)} className="p-1 text-red-600 hover:bg-red-50 rounded" title="Delete"><Icon icon="hugeicons:delete-02" className="w-4 h-4" /></button>
+          {can('edit') && (
+            <button onClick={() => handleEditType(type)} className="p-1 text-yellow-600 hover:bg-yellow-50 rounded" title="Edit"><Icon icon="hugeicons:pencil-edit-01" className="w-4 h-4" /></button>
+          )}
+          {can('delete') && (
+            <button onClick={() => handleDeleteType(type)} className="p-1 text-red-600 hover:bg-red-50 rounded" title="Delete"><Icon icon="hugeicons:delete-02" className="w-4 h-4" /></button>
+          )}
         </div>
       ),
     },
@@ -210,7 +210,9 @@ export default function CtwAssessmentCounselingTypesPage() {
           </select>
         </div>
         <div className="flex items-center gap-3">
-          <button onClick={handleAddType} className="px-4 py-2 rounded-lg text-white flex items-center gap-1 bg-blue-600 hover:bg-blue-700"><Icon icon="hugeicons:add-circle" className="w-4 h-4 mr-2" />Add Type</button>
+          {can('add') && (
+            <button onClick={handleAddType} className="px-4 py-2 rounded-lg text-white flex items-center gap-1 bg-blue-600 hover:bg-blue-700"><Icon icon="hugeicons:add-circle" className="w-4 h-4 mr-2" />Add Type</button>
+          )}
           <button onClick={handleExport} className="px-4 py-2 rounded-lg text-white flex items-center gap-1 bg-green-600 hover:bg-green-700"><Icon icon="hugeicons:download-04" className="w-4 h-4 mr-2" />Export</button>
         </div>
       </div>
@@ -223,7 +225,7 @@ export default function CtwAssessmentCounselingTypesPage() {
           data={types}
           keyExtractor={(type) => type.id.toString()}
           emptyMessage="No Counseling types found"
-          onRowClick={handleViewType}
+          onRowClick={can('view') ? handleViewType : undefined}
         />
       )}
 

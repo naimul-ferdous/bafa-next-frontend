@@ -7,6 +7,7 @@ import { ftw12sqnFlyingExamApprovalProcessService } from "@/libs/services/ftw12s
 import { useAuth } from "@/libs/hooks/useAuth";
 import type { ApprovalProcess } from "@/libs/types/approval";
 
+// Extended user type for approval workflow
 interface UserWithRole {
   id: number;
   name?: string;
@@ -44,6 +45,7 @@ const BulkCadetApprovalModal = ({
   onSuccess,
 }: BulkCadetApprovalModalProps) => {
   const { user: authUser } = useAuth();
+  // Cast user to extended type
   const user = authUser as UserWithRole | null;
 
   const [loading, setLoading] = useState(false);

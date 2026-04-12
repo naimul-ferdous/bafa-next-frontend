@@ -5,7 +5,7 @@ import React, { useState, useEffect, useMemo } from "react";
 import Label from "@/components/form/Label";
 import { Icon } from "@iconify/react";
 import type { AtwAssessmentOlqResult, AtwAssessmentOlqResultCreateData, AtwAssessmentOlqType, AtwAssessmentOlqTypeEstimatedMark } from "@/libs/types/atwAssessmentOlq";
-import type { SystemCourse, SystemSemester, SystemProgram, SystemExam } from "@/libs/types/system";
+import type { SystemCourse, SystemSemester, SystemExam } from "@/libs/types/system";
 import { commonService } from "@/libs/services/commonService";
 import { atwAssessmentOlqTypeService } from "@/libs/services/atwAssessmentOlqTypeService";
 import { cadetService } from "@/libs/services/cadetService";
@@ -40,7 +40,6 @@ export default function OlqResultForm({ initialData, onSubmit, onCancel, loading
   const [formData, setFormData] = useState({
     course_id: 0,
     semester_id: 0,
-    program_id: 0,
     exam_type_id: 0,
     atw_assessment_olq_type_id: 0,
     remarks: "",
@@ -81,7 +80,6 @@ export default function OlqResultForm({ initialData, onSubmit, onCancel, loading
   }, [isInstructor, allCourses, olqAssignedCourseIds, olqAssignments]);
 
   const [semesters, setSemesters] = useState<SystemSemester[]>([]);
-  const [programs, setPrograms] = useState<SystemProgram[]>([]);
   const [exams, setExams] = useState<SystemExam[]>([]);
 
   const [loadingDropdowns, setLoadingDropdowns] = useState(true);
@@ -105,7 +103,6 @@ export default function OlqResultForm({ initialData, onSubmit, onCancel, loading
 
         if (commonData) {
           setAllCourses(commonData.courses || []);
-          setPrograms(commonData.programs || []);
           setExams(commonData.exams || []);
         }
 
@@ -182,7 +179,6 @@ export default function OlqResultForm({ initialData, onSubmit, onCancel, loading
         const res = await cadetService.getAllCadets({
           course_id: formData.course_id,
           semester_id: formData.semester_id,
-          program_id: formData.program_id || undefined,
           is_current: 1,
           per_page: 1000,
         });
@@ -207,7 +203,7 @@ export default function OlqResultForm({ initialData, onSubmit, onCancel, loading
       }
     };
     if (!initialData) fetchCadets();
-  }, [isInstructor, user?.id, formData.course_id, formData.semester_id, formData.program_id, initialData]);
+  }, [isInstructor, user?.id, formData.course_id, formData.semester_id, initialData]);
 
   // Filter OLQ types by selected course and semester
   useEffect(() => {
@@ -259,7 +255,7 @@ export default function OlqResultForm({ initialData, onSubmit, onCancel, loading
   useEffect(() => {
     if (isInstructor || initialData) return;
     const loadCadets = async () => {
-      if (!formData.course_id || !formData.semester_id || !formData.program_id) {
+      if (!formData.course_id || !formData.semester_id) {
         setCadetRows([]);
         return;
       }
@@ -270,7 +266,6 @@ export default function OlqResultForm({ initialData, onSubmit, onCancel, loading
           per_page: 500,
           course_id: formData.course_id,
           semester_id: formData.semester_id,
-          program_id: formData.program_id,
         });
 
         const rows: CadetRow[] = cadetsRes.data.filter(c => c.is_active).map(cadet => {
@@ -296,7 +291,7 @@ export default function OlqResultForm({ initialData, onSubmit, onCancel, loading
     };
 
     loadCadets();
-  }, [isInstructor, initialData, formData.course_id, formData.semester_id, formData.program_id]);
+  }, [isInstructor, initialData, formData.course_id, formData.semester_id]);
 
   // Populate form with initial data
   useEffect(() => {
@@ -304,7 +299,6 @@ export default function OlqResultForm({ initialData, onSubmit, onCancel, loading
       setFormData({
         course_id: initialData.course_id,
         semester_id: initialData.semester_id,
-        program_id: initialData.program_id,
         exam_type_id: initialData.exam_type_id || 0,
         atw_assessment_olq_type_id: initialData.atw_assessment_olq_type_id,
         remarks: initialData.remarks || "",
@@ -402,14 +396,12 @@ export default function OlqResultForm({ initialData, onSubmit, onCancel, loading
 
     if (!formData.course_id) { setError("Please select a course"); return; }
     if (!formData.semester_id) { setError("Please select a semester"); return; }
-    if (!formData.program_id) { setError("Please select a program"); return; }
     if (!formData.atw_assessment_olq_type_id) { setError("Please select an OLQ type"); return; }
 
     try {
       const submitData: AtwAssessmentOlqResultCreateData = {
         course_id: formData.course_id,
         semester_id: formData.semester_id,
-        program_id: formData.program_id,
         atw_assessment_olq_type_id: formData.atw_assessment_olq_type_id,
         remarks: formData.remarks || undefined,
         is_active: formData.is_active,
@@ -432,7 +424,7 @@ export default function OlqResultForm({ initialData, onSubmit, onCancel, loading
 
   const filtersSelected = isInstructor
     ? formData.course_id && formData.semester_id
-    : formData.course_id && formData.semester_id && formData.program_id;
+    : formData.course_id && formData.semester_id;
   const olqTypeSelected = formData.atw_assessment_olq_type_id > 0;
 
   if (loadingDropdowns) {
@@ -496,14 +488,6 @@ export default function OlqResultForm({ initialData, onSubmit, onCancel, loading
                   </div>
                 )}
               </div>
-            </div>
-
-            <div>
-              <Label>Program <span className="text-red-500">*</span></Label>
-              <select value={formData.program_id} onChange={(e) => handleChange("program_id", parseInt(e.target.value))} className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500" required>
-                <option value={0}>Select Program</option>
-                {programs.map(program => (<option key={program.id} value={program.id}>{program.name} ({program.code})</option>))}
-              </select>
             </div>
 
             <div>

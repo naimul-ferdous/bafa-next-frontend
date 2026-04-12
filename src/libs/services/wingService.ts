@@ -55,8 +55,12 @@ interface WingCreateData {
   name: string;
   code: string;
   description?: string;
-  location?: string;
   is_active?: boolean;
+  is_academy?: boolean;
+  is_gst?: boolean;
+  is_flying?: boolean;
+  is_professional?: boolean;
+  is_central?: boolean;
 }
 
 export const wingService = {

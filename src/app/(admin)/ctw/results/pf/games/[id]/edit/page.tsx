@@ -4,7 +4,8 @@
 import React, { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { ctwGamesResultService } from "@/libs/services/ctwGamesResultService";
-import { ctwResultsModuleService } from "@/libs/services/ctwResultsModuleService";
+import { ctwCommonService } from "@/libs/services/ctwCommonService";
+import { useAuth } from "@/libs/hooks/useAuth";
 import FullLogo from "@/components/ui/fulllogo";
 import GamesResultForm from "@/components/ctw-games/GamesResultForm";
 import { Icon } from "@iconify/react";
@@ -16,21 +17,47 @@ export default function EditGamesResultPage() {
   const router = useRouter();
   const params = useParams();
   const resultId = params?.id as string;
+  const { user } = useAuth();
 
   const [loading, setLoading] = useState(false);
   const [loadingResult, setLoadingResult] = useState(true);
   const [result, setResult] = useState<CtwGamesResult | null>(null);
   const [error, setError] = useState("");
+  const [gamesModuleId, setGamesModuleId] = useState<number | null>(null);
+  const [moduleLoading, setModuleLoading] = useState(true);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    const fetchModuleId = async () => {
+      try {
+        setModuleLoading(true);
+        const options = await ctwCommonService.getGamesFormOptions(user?.id || 0);
+        if (options?.module) {
+          setGamesModuleId(options.module.id);
+        } else {
+          setGamesModuleId(null);
+          setLoading(false);
+          setError("Module not found.");
+        }
+      } catch (err) {
+        setGamesModuleId(null);
+        setLoading(false);
+        setError("Failed to fetch module ID.");
+      } finally {
+        setModuleLoading(false);
+      }
+    };
+    fetchModuleId();
+  }, [user?.id]);
 
   useEffect(() => {
     const fetchModuleAndResult = async () => {
       try {
         setLoadingResult(true);
-        const modulesRes = await ctwResultsModuleService.getAllModules({ per_page: 100 });
-        const gamesModule = modulesRes.data.find((m: any) => m.code === GAMES_MODULE_CODE);
+        const options = await ctwCommonService.getGamesFormOptions(user?.id || 0);
 
-        if (gamesModule) {
-          const resultData = await ctwGamesResultService.getResult(gamesModule.id, parseInt(resultId));
+        if (options?.module) {
+          const resultData = await ctwGamesResultService.getResult(options.module.id, parseInt(resultId));
           if (resultData) {
             setResult(resultData);
           } else {

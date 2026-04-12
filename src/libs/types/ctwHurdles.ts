@@ -49,6 +49,15 @@ export interface CtwHurdlesResultCreateData {
 }
 
 // Result Mark Type
+export interface CtwHurdlesResultMarkDetail {
+  id: number;
+  ctw_result_mark_id: number;
+  ctw_results_module_estimated_marks_details_id: number;
+  qty: number;
+  achieved_time?: string;
+  marks: number;
+}
+
 export interface CtwHurdlesResultMark {
   id: number;
   ctw_result_id: number;
@@ -65,4 +74,5 @@ export interface CtwHurdlesResultMark {
   cadet?: CadetProfile;
   instructor?: User;
   creator?: User;
+  details?: CtwHurdlesResultMarkDetail[];
 }

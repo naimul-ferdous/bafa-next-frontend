@@ -17,7 +17,6 @@ import type {
 export interface AtwAssessmentCounselingEvent {
   id: number;
   atw_assessment_counseling_type_id: number;
-  course_id?: number;
   event_name: string;
   event_code: string;
   event_type: string;
@@ -41,14 +40,12 @@ export interface AtwAssessmentCounselingTypeSemester {
 // Counseling Type
 export interface AtwAssessmentCounselingType {
   id: number;
-  course_id: number;
   type_name: string;
   type_code: string;
   is_active: boolean;
   created_by?: number;
   created_at?: string;
   updated_at?: string;
-  course?: SystemCourse;
   events?: AtwAssessmentCounselingEvent[];
   semesters?: AtwAssessmentCounselingTypeSemester[];
   creator?: {
@@ -130,7 +127,6 @@ export interface AtwAssessmentCounselingResult {
 
 // Create/Update Data Types
 export interface AtwAssessmentCounselingTypeCreateData {
-  course_id: number;
   type_name: string;
   type_code: string;
   is_active?: boolean;

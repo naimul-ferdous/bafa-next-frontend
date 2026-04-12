@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { CtwSwimmingResult } from "@/libs/types/ctwSwimming";
 import { Icon } from "@iconify/react";
 import { ctwSwimmingResultService } from "@/libs/services/ctwSwimmingResultService";
-import { ctwResultsModuleService } from "@/libs/services/ctwResultsModuleService";
+import { ctwCommonService } from "@/libs/services/ctwCommonService";
 import { useAuth } from "@/libs/hooks/useAuth";
 import FullLogo from "@/components/ui/fulllogo";
 import DataTable, { Column } from "@/components/ui/DataTable";
@@ -44,27 +44,29 @@ export default function CtwSwimmingResultsPage() {
   const [moduleLoading, setModuleLoading] = useState(true);
 
   useEffect(() => {
+    if (!user?.id) return;
     const fetchModuleId = async () => {
       try {
         setModuleLoading(true);
-        const modulesRes = await ctwResultsModuleService.getAllModules({ per_page: 100 });
-        const swimmingModule = modulesRes.data.find((m: any) => m.code === SWIMMING_MODULE_CODE);
-        if (swimmingModule) {
-          setSwimmingModuleId(swimmingModule.id);
+        const options = await ctwCommonService.getSwimmingFormOptions(user?.id || 0);
+        if (options?.module) {
+          setSwimmingModuleId(options.module.id);
         } else {
-          console.error(`Module with code ${SWIMMING_MODULE_CODE} not found.`);
+          setSwimmingModuleId(null);
+          setLoading(false);
         }
       } catch (err) {
-        console.error("Failed to fetch module ID:", err);
+        setSwimmingModuleId(null);
+        setLoading(false);
       } finally {
         setModuleLoading(false);
       }
     };
     fetchModuleId();
-  }, []);
+  }, [user?.id]);
 
   const loadResults = useCallback(async () => {
-    if (swimmingModuleId === null || !user?.id) return;
+    if (swimmingModuleId === null || !user?.id) { setLoading(false); return; }
     try {
       setLoading(true);
       const response = await ctwSwimmingResultService.getAllResults(swimmingModuleId, {
@@ -245,7 +247,7 @@ export default function CtwSwimmingResultsPage() {
       </div>
 
       {isInstructor ? (
-        (loading || moduleLoading) ? <TableLoading /> : (
+        (loading) ? <TableLoading /> : (
           <>
             <DataTable columns={columns} data={results} keyExtractor={(result) => result.id.toString()} emptyMessage="No results found" />
             <div className="flex items-center justify-between mt-6">

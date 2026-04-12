@@ -79,7 +79,7 @@ export default function UserDropdown() {
   const userEmail = user?.email || "";
   const userServiceNumber = user?.service_number || "";
   const userRank = user?.rank?.short_name || user?.rank?.name || "";
-  const userRole = user?.role?.name || user?.roles?.[0]?.name || "";
+  const userRole = user?.role?.name || user?.roles?.find((r: any) => r.pivot?.is_primary)?.name || user?.roles?.[0]?.name || "";
   const userPhone = user?.phone || "";
 
   // Get user initials for avatar
@@ -90,7 +90,19 @@ export default function UserDropdown() {
     .toUpperCase()
     .slice(0, 2);
 
-  const hasMultipleRoles = user?.roles && user.roles.length > 1;
+  // Deduplicate roles by role ID (user may be assigned same role multiple times across contexts)
+  const uniqueRoles: any[] = [];
+  const seenRoleIds = new Set<number>();
+  if (user?.roles) {
+    for (const role of user.roles) {
+      if (!seenRoleIds.has(role.id)) {
+        seenRoleIds.add(role.id);
+        uniqueRoles.push(role);
+      }
+    }
+  }
+
+  const hasMultipleRoles = uniqueRoles.length > 1;
 
   return (
     <div className="relative">
@@ -173,8 +185,8 @@ export default function UserDropdown() {
                   {userRank}
                 </span>
               )}
-              {user?.roles && user.roles.length > 0 ? (
-                user.roles.map((role: any) => (
+              {uniqueRoles.length > 0 ? (
+                uniqueRoles.map((role: any) => (
                   <span key={role.id} className={`inline-flex items-center px-2 py-0.5 text-xs font-medium rounded ${role.pivot?.is_primary ? 'bg-gradient-to-r from-yellow-100 to-amber-100 text-yellow-800 border border-yellow-300 shadow-sm dark:from-yellow-900/40 dark:to-amber-900/40 dark:text-yellow-400 dark:border-yellow-700/50' : 'bg-brand-50 text-brand-700 dark:bg-brand-500/10 dark:text-brand-400'}`}>
                     <Icon icon={role.pivot?.is_primary ? "hugeicons:user-status" : "hugeicons:user-settings-01"} className="w-3 h-3 mr-1" />
                     {role.name}
@@ -295,7 +307,7 @@ export default function UserDropdown() {
           </div>
 
           <div className="flex flex-col gap-2 mt-2 max-h-[60vh] overflow-y-auto">
-            {user?.roles?.map((role: any) => {
+            {uniqueRoles.map((role: any) => {
               const isPrimary = role.pivot?.is_primary;
               const isRoleSwitchable = role.is_role_switch !== false && role.is_role_switch !== 0;
               const isDisabled = isPrimary || !isRoleSwitchable;

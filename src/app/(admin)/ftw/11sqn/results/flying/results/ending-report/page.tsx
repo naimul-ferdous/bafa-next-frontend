@@ -29,6 +29,7 @@ interface CadetRow {
   name: string;
   course_name: string;
   semester_name: string;
+  semester_id: number | null;
   total_examinations: number;
   total_achieved_marks: number;
   average_mark: number;
@@ -43,10 +44,11 @@ export default function Ftw11sqnFlyingEndingReportPage() {
   const [rows, setRows] = useState<CadetRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [courses, setCourses] = useState<Course[]>([]);
+  const [semesters, setSemesters] = useState<Semester[]>([]);
   const [selectedCourseId, setSelectedCourseId] = useState<number | null>(null);
   const [selectedSemesterId, setSelectedSemesterId] = useState<number | null>(null);
 
-  // Load courses and auto-select S6 semester
+  // Load courses and semesters
   useEffect(() => {
     const loadFilters = async () => {
       try {
@@ -55,13 +57,7 @@ export default function Ftw11sqnFlyingEndingReportPage() {
           semesterService.getAllSemesters({ allData: true }),
         ]);
         setCourses(coursesRes.data || []);
-        // Auto-select S6 semester
-        const s6Semester = (semestersRes.data || []).find(
-          (sem: Semester) => sem.code === "S6"
-        );
-        if (s6Semester) {
-          setSelectedSemesterId(s6Semester.id);
-        }
+        setSemesters(semestersRes.data || []);
       } catch (error) {
         console.error("Failed to load filters:", error);
       }
@@ -70,7 +66,7 @@ export default function Ftw11sqnFlyingEndingReportPage() {
   }, []);
 
   const loadResults = useCallback(async () => {
-    if (!selectedCourseId || !selectedSemesterId) {
+    if (!selectedCourseId) {
       setRows([]);
       return;
     }
@@ -79,7 +75,7 @@ export default function Ftw11sqnFlyingEndingReportPage() {
       setLoading(true);
       const response = await ftw11sqnFlyingExaminationMarkService.getAllMarks({
         course_id: selectedCourseId,
-        semester_id: selectedSemesterId,
+        ...(selectedSemesterId ? { semester_id: selectedSemesterId } : {}),
         per_page: 1000,
       });
 
@@ -96,6 +92,7 @@ export default function Ftw11sqnFlyingEndingReportPage() {
         name: string;
         course_name: string;
         semester_name: string;
+        semester_id: number | null;
         marks: number[];
       }>();
 
@@ -111,6 +108,7 @@ export default function Ftw11sqnFlyingEndingReportPage() {
             name: mark.cadet?.name || "",
             course_name: mark.course?.name || "",
             semester_name: mark.semester?.name || "",
+            semester_id: mark.semester?.id || null,
             marks: [],
           });
         }
@@ -139,6 +137,7 @@ export default function Ftw11sqnFlyingEndingReportPage() {
           name: cadetData.name,
           course_name: cadetData.course_name,
           semester_name: cadetData.semester_name,
+          semester_id: cadetData.semester_id,
           total_examinations: cadetData.marks.length,
           total_achieved_marks: totalAchieved,
           average_mark: avgMark,
@@ -159,7 +158,7 @@ export default function Ftw11sqnFlyingEndingReportPage() {
     } finally {
       setLoading(false);
     }
-  }, [selectedCourseId, selectedSemesterId]);
+  }, [selectedCourseId, selectedSemesterId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     loadResults();
@@ -168,9 +167,7 @@ export default function Ftw11sqnFlyingEndingReportPage() {
   const handlePrint = () => window.print();
 
   const handleCadetClick = (row: CadetRow) => {
-    if (selectedCourseId && selectedSemesterId) {
-      router.push(`/ftw/11sqn/results/flying/results/ending-report/cadet/${row.cadet_id}?course_id=${selectedCourseId}&semester_id=${selectedSemesterId}`);
-    }
+    router.push(`/ftw/11sqn/results/flying/results/ending-report/cadet/${row.cadet_id}`);
   };
 
   const TableLoading = () => (
@@ -333,9 +330,19 @@ export default function Ftw11sqnFlyingEndingReportPage() {
         </div>
 
         <div className="flex items-center gap-2">
-          <span className="px-3 py-2 bg-blue-100 text-blue-800 font-medium rounded-lg">
-            Semester: S6
-          </span>
+          <label className="text-sm font-medium text-gray-700">Semester:</label>
+          <select
+            value={selectedSemesterId || ""}
+            onChange={(e) => setSelectedSemesterId(e.target.value ? parseInt(e.target.value) : null)}
+            className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="">All Semesters</option>
+            {semesters.map((sem) => (
+              <option key={sem.id} value={sem.id}>
+                {sem.name} ({sem.code})
+              </option>
+            ))}
+          </select>
         </div>
 
         <div className="ml-auto">
@@ -367,7 +374,7 @@ export default function Ftw11sqnFlyingEndingReportPage() {
         <div className="w-full min-h-[20vh] flex items-center justify-center text-gray-500">
           <div className="text-center">
             <Icon icon="hugeicons:filter" className="w-12 h-12 mx-auto mb-4 text-gray-400" />
-            <p>Please select a course to view results</p>
+            <p>Please select a course to view the ending report</p>
           </div>
         </div>
       ) : loading ? (

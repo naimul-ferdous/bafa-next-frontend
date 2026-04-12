@@ -66,7 +66,6 @@ export interface Ftw11sqnFlyingSyllabusType {
 // Flying Syllabus
 export interface Ftw11sqnFlyingSyllabus {
   id: number;
-  course_id?: number | null;
   semester_id?: number | null;
   phase_full_name: string;
   phase_shortname: string;
@@ -137,7 +136,6 @@ export interface Ftw11sqnFlyingSyllabusTypeCreateData {
 
 // Main Syllabus create data - single API call with all nested data
 export interface Ftw11sqnFlyingSyllabusCreateData {
-  course_id?: number | null;
   semester_id?: number | null;
   phase_full_name: string;
   phase_shortname: string;
@@ -170,8 +168,9 @@ export interface Ftw11sqnGroundSyllabusExercise {
 // Ground Syllabus
 export interface Ftw11sqnGroundSyllabus {
   id: number;
-  course_id?: number | null;
   semester_id?: number | null;
+  ftw_11sqn_ground_type_id?: number;
+  ground_type?: string;
   ground_full_name: string;
   ground_shortname: string;
   ground_symbol?: string;
@@ -182,7 +181,6 @@ export interface Ftw11sqnGroundSyllabus {
   created_by?: number;
   created_at?: string;
   updated_at?: string;
-  course?: SystemCourse | null;
   semester?: SystemSemester | null;
   exercises?: Ftw11sqnGroundSyllabusExercise[];
   creator?: User;
@@ -202,7 +200,6 @@ export interface Ftw11sqnGroundSyllabusExerciseCreateData {
 
 // Ground Syllabus create data
 export interface Ftw11sqnGroundSyllabusCreateData {
-  course_id?: number | null;
   semester_id?: number | null;
   ground_full_name: string;
   ground_shortname: string;
@@ -212,4 +209,30 @@ export interface Ftw11sqnGroundSyllabusCreateData {
   highest_mark?: number;
   is_active?: boolean;
   exercises?: Ftw11sqnGroundSyllabusExerciseCreateData[];
+}
+
+// ==================== Instructor Ground Assignment Types ====================
+
+export interface Ftw11sqnInstructorAssignGroundExercise {
+  id: number;
+  exercise_id: number;
+  exercise?: Ftw11sqnGroundSyllabusExercise;
+}
+
+export interface Ftw11sqnInstructorAssignGroundCadet {
+  id: number;
+  cadet_id: number;
+  cadet?: any;
+}
+
+export interface Ftw11sqnInstructorAssignGround {
+  id: number;
+  instructor_id: number;
+  course_id: number;
+  semester_id: number;
+  ground_id: number;
+  is_active: boolean;
+  ground?: Ftw11sqnGroundSyllabus;
+  exercises?: Ftw11sqnInstructorAssignGroundExercise[];
+  cadets?: Ftw11sqnInstructorAssignGroundCadet[];
 }

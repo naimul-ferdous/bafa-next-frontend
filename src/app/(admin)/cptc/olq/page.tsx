@@ -5,15 +5,13 @@ import React, { useState, useEffect } from "react";
 import Label from "@/components/form/Label";
 import { Icon } from "@iconify/react";
 import FullLogo from "@/components/ui/fulllogo";
-import type { SystemCourse, SystemSemester, SystemProgram, SystemBranch } from "@/libs/types/system";
+import type { SystemCourse, SystemSemester } from "@/libs/types/system";
 import type { AtwAssessmentOlqResult } from "@/libs/types/atwAssessmentOlq";
 import type { CtwAssessmentOlqResult } from "@/libs/types/ctwAssessmentOlq";
 import type { Ftw11sqnAssessmentOlqResult } from "@/libs/types/ftw11sqnAssessmentOlq";
 import type { Ftw12sqnAssessmentOlqResult } from "@/libs/types/ftw12sqnAssessmentOlq";
 import { courseService } from "@/libs/services/courseService";
 import { semesterService } from "@/libs/services/semesterService";
-import { programService } from "@/libs/services/programService";
-import { branchService } from "@/libs/services/branchService";
 import { atwAssessmentOlqResultService } from "@/libs/services/atwAssessmentOlqResultService";
 import { ctwAssessmentOlqResultService } from "@/libs/services/ctwAssessmentOlqResultService";
 import { ftw11sqnAssessmentOlqResultService } from "@/libs/services/ftw11sqnAssessmentOlqResultService";
@@ -32,8 +30,6 @@ export default function CptcOlqPage() {
   const [formData, setFormData] = useState({
     course_id: 0,
     semester_id: 0,
-    program_id: 0,
-    branch_id: 0,
   });
 
   const [wingResults, setWingResults] = useState<WingResults>({
@@ -48,8 +44,6 @@ export default function CptcOlqPage() {
   // Dropdown data
   const [courses, setCourses] = useState<SystemCourse[]>([]);
   const [semesters, setSemesters] = useState<SystemSemester[]>([]);
-  const [programs, setPrograms] = useState<SystemProgram[]>([]);
-  const [branches, setBranches] = useState<SystemBranch[]>([]);
   const [loadingDropdowns, setLoadingDropdowns] = useState(true);
   const [loadingResults, setLoadingResults] = useState(false);
 
@@ -59,17 +53,13 @@ export default function CptcOlqPage() {
     const loadDropdownData = async () => {
       try {
         setLoadingDropdowns(true);
-        const [coursesRes, semestersRes, programsRes, branchesRes] = await Promise.all([
+        const [coursesRes, semestersRes] = await Promise.all([
           courseService.getAllCourses({ per_page: 100 }),
           semesterService.getAllSemesters({ per_page: 100 }),
-          programService.getAllPrograms({ per_page: 100 }),
-          branchService.getAllBranches({ per_page: 100 }),
         ]);
 
         setCourses(coursesRes.data.filter(c => c.is_active));
         setSemesters(semestersRes.data.filter(s => s.is_active));
-        setPrograms(programsRes.data.filter(p => p.is_active));
-        setBranches(branchesRes.data.filter(b => b.is_active));
       } catch (err) {
         console.error("Failed to load dropdown data:", err);
         setError("Failed to load required data. Please refresh the page.");
@@ -84,7 +74,7 @@ export default function CptcOlqPage() {
   // Auto-load OLQ results when filters change
   useEffect(() => {
     const loadOlqResults = async () => {
-      if (!formData.course_id || !formData.semester_id || !formData.program_id || !formData.branch_id) {
+      if (!formData.course_id || !formData.semester_id) {
         setWingResults({ ATW: [], CTW: [], "11SQN": [], "12SQN": [] });
         return;
       }
@@ -97,8 +87,6 @@ export default function CptcOlqPage() {
           per_page: 100,
           course_id: formData.course_id,
           semester_id: formData.semester_id,
-          program_id: formData.program_id,
-          branch_id: formData.branch_id,
         };
 
         // Fetch from all 4 wings in parallel
@@ -124,7 +112,7 @@ export default function CptcOlqPage() {
     };
 
     loadOlqResults();
-  }, [formData.course_id, formData.semester_id, formData.program_id, formData.branch_id]);
+  }, [formData.course_id, formData.semester_id]);
 
   const handleChange = (field: string, value: any) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -179,13 +167,11 @@ export default function CptcOlqPage() {
     }
   };
 
-  const filtersSelected = formData.course_id && formData.semester_id && formData.program_id && formData.branch_id;
+  const filtersSelected = formData.course_id && formData.semester_id;
 
   // Get selected filter names for display
   const selectedCourse = courses.find(c => c.id === formData.course_id);
   const selectedSemester = semesters.find(s => s.id === formData.semester_id);
-  const selectedProgram = programs.find(p => p.id === formData.program_id);
-  const selectedBranch = branches.find(b => b.id === formData.branch_id);
 
   // Get current tab results
   const currentResults = wingResults[activeTab] || [];
@@ -238,7 +224,7 @@ export default function CptcOlqPage() {
           Filter Options
         </h3>
 
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <Label>Course <span className="text-red-500">*</span></Label>
             <select
@@ -266,34 +252,6 @@ export default function CptcOlqPage() {
               ))}
             </select>
           </div>
-
-          <div>
-            <Label>Program <span className="text-red-500">*</span></Label>
-            <select
-              value={formData.program_id}
-              onChange={(e) => handleChange("program_id", parseInt(e.target.value))}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500"
-            >
-              <option value={0}>Select Program</option>
-              {programs.map(program => (
-                <option key={program.id} value={program.id}>{program.name} ({program.code})</option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <Label>Branch <span className="text-red-500">*</span></Label>
-            <select
-              value={formData.branch_id}
-              onChange={(e) => handleChange("branch_id", parseInt(e.target.value))}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500"
-            >
-              <option value={0}>Select Branch</option>
-              {branches.map(branch => (
-                <option key={branch.id} value={branch.id}>{branch.name} ({branch.code})</option>
-              ))}
-            </select>
-          </div>
         </div>
       </div>
 
@@ -303,8 +261,6 @@ export default function CptcOlqPage() {
           <div className="grid grid-cols-2 gap-2 text-sm">
             <div><strong>Course:</strong> {selectedCourse?.name}</div>
             <div><strong>Semester:</strong> {selectedSemester?.name}</div>
-            <div><strong>Program:</strong> {selectedProgram?.name}</div>
-            <div><strong>Branch:</strong> {selectedBranch?.name}</div>
           </div>
         </div>
       )}
@@ -386,7 +342,7 @@ export default function CptcOlqPage() {
         {!filtersSelected ? (
           <div className="text-center py-12 text-gray-500">
             <Icon icon="hugeicons:filter" className="w-10 h-10 mx-auto mb-2" />
-            <p>Please select Course, Semester, Program, and Branch to load OLQ results</p>
+            <p>Please select Course and Semester to load OLQ results</p>
           </div>
         ) : loadingResults ? (
           <div className="w-full min-h-[20vh] flex items-center justify-center">

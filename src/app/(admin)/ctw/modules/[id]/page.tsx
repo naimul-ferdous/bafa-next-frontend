@@ -50,6 +50,23 @@ export default function ModuleDetailsPage() {
       loadData();
     }
   }, [moduleId, loadData]);
+  // Group estimated marks by semester for rowspan
+  const groupedBySemester = useMemo(() => {
+    const groups: { semesterName: string; marks: CtwResultsModuleEstimatedMark[] }[] = [];
+    estimatedMarks.forEach((mark) => {
+      const semName = mark.semester?.name || "N/A";
+      const existing = groups.find((g) => g.semesterName === semName);
+      if (existing) {
+        existing.marks.push(mark);
+      } else {
+        groups.push({ semesterName: semName, marks: [mark] });
+      }
+    });
+    return groups;
+  }, [estimatedMarks]);
+
+  const instructorCount = module?.instructor_count ?? 1;
+  const hasMultipleInstructors = instructorCount >= 2;
 
   // Determine which columns have data across all estimated marks
   const columnVisibility = useMemo(() => {
@@ -241,7 +258,7 @@ export default function ModuleDetailsPage() {
             <div className="flex">
               <span className="w-48 text-gray-900 font-medium">Total Mark</span>
               <span className="mr-4">:</span>
-              <span className="text-gray-900 flex-1 font-bold">{module.total_mark}</span>
+              <span className="text-gray-900 flex-1 font-bold">{Number(module.total_mark).toFixed(0)}</span>
             </div>
             <div className="flex">
               <span className="w-48 text-gray-900 font-medium">Instructor Count</span>
@@ -265,11 +282,11 @@ export default function ModuleDetailsPage() {
               Estimated Marks Configuration
             </h2>
             <button
-                onClick={handleAddMark}
-                className="no-print flex items-center gap-1 text-sm bg-blue-600 text-white px-3 py-1 rounded-lg hover:bg-blue-700 font-semibold"
+              onClick={handleAddMark}
+              className="no-print flex items-center gap-1 text-sm bg-blue-600 text-white px-3 py-1 rounded-lg hover:bg-blue-700 font-semibold"
             >
-                <Icon icon="hugeicons:add-circle" className="w-4 h-4" />
-                Add New Config
+              <Icon icon="hugeicons:add-circle" className="w-4 h-4" />
+              Add New Config
             </button>
           </div>
 
@@ -278,7 +295,6 @@ export default function ModuleDetailsPage() {
               <thead>
                 <tr>
                   <th className="border border-black px-2 py-2 text-center align-middle" rowSpan={columnVisibility.hasDetails ? 2 : 1}>Ser</th>
-                  <th className="border border-black px-2 py-2 text-left align-middle" rowSpan={columnVisibility.hasDetails ? 2 : 1}>Course</th>
                   <th className="border border-black px-2 py-2 text-center align-middle" rowSpan={columnVisibility.hasDetails ? 2 : 1}>Semester</th>
                   <th className="border border-black px-2 py-2 text-center align-middle" rowSpan={columnVisibility.hasDetails ? 2 : 1}>Exam Type</th>
                   {columnVisibility.hasPracticeCount && (
@@ -293,11 +309,46 @@ export default function ModuleDetailsPage() {
                   {columnVisibility.hasDetails && (
                     <th className="border border-black px-2 py-2 text-center align-middle" colSpan={detailSubColCount}>Configuration Details</th>
                   )}
-                  {columnVisibility.hasMarkPerInstructor && (
-                    <th className="border border-black px-2 py-2 text-center align-middle text-blue-700" rowSpan={columnVisibility.hasDetails ? 2 : 1}>Total Mark/Inst</th>
+
+                  {/* Instructor columns */}
+                  {hasMultipleInstructors ? (
+                    <>
+                      {Array.from({ length: instructorCount }, (_, i) => (
+                        <th
+                          key={`instr-header-${i}`}
+                          className="border border-black px-2 py-2 text-center align-middle"
+                          rowSpan={columnVisibility.hasDetails ? 2 : 1}
+                        >
+                          Instr-{i + 1}
+                        </th>
+                      ))}
+                      {columnVisibility.hasMarkPerInstructor && (
+                        <th
+                          className="border border-black px-2 py-2 text-center align-middle"
+                          rowSpan={columnVisibility.hasDetails ? 2 : 1}
+                        >
+                          Total-{Number(module.total_mark).toFixed(0)}
+                        </th>
+                      )}
+                    </>
+                  ) : (
+                    columnVisibility.hasMarkPerInstructor && (
+                      <th
+                        className="border border-black px-2 py-2 text-center align-middle"
+                        rowSpan={columnVisibility.hasDetails ? 2 : 1}
+                      >
+                        Total Mark/Inst
+                      </th>
+                    )
                   )}
+
                   {columnVisibility.hasConversationMark && (
-                    <th className="border border-black px-2 py-2 text-center align-middle text-green-700" rowSpan={columnVisibility.hasDetails ? 2 : 1}>Total Conv. Mark</th>
+                    <th
+                      className="border border-black px-2 py-2 text-center align-middle"
+                      rowSpan={columnVisibility.hasDetails ? 2 : 1}
+                    >
+                      Conversation Mark
+                    </th>
                   )}
                   <th className="border border-black px-2 py-2 text-center align-middle no-print" rowSpan={columnVisibility.hasDetails ? 2 : 1}>Actions</th>
                 </tr>
@@ -313,47 +364,79 @@ export default function ModuleDetailsPage() {
               </thead>
               <tbody>
                 {estimatedMarks.length > 0 ? (
-                  estimatedMarks.map((mark, index) => {
-                    const details = mark.details || [];
-                    const totalRows = getMarkRowCount(mark);
+                  (() => {
+                    let globalSer = 0;
+                    return groupedBySemester.map(({ semesterName, marks }) => {
+                      // Calculate total rows for this semester group (for rowspan)
+                      const semesterTotalRows = marks.reduce((acc, mark) => acc + getMarkRowCount(mark), 0);
+                      let semesterFirstRow = true;
 
-                    if (details.length === 0) {
-                      return (
-                        <tr key={mark.id}>
-                          <td className="border border-black px-2 py-2 text-center">{index + 1}</td>
-                          <td className="border border-black px-2 py-2">
-                            <div className="font-bold text-gray-900">{mark.course?.name || "N/A"}</div>
-                          </td>
-                          <td className="border border-black px-2 py-2 text-center">{mark.semester?.name || "N/A"}</td>
-                          <td className="border border-black px-2 py-2 text-center">{mark.exam_type?.name || "N/A"}</td>
-                          {columnVisibility.hasPracticeCount && (
-                            <td className="border border-black px-2 py-2 text-center">{mark.practice_count ?? "-"}</td>
-                          )}
-                          {columnVisibility.hasConvertOfPractice && (
-                            <td className="border border-black px-2 py-2 text-center">{mark.convert_of_practice ?? "-"}</td>
-                          )}
-                          {columnVisibility.hasConvertOfExam && (
-                            <td className="border border-black px-2 py-2 text-center">{mark.convert_of_exam ?? "-"}</td>
-                          )}
-                          {columnVisibility.hasDetails && (
-                            <td className="border border-black px-1 py-1 text-center" colSpan={detailSubColCount}>-</td>
-                          )}
-                          {columnVisibility.hasMarkPerInstructor && (
-                            <td className="border border-black px-2 py-2 text-center font-bold text-blue-700">
-                              {mark.estimated_mark_per_instructor ? parseFloat(String(mark.estimated_mark_per_instructor)).toFixed(2) : "-"}
-                            </td>
-                          )}
-                          {columnVisibility.hasConversationMark && (
-                            <td className="border border-black px-2 py-2 text-center font-bold text-green-700">
-                              {mark.conversation_mark ? parseFloat(String(mark.conversation_mark)).toFixed(2) : "-"}
-                            </td>
-                          )}
-                          <td className="border border-black px-2 py-2 text-center no-print">
+                      return marks.map((mark, markIndexInGroup) => {
+                        globalSer++;
+                        const currentSer = globalSer;
+                        const details = mark.details || [];
+                        const totalRows = getMarkRowCount(mark);
+                        const isFirstMarkInSemester = markIndexInGroup === 0;
+
+                        // Helper to render instructor + total + conv cells
+                        const renderInstrCells = (rowSpan: number) => (
+                          <>
+                            {hasMultipleInstructors ? (
+                              <>
+                                {Array.from({ length: instructorCount }, (_, i) => (
+                                  <td
+                                    key={`instr-${mark.id}-${i}`}
+                                    className="border border-black px-2 py-2 text-center"
+                                    rowSpan={rowSpan}
+                                  >
+                                    {mark.estimated_mark_per_instructor
+                                      ? parseFloat(String(mark.estimated_mark_per_instructor)).toFixed(2)
+                                      : "-"}
+                                  </td>
+                                ))}
+                                {columnVisibility.hasMarkPerInstructor && (
+                                  <td
+                                    className="border border-black px-2 py-2 text-center"
+                                    rowSpan={rowSpan}
+                                  >
+                                    {mark.estimated_mark_per_instructor
+                                      ? (parseFloat(String(mark.estimated_mark_per_instructor)) * instructorCount).toFixed(2)
+                                      : "-"}
+                                  </td>
+                                )}
+                              </>
+                            ) : (
+                              columnVisibility.hasMarkPerInstructor && (
+                                <td
+                                  className="border border-black px-2 py-2 text-center"
+                                  rowSpan={rowSpan}
+                                >
+                                  {mark.estimated_mark_per_instructor
+                                    ? parseFloat(String(mark.estimated_mark_per_instructor)).toFixed(2)
+                                    : "-"}
+                                </td>
+                              )
+                            )}
+                            {columnVisibility.hasConversationMark && (
+                              <td
+                                className="border border-black px-2 py-2 text-center"
+                                rowSpan={rowSpan}
+                              >
+                                {mark.conversation_mark
+                                  ? parseFloat(String(mark.conversation_mark)).toFixed(2)
+                                  : "-"}
+                              </td>
+                            )}
+                          </>
+                        );
+
+                        const renderActionCell = (rowSpan: number) => (
+                          <td className="border border-black px-2 py-2 text-center no-print" rowSpan={rowSpan}>
                             <div className="flex items-center justify-center gap-2">
-                              <button onClick={() => handleViewMark(mark)} className="text-blue-600 hover:text-blue-700" title="View">
+                              <button onClick={() => handleViewMark(mark)} title="View">
                                 <Icon icon="hugeicons:view" className="w-4 h-4" />
                               </button>
-                              <button onClick={() => handleEditMark(mark)} className="text-yellow-600 hover:text-yellow-700" title="Edit">
+                              <button onClick={() => handleEditMark(mark)} className="text-blue-600 hover:text-blue-700" title="Edit">
                                 <Icon icon="hugeicons:pencil-edit-01" className="w-4 h-4" />
                               </button>
                               <button onClick={() => handleDeleteMark(mark)} className="text-red-600 hover:text-red-700" title="Delete">
@@ -361,117 +444,139 @@ export default function ModuleDetailsPage() {
                               </button>
                             </div>
                           </td>
-                        </tr>
-                      );
-                    }
+                        );
 
-                    return (
-                      <React.Fragment key={mark.id}>
-                        {details.map((detail, dIndex) => (
-                          <React.Fragment key={`${mark.id}-${dIndex}`}>
-                            <tr>
-                              {dIndex === 0 && (
-                                <>
-                                  <td className="border border-black px-2 py-2 text-center" rowSpan={totalRows}>{index + 1}</td>
-                                  <td className="border border-black px-2 py-2" rowSpan={totalRows}>
-                                    <div className="font-bold text-gray-900">{mark.course?.name || "N/A"}</div>
-                                  </td>
-                                  <td className="border border-black px-2 py-2 text-center" rowSpan={totalRows}>{mark.semester?.name || "N/A"}</td>
-                                  <td className="border border-black px-2 py-2 text-center" rowSpan={totalRows}>{mark.exam_type?.name || "N/A"}</td>
-                                  {columnVisibility.hasPracticeCount && (
-                                    <td className="border border-black px-2 py-2 text-center" rowSpan={totalRows}>{mark.practice_count ?? "-"}</td>
-                                  )}
-                                  {columnVisibility.hasConvertOfPractice && (
-                                    <td className="border border-black px-2 py-2 text-center" rowSpan={totalRows}>{mark.convert_of_practice ?? "-"}</td>
-                                  )}
-                                  {columnVisibility.hasConvertOfExam && (
-                                    <td className="border border-black px-2 py-2 text-center" rowSpan={totalRows}>{mark.convert_of_exam ?? "-"}</td>
-                                  )}
-                                </>
-                              )}
-                              {columnVisibility.hasDetailName && <td className="border border-black px-1 py-1 text-[11px]" rowSpan={detail.scores && detail.scores.length > 0 ? 2 : 1}>{detail.name || "-"}</td>}
-                              {columnVisibility.hasDetailMaleQty && <td className="border border-black px-1 py-1 text-center text-[11px]">{detail.male_quantity ?? "-"}</td>}
-                              {columnVisibility.hasDetailFemaleQty && <td className="border border-black px-1 py-1 text-center text-[11px]">{detail.female_quantity ?? "-"}</td>}
-                              {columnVisibility.hasDetailMaleMarks && <td className="border border-black px-1 py-1 text-center text-[11px]">{detail.male_marks ?? "-"}</td>}
-                              {columnVisibility.hasDetailFemaleMarks && <td className="border border-black px-1 py-1 text-center text-[11px]">{detail.female_marks ?? "-"}</td>}
-                              {dIndex === 0 && (
-                                <>
-                                  {columnVisibility.hasMarkPerInstructor && (
-                                    <td className="border border-black px-2 py-2 text-center font-bold text-blue-700" rowSpan={totalRows}>
-                                      {mark.estimated_mark_per_instructor ? parseFloat(String(mark.estimated_mark_per_instructor)).toFixed(2) : "-"}
-                                    </td>
-                                  )}
-                                  {columnVisibility.hasConversationMark && (
-                                    <td className="border border-black px-2 py-2 text-center font-bold text-green-700" rowSpan={totalRows}>
-                                      {mark.conversation_mark ? parseFloat(String(mark.conversation_mark)).toFixed(2) : "-"}
-                                    </td>
-                                  )}
-                                  <td className="border border-black px-2 py-2 text-center no-print" rowSpan={totalRows}>
-                                    <div className="flex items-center justify-center gap-2">
-                                      <button onClick={() => handleViewMark(mark)} className="text-blue-600 hover:text-blue-700" title="View">
-                                        <Icon icon="hugeicons:view" className="w-4 h-4" />
-                                      </button>
-                                      <button onClick={() => handleEditMark(mark)} className="text-yellow-600 hover:text-yellow-700" title="Edit">
-                                        <Icon icon="hugeicons:pencil-edit-01" className="w-4 h-4" />
-                                      </button>
-                                      <button onClick={() => handleDeleteMark(mark)} className="text-red-600 hover:text-red-700" title="Delete">
-                                        <Icon icon="hugeicons:delete-02" className="w-4 h-4" />
-                                      </button>
-                                    </div>
-                                  </td>
-                                </>
-                              )}
-                            </tr>
-                            {detail.scores && detail.scores.length > 0 && (
-                              <tr>
-                                <td colSpan={detailSubColCount - (columnVisibility.hasDetailName ? 1 : 0)} className="border border-black px-2 py-2">
-                                  {(() => {
-                                    const scores = detail.scores;
-                                    const scoreVis = {
-                                      hasMaleQty: scores.some(s => s.male_quantity !== undefined && s.male_quantity !== null && s.male_quantity !== 0),
-                                      hasMaleTime: scores.some(s => s.male_time && s.male_time !== "-"),
-                                      hasMaleMark: scores.some(s => s.male_mark !== undefined && s.male_mark !== null && Number(s.male_mark) !== 0),
-                                      hasFemaleQty: scores.some(s => s.female_quantity !== undefined && s.female_quantity !== null && s.female_quantity !== 0),
-                                      hasFemaleTime: scores.some(s => s.female_time && s.female_time !== "-"),
-                                      hasFemaleMark: scores.some(s => s.female_mark !== undefined && s.female_mark !== null && Number(s.female_mark) !== 0),
-                                    };
-                                    return (
-                                      <table className="w-full border-collapse border border-black text-xs">
-                                        <thead>
-                                          <tr className="">
-                                            <th className="border border-black px-1 py-1 text-center">#</th>
-                                            {scoreVis.hasMaleQty && <th className="border border-black px-1 py-1 text-center">Male Qty</th>}
-                                            {scoreVis.hasMaleTime && <th className="border border-black px-1 py-1 text-center">Male Time</th>}
-                                            {scoreVis.hasMaleMark && <th className="border border-black px-1 py-1 text-center">Male Mark</th>}
-                                            {scoreVis.hasFemaleQty && <th className="border border-black px-1 py-1 text-center">Female Qty</th>}
-                                            {scoreVis.hasFemaleTime && <th className="border border-black px-1 py-1 text-center">Female Time</th>}
-                                            {scoreVis.hasFemaleMark && <th className="border border-black px-1 py-1 text-center">Female Mark</th>}
-                                          </tr>
-                                        </thead>
-                                        <tbody>
-                                          {scores.map((score, sIdx) => (
-                                            <tr key={score.id || sIdx}>
-                                              <td className="border border-black px-1 py-1 text-center">{sIdx + 1}</td>
-                                              {scoreVis.hasMaleQty && <td className="border border-black px-1 py-1 text-center">{score.male_quantity ?? "-"}</td>}
-                                              {scoreVis.hasMaleTime && <td className="border border-black px-1 py-1 text-center">{score.male_time || "-"}</td>}
-                                              {scoreVis.hasMaleMark && <td className="border border-black px-1 py-1 text-center">{score.male_mark ?? "-"}</td>}
-                                              {scoreVis.hasFemaleQty && <td className="border border-black px-1 py-1 text-center">{score.female_quantity ?? "-"}</td>}
-                                              {scoreVis.hasFemaleTime && <td className="border border-black px-1 py-1 text-center">{score.female_time || "-"}</td>}
-                                              {scoreVis.hasFemaleMark && <td className="border border-black px-1 py-1 text-center">{score.female_mark ?? "-"}</td>}
-                                            </tr>
-                                          ))}
-                                        </tbody>
-                                      </table>
-                                    );
-                                  })()}
+                        if (details.length === 0) {
+                          const row = (
+                            <tr key={mark.id}>
+                              <td className="border border-black px-2 py-2 text-center">{currentSer}</td>
+                              {/* Semester cell with rowspan for the whole semester group */}
+                              {isFirstMarkInSemester && (
+                                <td
+                                  className="border border-black px-2 py-2 text-center font-medium"
+                                  rowSpan={semesterTotalRows}
+                                >
+                                  {semesterName}
                                 </td>
-                              </tr>
-                            )}
+                              )}
+                              <td className="border border-black px-2 py-2 text-center">{mark.exam_type?.name || "N/A"}</td>
+                              {columnVisibility.hasPracticeCount && (
+                                <td className="border border-black px-2 py-2 text-center">{mark.practice_count ?? "-"}</td>
+                              )}
+                              {columnVisibility.hasConvertOfPractice && (
+                                <td className="border border-black px-2 py-2 text-center">{mark.convert_of_practice ?? "-"}</td>
+                              )}
+                              {columnVisibility.hasConvertOfExam && (
+                                <td className="border border-black px-2 py-2 text-center">{mark.convert_of_exam ?? "-"}</td>
+                              )}
+                              {columnVisibility.hasDetails && (
+                                <td className="border border-black px-1 py-1 text-center" colSpan={detailSubColCount}>-</td>
+                              )}
+                              {renderInstrCells(1)}
+                              {renderActionCell(1)}
+                            </tr>
+                          );
+                          semesterFirstRow = false;
+                          return row;
+                        }
+
+                        // Has details
+                        return (
+                          <React.Fragment key={mark.id}>
+                            {details.map((detail, dIndex) => (
+                              <React.Fragment key={`${mark.id}-${dIndex}`}>
+                                <tr>
+                                  {dIndex === 0 && (
+                                    <>
+                                      <td className="border border-black px-2 py-2 text-center" rowSpan={totalRows}>{currentSer}</td>
+                                      {isFirstMarkInSemester && (
+                                        <td
+                                          className="border border-black px-2 py-2 text-center font-medium"
+                                          rowSpan={semesterTotalRows}
+                                        >
+                                          {semesterName}
+                                        </td>
+                                      )}
+                                      <td className="border border-black px-2 py-2 text-center" rowSpan={totalRows}>{mark.exam_type?.name || "N/A"}</td>
+                                      {columnVisibility.hasPracticeCount && (
+                                        <td className="border border-black px-2 py-2 text-center" rowSpan={totalRows}>{mark.practice_count ?? "-"}</td>
+                                      )}
+                                      {columnVisibility.hasConvertOfPractice && (
+                                        <td className="border border-black px-2 py-2 text-center" rowSpan={totalRows}>{mark.convert_of_practice ?? "-"}</td>
+                                      )}
+                                      {columnVisibility.hasConvertOfExam && (
+                                        <td className="border border-black px-2 py-2 text-center" rowSpan={totalRows}>{mark.convert_of_exam ?? "-"}</td>
+                                      )}
+                                    </>
+                                  )}
+                                  {columnVisibility.hasDetailName && (
+                                    <td className="border border-black px-1 py-1 text-[11px]" rowSpan={detail.scores && detail.scores.length > 0 ? 2 : 1}>
+                                      {detail.name || "-"}
+                                    </td>
+                                  )}
+                                  {columnVisibility.hasDetailMaleQty && <td className="border border-black px-1 py-1 text-center text-[11px]">{detail.male_quantity ?? "-"}</td>}
+                                  {columnVisibility.hasDetailFemaleQty && <td className="border border-black px-1 py-1 text-center text-[11px]">{detail.female_quantity ?? "-"}</td>}
+                                  {columnVisibility.hasDetailMaleMarks && <td className="border border-black px-1 py-1 text-center text-[11px]">{detail.male_marks ?? "-"}</td>}
+                                  {columnVisibility.hasDetailFemaleMarks && <td className="border border-black px-1 py-1 text-center text-[11px]">{detail.female_marks ?? "-"}</td>}
+                                  {dIndex === 0 && (
+                                    <>
+                                      {renderInstrCells(totalRows)}
+                                      {renderActionCell(totalRows)}
+                                    </>
+                                  )}
+                                </tr>
+                                {detail.scores && detail.scores.length > 0 && (
+                                  <tr>
+                                    <td colSpan={detailSubColCount - (columnVisibility.hasDetailName ? 1 : 0)} className="border border-black px-2 py-2">
+                                      {(() => {
+                                        const scores = detail.scores;
+                                        const scoreVis = {
+                                          hasMaleQty: scores.some(s => s.male_quantity !== undefined && s.male_quantity !== null && s.male_quantity !== 0),
+                                          hasMaleTime: scores.some(s => s.male_time && s.male_time !== "-"),
+                                          hasMaleMark: scores.some(s => s.male_mark !== undefined && s.male_mark !== null && Number(s.male_mark) !== 0),
+                                          hasFemaleQty: scores.some(s => s.female_quantity !== undefined && s.female_quantity !== null && s.female_quantity !== 0),
+                                          hasFemaleTime: scores.some(s => s.female_time && s.female_time !== "-"),
+                                          hasFemaleMark: scores.some(s => s.female_mark !== undefined && s.female_mark !== null && Number(s.female_mark) !== 0),
+                                        };
+                                        return (
+                                          <table className="w-full border-collapse border border-black text-xs">
+                                            <thead>
+                                              <tr>
+                                                <th className="border border-black px-1 py-1 text-center">#</th>
+                                                {scoreVis.hasMaleQty && <th className="border border-black px-1 py-1 text-center">Male Qty</th>}
+                                                {scoreVis.hasMaleTime && <th className="border border-black px-1 py-1 text-center">Male Time</th>}
+                                                {scoreVis.hasMaleMark && <th className="border border-black px-1 py-1 text-center">Male Mark</th>}
+                                                {scoreVis.hasFemaleQty && <th className="border border-black px-1 py-1 text-center">Female Qty</th>}
+                                                {scoreVis.hasFemaleTime && <th className="border border-black px-1 py-1 text-center">Female Time</th>}
+                                                {scoreVis.hasFemaleMark && <th className="border border-black px-1 py-1 text-center">Female Mark</th>}
+                                              </tr>
+                                            </thead>
+                                            <tbody>
+                                              {scores.map((score, sIdx) => (
+                                                <tr key={score.id || sIdx}>
+                                                  <td className="border border-black px-1 py-1 text-center">{sIdx + 1}</td>
+                                                  {scoreVis.hasMaleQty && <td className="border border-black px-1 py-1 text-center">{score.male_quantity ?? "-"}</td>}
+                                                  {scoreVis.hasMaleTime && <td className="border border-black px-1 py-1 text-center">{score.male_time || "-"}</td>}
+                                                  {scoreVis.hasMaleMark && <td className="border border-black px-1 py-1 text-center">{score.male_mark ?? "-"}</td>}
+                                                  {scoreVis.hasFemaleQty && <td className="border border-black px-1 py-1 text-center">{score.female_quantity ?? "-"}</td>}
+                                                  {scoreVis.hasFemaleTime && <td className="border border-black px-1 py-1 text-center">{score.female_time || "-"}</td>}
+                                                  {scoreVis.hasFemaleMark && <td className="border border-black px-1 py-1 text-center">{score.female_mark ?? "-"}</td>}
+                                                </tr>
+                                              ))}
+                                            </tbody>
+                                          </table>
+                                        );
+                                      })()}
+                                    </td>
+                                  </tr>
+                                )}
+                              </React.Fragment>
+                            ))}
                           </React.Fragment>
-                        ))}
-                      </React.Fragment>
-                    );
-                  })
+                        );
+                      });
+                    });
+                  })()
                 ) : (
                   <tr>
                     <td colSpan={totalColCount} className="border border-black px-4 py-8 text-center text-gray-500 italic">

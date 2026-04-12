@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { CtwBmaResult } from "@/libs/types/ctwBma";
 import { Icon } from "@iconify/react";
 import { ctwBmaResultService } from "@/libs/services/ctwBmaResultService";
-import { ctwResultsModuleService } from "@/libs/services/ctwResultsModuleService";
+import { ctwCommonService } from "@/libs/services/ctwCommonService";
 import { useAuth } from "@/libs/hooks/useAuth";
 import FullLogo from "@/components/ui/fulllogo";
 import DataTable, { Column } from "@/components/ui/DataTable";
@@ -44,27 +44,29 @@ export default function CtwBmaResultsPage() {
     const [moduleLoading, setModuleLoading] = useState(true);
 
     useEffect(() => {
+        if (!user?.id) return;
         const fetchModuleId = async () => {
             try {
                 setModuleLoading(true);
-                const modulesRes = await ctwResultsModuleService.getAllModules({ per_page: 100 });
-                const bmaModule = modulesRes.data.find((m: any) => m.code === BMA_MODULE_CODE);
-                if (bmaModule) {
-                    setBmaModuleId(bmaModule.id);
+                const options = await ctwCommonService.getBmaFormOptions(user?.id || 0);
+                if (options?.module) {
+                    setBmaModuleId(options.module.id);
                 } else {
-                    console.error(`Module with code ${BMA_MODULE_CODE} not found.`);
+                    setBmaModuleId(null);
+                    setLoading(false);
                 }
             } catch (err) {
-                console.error("Failed to fetch module ID:", err);
+                setBmaModuleId(null);
+                setLoading(false);
             } finally {
                 setModuleLoading(false);
             }
         };
         fetchModuleId();
-    }, []);
+    }, [user?.id]);
 
     const loadResults = useCallback(async () => {
-        if (bmaModuleId === null || !user?.id) return;
+        if (bmaModuleId === null || !user?.id) { setLoading(false); return; }
 
         try {
             setLoading(true);
@@ -332,7 +334,7 @@ export default function CtwBmaResultsPage() {
             </div>
 
             {isInstructor ? (
-                (loading || moduleLoading) ? <TableLoading /> : (
+                (loading) ? <TableLoading /> : (
                     <>
                         <DataTable columns={columns} data={results} keyExtractor={(result) => result.id.toString()} emptyMessage="No results found" />
 

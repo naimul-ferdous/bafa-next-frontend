@@ -10,12 +10,9 @@ import type {
   AtwAssessmentCounselingType,
   AtwAssessmentCounselingEvent
 } from "@/libs/types/atwAssessmentCounseling";
-import type { SystemCourse, SystemSemester, SystemProgram, SystemBranch, SystemGroup, SystemExam } from "@/libs/types/system";
+import type { SystemCourse, SystemSemester, SystemExam } from "@/libs/types/system";
 import { commonService } from "@/libs/services/commonService";
-import { atwAssessmentCounselingTypeService } from "@/libs/services/atwAssessmentCounselingTypeService";
-import { cadetService } from "@/libs/services/cadetService";
 import { atwAssessmentCounselingResultService } from "@/libs/services/atwAssessmentCounselingResultService";
-import { atwUserAssignService } from "@/libs/services/atwUserAssignService";
 import { useAuth } from "@/libs/hooks/useAuth";
 import DatePicker from "@/components/form/input/DatePicker";
 import SearchableSelect from "@/components/form/SearchableSelect";
@@ -30,8 +27,7 @@ interface ResultFormProps {
 
 export default function ResultForm({ initialData, onSubmit, onCancel, loading, isEdit = false }: ResultFormProps) {
   const router = useRouter();
-  const { user, userIsInstructor } = useAuth();
-  const isInstructor = userIsInstructor;
+  const { user } = useAuth();
   const [formData, setFormData] = useState({
     course_id: 0,
     semester_id: 0,
@@ -86,57 +82,71 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
     loadInitialOptions();
   }, []);
 
-  // 2. Chained Data Load: When Course or Semester changes
+  // 2a. Load semesters when course changes
   useEffect(() => {
-    if (!formData.course_id) return;
+    if (!formData.course_id) {
+      setSemesters([]);
+      return;
+    }
+    const fetchSemesters = async () => {
+      setLoadingSemesters(true);
+      try {
+        const semestersList = await commonService.getSemestersByCourse(formData.course_id);
+        setSemesters(semestersList);
+        if (semestersList.length === 1) {
+          setFormData(prev => ({ ...prev, semester_id: semestersList[0].id }));
+        } else if (semestersList.length > 0 && !isEdit) {
+          setFormData(prev => {
+            if (prev.semester_id && semestersList.some(s => s.id === prev.semester_id)) return prev;
+            return { ...prev, semester_id: semestersList[0].id };
+          });
+        }
+      } catch (err) {
+        console.error("Failed to fetch semesters:", err);
+      } finally {
+        setLoadingSemesters(false);
+      }
+    };
+    fetchSemesters();
+  }, [formData.course_id, isEdit]);
+
+  // 2b. Load cadets/events when course+semester both selected
+  useEffect(() => {
+    if (!formData.course_id || !formData.semester_id) return;
 
     const loadContextData = async () => {
       try {
-        if (!formData.semester_id) setLoadingSemesters(true);
-        else setLoadingCadets(true);
+        setLoadingCadets(true);
 
         const options = await atwAssessmentCounselingResultService.getFormOptions({
           course_id: formData.course_id,
-          semester_id: formData.semester_id || undefined
+          semester_id: formData.semester_id,
         });
 
         if (options) {
-          // If only course selected, update semesters
-          if (!formData.semester_id) {
-            setSemesters(options.semesters);
-            // Auto-select first semester
-            if (options.semesters.length > 0) {
-              setFormData(prev => ({ ...prev, semester_id: options.semesters[0].id }));
-            }
-          } 
-          // If both selected, update cadets, events, and duplicate map
-          else {
-            setCadets(options.cadets);
-            setCadetToResultMap(options.existing_results_map);
-            
-            if (options.counseling_type) {
-              setDetectedType(options.counseling_type);
-              setFormData(prev => ({ ...prev, atw_assessment_counseling_type_id: options.counseling_type!.id }));
-              
-              const activeEvents = (options.counseling_type.events || [])
-                .filter((e: AtwAssessmentCounselingEvent) => e.is_active)
-                .sort((a: AtwAssessmentCounselingEvent, b: AtwAssessmentCounselingEvent) => (a.order || 0) - (b.order || 0));
-              setAvailableEvents(activeEvents);
+          setCadets(options.cadets);
+          setCadetToResultMap(options.existing_results_map);
 
-              // Reset/Init remarks
-              const initialRemarks: { [key: number]: string } = {};
-              activeEvents.forEach((e: AtwAssessmentCounselingEvent) => { initialRemarks[e.id] = ""; });
-              setEventRemarks(initialRemarks);
-            } else {
-              setDetectedType(null);
-              setAvailableEvents([]);
-            }
+          if (options.counseling_type) {
+            setDetectedType(options.counseling_type);
+            setFormData(prev => ({ ...prev, atw_assessment_counseling_type_id: options.counseling_type!.id }));
+
+            const activeEvents = (options.counseling_type.events || [])
+              .filter((e: AtwAssessmentCounselingEvent) => e.is_active)
+              .sort((a: AtwAssessmentCounselingEvent, b: AtwAssessmentCounselingEvent) => (a.order || 0) - (b.order || 0));
+            setAvailableEvents(activeEvents);
+
+            const initialRemarks: { [key: number]: string } = {};
+            activeEvents.forEach((e: AtwAssessmentCounselingEvent) => { initialRemarks[e.id] = ""; });
+            setEventRemarks(initialRemarks);
+          } else {
+            setDetectedType(null);
+            setAvailableEvents([]);
           }
         }
       } catch (err) {
         console.error("Failed to load context data:", err);
       } finally {
-        setLoadingSemesters(false);
         setLoadingCadets(false);
       }
     };
@@ -301,7 +311,7 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
       )}
 
       {/* Top Dropdowns */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <div>
           <label className="block text-sm font-bold text-gray-700 mb-2 uppercase tracking-wide">Select Course<span className="text-red-500">*</span></label>
           <SearchableSelect
@@ -332,9 +342,6 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
             required
           />
         </div>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div>
           <label className="block text-sm font-bold text-gray-700 mb-2 uppercase tracking-wide">Select Exam Type<span className="text-red-500">*</span></label>
           <SearchableSelect

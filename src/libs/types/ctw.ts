@@ -131,6 +131,7 @@ export interface CtwResultsModule {
   code: string;
   assessment?: CtwModuleAssessment | null;
   instructor_count: number;
+  is_daily: boolean;
   total_mark: number;
   is_active: boolean;
   created_at?: string;
@@ -192,6 +193,7 @@ export interface CtwResultsModuleCreateData {
   code: string;
   assessment?: CtwModuleAssessment | null;
   instructor_count?: number;
+  is_daily?: boolean;
   total_mark: number;
   is_active?: boolean;
 }

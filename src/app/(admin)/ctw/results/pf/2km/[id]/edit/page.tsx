@@ -4,7 +4,8 @@
 import React, { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { ctw2kmResultService } from "@/libs/services/ctw2kmResultService";
-import { ctwResultsModuleService } from "@/libs/services/ctwResultsModuleService";
+import { ctwCommonService } from "@/libs/services/ctwCommonService";
+import { useAuth } from "@/libs/hooks/useAuth";
 import FullLogo from "@/components/ui/fulllogo";
 import TwoKmResultForm from "@/components/ctw-2km/TwoKmResultForm";
 import { Icon } from "@iconify/react";
@@ -16,23 +17,48 @@ export default function Edit2kmResultPage() {
   const router = useRouter();
   const params = useParams();
   const resultId = params?.id as string;
+  const { user } = useAuth();
 
   const [loading, setLoading] = useState(false);
   const [loadingResult, setLoadingResult] = useState(true);
   const [result, setResult] = useState<Ctw2kmResult | null>(null);
   const [error, setError] = useState("");
   const [twoKmModuleId, setTwoKmModuleId] = useState<number | null>(null);
+  const [moduleLoading, setModuleLoading] = useState(true);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    const fetchModuleId = async () => {
+      try {
+        setModuleLoading(true);
+        const options = await ctwCommonService.getTwoKmFormOptions(user?.id || 0);
+        if (options?.module) {
+          setTwoKmModuleId(options.module.id);
+        } else {
+          setTwoKmModuleId(null);
+          setLoading(false);
+          setError("Module not found.");
+        }
+      } catch (err) {
+        setTwoKmModuleId(null);
+        setLoading(false);
+        setError("Failed to fetch module ID.");
+      } finally {
+        setModuleLoading(false);
+      }
+    };
+    fetchModuleId();
+  }, [user?.id]);
 
   useEffect(() => {
     const fetchModuleAndResult = async () => {
       try {
         setLoadingResult(true);
-        const modulesRes = await ctwResultsModuleService.getAllModules({ per_page: 100 });
-        const twoKmModule = modulesRes.data.find((m: any) => m.code === TWO_KM_MODULE_CODE);
+        const options = await ctwCommonService.getTwoKmFormOptions(user?.id || 0);
 
-        if (twoKmModule) {
-          setTwoKmModuleId(twoKmModule.id);
-          const resultData = await ctw2kmResultService.getResult(twoKmModule.id, parseInt(resultId));
+        if (options?.module) {
+          setTwoKmModuleId(options.module.id);
+          const resultData = await ctw2kmResultService.getResult(options.module.id, parseInt(resultId));
           if (resultData) {
             setResult(resultData);
           } else {

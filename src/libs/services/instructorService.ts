@@ -255,6 +255,36 @@ export const instructorService = {
     }
   },
 
+  async addSubWingData(instructorId: number, data: {
+    sub_wing_id: number;
+    assigned_date: string;
+    courses_taught?: string[];
+  }): Promise<boolean> {
+    try {
+      const token = getToken();
+      if (!token) throw new Error('Authentication token not found. Please login again.');
+      const result = await apiClient.post(`/instructors/${instructorId}/sub-wing-data`, data, token);
+      return !!(result as { success?: boolean })?.success;
+    } catch (error) {
+      console.error(`Failed to add sub-wing data for instructor ${instructorId}:`, error);
+      throw error;
+    }
+  },
+
+  async updateSubWingData(instructorId: number, subWingDataId: number, data: {
+    courses_taught?: string[];
+  }): Promise<boolean> {
+    try {
+      const token = getToken();
+      if (!token) throw new Error('Authentication token not found. Please login again.');
+      const result = await apiClient.put(`/instructors/${instructorId}/sub-wing-data/${subWingDataId}`, data, token);
+      return !!(result as { success?: boolean })?.success;
+    } catch (error) {
+      console.error(`Failed to update sub-wing data ${subWingDataId}:`, error);
+      throw error;
+    }
+  },
+
   async findInstructorByServiceNumber(serviceNumber: string): Promise<InstructorBiodata | null> {
     try {
       const token = getToken();

@@ -19,8 +19,6 @@ interface ResultQueryParams {
   per_page?: number;
   course_id?: number;
   semester_id?: number;
-  program_id?: number;
-  branch_id?: number;
   group_id?: number;
   olq_type_id?: number;
 }
@@ -97,8 +95,6 @@ export const atwAssessmentOlqResultService = {
       if (params?.per_page) query.append('per_page', params.per_page.toString());
       if (params?.course_id) query.append('course_id', params.course_id.toString());
       if (params?.semester_id) query.append('semester_id', params.semester_id.toString());
-      if (params?.program_id) query.append('program_id', params.program_id.toString());
-      if (params?.branch_id) query.append('branch_id', params.branch_id.toString());
       if (params?.group_id) query.append('group_id', params.group_id.toString());
       if (params?.olq_type_id) query.append('olq_type_id', params.olq_type_id.toString());
 

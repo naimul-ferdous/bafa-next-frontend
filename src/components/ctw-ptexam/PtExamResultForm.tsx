@@ -4,8 +4,9 @@
 import React, { useState, useEffect } from "react";
 import Label from "@/components/form/Label";
 import { commonService } from "@/libs/services/commonService";
+import { ctwCommonService } from "@/libs/services/ctwCommonService";
 import { ctwResultsModuleService } from "@/libs/services/ctwResultsModuleService";
-import { ctwInstructorAssignCadetService } from "@/libs/services/ctwInstructorAssignCadetService";
+import { cadetService } from "@/libs/services/cadetService";
 import { ctwInstructorAssignModuleService } from "@/libs/services/ctwInstructorAssignModuleService";
 import { useAuth } from "@/libs/hooks/useAuth";
 import { Icon } from "@iconify/react";
@@ -20,51 +21,77 @@ interface ResultFormProps {
   isEdit?: boolean;
 }
 
-interface DetailEntry {
-  detail_id: number;
-  quantity: number;
-  mark: number;
-}
-
 interface CadetRow {
   id?: number;
   cadet_id: number;
   cadet_number: string;
   cadet_name: string;
   cadet_rank: string;
-  branch: string;
   cadet_gender: string;
-  detail_entries: { [detail_id: number]: DetailEntry };
-  total_mark: number;
+  branch: string;
+  mark: number;
+  conversation_mark: number;
+  detail_marks: { [detailId: number]: number };
+  detail_inputs: { [detailId: number]: string };
   is_active: boolean;
 }
 
-const PT_EXAM_MODULE_CODE = "pt_exam";
-
-const normalizeGender = (gender: string): string => {
-  if (!gender) return "male";
-  return gender.toLowerCase().startsWith("f") ? "female" : "male";
-};
-
-const lookupMark = (detail: any, quantity: number, gender: string): number => {
-  if (!detail.scores || detail.scores.length === 0) return 0;
-  const qtyField = gender === "female" ? "female_quantity" : "male_quantity";
-  const markField = gender === "female" ? "female_mark" : "male_mark";
-  const sorted = [...detail.scores].sort((a: any, b: any) => parseFloat(b[qtyField]) - parseFloat(a[qtyField]));
-  const matched = sorted.find((s: any) => quantity >= parseFloat(s[qtyField]));
-  return matched ? parseFloat(matched[markField]) : 0;
-};
-
-const getDetailMaxMark = (detail: any, gender: string): number => {
-  const markField = gender === "female" ? "female_marks" : "male_marks";
-  const maxFromField = parseFloat(detail[markField] || 0);
-  if (maxFromField > 0) return maxFromField;
-  if (detail.scores && detail.scores.length > 0) {
-    const scoreMarkField = gender === "female" ? "female_mark" : "male_mark";
-    return Math.max(...detail.scores.map((s: any) => parseFloat(s[scoreMarkField] || 0)));
+const timeToSeconds = (timeStr: string | null): number => {
+  if (!timeStr) return 0;
+  if (typeof timeStr !== 'string') return parseFloat(timeStr) || 0;
+  const parts = timeStr.split(':');
+  if (parts.length === 2) {
+    return parseInt(parts[0]) * 60 + parseInt(parts[1]);
   }
-  return 0;
+  return parseFloat(timeStr) || 0;
 };
+
+const secondsToTime = (seconds: number): string => {
+  if (!seconds) return "0:00";
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  return `${mins}:${secs.toString().padStart(2, '0')}`;
+};
+
+const calculateMark = (detail: any, value: string, gender: string): number => {
+  const scores = detail.scores || [];
+  const isFemale = gender.toLowerCase() === 'female';
+  
+  if (scores.length === 0) return 0;
+
+  const firstScore = scores[0];
+  const isTimeBased = isFemale ? !!firstScore.female_time : !!firstScore.male_time;
+
+  if (isTimeBased) {
+    const cadetSeconds = timeToSeconds(value);
+    if (cadetSeconds === 0) return 0;
+
+    let bestMark = 0;
+    scores.forEach((s: any) => {
+      const scoreTime = timeToSeconds(isFemale ? s.female_time : s.male_time);
+      const scoreMark = parseFloat(isFemale ? s.female_mark : s.male_mark);
+      if (cadetSeconds <= scoreTime) {
+        if (scoreMark > bestMark) bestMark = scoreMark;
+      }
+    });
+    return bestMark;
+  } else {
+    const cadetQty = parseFloat(value) || 0;
+    if (cadetQty === 0) return 0;
+
+    let bestMark = 0;
+    scores.forEach((s: any) => {
+      const scoreQty = parseFloat(isFemale ? s.female_quantity : s.male_quantity) || 0;
+      const scoreMark = parseFloat(isFemale ? s.female_mark : s.male_mark);
+      if (cadetQty >= scoreQty) {
+        if (scoreMark > bestMark) bestMark = scoreMark;
+      }
+    });
+    return bestMark;
+  }
+};
+
+const PT_EXAM_MODULE_CODE = "pt_exam";
 
 export default function PtExamResultForm({ initialData, onSubmit, onCancel, loading, isEdit = false }: ResultFormProps) {
   const { user } = useAuth();
@@ -89,38 +116,35 @@ export default function PtExamResultForm({ initialData, onSubmit, onCancel, load
   const [groups, setGroups] = useState<SystemGroup[]>([]);
   const [exams, setExams] = useState<SystemExam[]>([]);
   const [estimatedMarks, setEstimatedMarks] = useState<any[]>([]);
-  const [ptExamModuleId, setPtExamModuleId] = useState<number>(0);
+  const [moduleId, setModuleId] = useState<number>(0);
   const [loadingDropdowns, setLoadingDropdowns] = useState(true);
   const [loadingCadets, setLoadingCadets] = useState(false);
   const [loadingEstimatedMarks, setLoadingEstimatedMarks] = useState(false);
+  const [loadingSemesters, setLoadingSemesters] = useState(false);
   const [moduleAssigned, setModuleAssigned] = useState(false);
 
-  // Derive details from the selected exam type's estimated mark entry
-  const selectedEM = estimatedMarks.find((em: any) => em.exam_type_id === formData.exam_type_id);
-  const details: any[] = selectedEM?.details || [];
-  const hasScoresRow = details.some((d: any) => d.scores && d.scores.length > 0);
+  const currentEstimatedMark = estimatedMarks.find((em: any) => em.exam_type_id === formData.exam_type_id);
+  const stationDetails = currentEstimatedMark?.details || [];
 
-  // Load dropdown data + find pt exam module
   useEffect(() => {
+    if (!user?.id) return;
+
     const loadDropdownData = async () => {
       try {
         setLoadingDropdowns(true);
-        const [options, modulesRes] = await Promise.all([
-          commonService.getResultOptions(),
-          ctwResultsModuleService.getAllModules({ per_page: 100 }),
-        ]);
+        const options = await ctwCommonService.getPtExamFormOptions(user.id);
 
         if (options) {
           setCourses(options.courses);
-          setSemesters(options.semesters);
           setPrograms(options.programs);
           setBranches(options.branches);
           setGroups(options.groups);
           setExams(options.exams);
-        }
 
-        const ptExamModule = modulesRes.data.find((m: any) => m.code === PT_EXAM_MODULE_CODE);
-        if (ptExamModule) setPtExamModuleId(ptExamModule.id);
+          if (options.module) {
+            setModuleId(options.module.id);
+          }
+        }
       } catch (err) {
         console.error("Failed to load dropdown data:", err);
         setError("Failed to load required data. Please refresh the page.");
@@ -128,20 +152,44 @@ export default function PtExamResultForm({ initialData, onSubmit, onCancel, load
         setLoadingDropdowns(false);
       }
     };
-    loadDropdownData();
-  }, []);
 
-  // Load estimated marks when course + semester are selected
+    loadDropdownData();
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (!formData.course_id) {
+      setSemesters([]);
+      if (!initialData) setFormData(prev => ({ ...prev, semester_id: 0 }));
+      return;
+    }
+
+    const loadSemesters = async () => {
+      try {
+        setLoadingSemesters(true);
+        if (!initialData) setFormData(prev => ({ ...prev, semester_id: 0 }));
+        const result = await commonService.getSemestersByCourse(formData.course_id);
+        setSemesters(result);
+      } catch (err) {
+        console.error("Failed to load semesters:", err);
+        setSemesters([]);
+      } finally {
+        setLoadingSemesters(false);
+      }
+    };
+
+    loadSemesters();
+  }, [formData.course_id, initialData]);
+
   useEffect(() => {
     const loadEstimatedMarks = async () => {
-      if (!ptExamModuleId || !formData.course_id || !formData.semester_id) {
+      if (!moduleId || !formData.course_id || !formData.semester_id) {
         setEstimatedMarks([]);
         return;
       }
+
       try {
         setLoadingEstimatedMarks(true);
-        const response = await ctwResultsModuleService.getEstimatedMarks(ptExamModuleId, {
-          course_id: formData.course_id,
+        const response = await ctwResultsModuleService.getEstimatedMarks(moduleId, {
           semester_id: formData.semester_id,
         });
         setEstimatedMarks(response);
@@ -152,17 +200,29 @@ export default function PtExamResultForm({ initialData, onSubmit, onCancel, load
         setLoadingEstimatedMarks(false);
       }
     };
+
     loadEstimatedMarks();
-  }, [ptExamModuleId, formData.course_id, formData.semester_id]);
+  }, [moduleId, formData.course_id, formData.semester_id]);
 
   const hasEstimatedMark = (examTypeId: number): boolean => {
     return estimatedMarks.some((em: any) => em.exam_type_id === examTypeId);
   };
 
-  // Auto-load cadets after all required filters are selected (create mode only)
+  const getMaxConvMark = (): number => {
+    if (!formData.exam_type_id) return 0;
+    const em = estimatedMarks.find((em: any) => em.exam_type_id === formData.exam_type_id);
+    return em?.conversation_mark ? parseFloat(em.conversation_mark) : 0;
+  };
+
+  const getTotalRawMax = (gender: string): number => {
+    return stationDetails.reduce((sum: number, d: any) => {
+      return sum + parseFloat(gender.toLowerCase() === 'female' ? d.female_marks : d.male_marks);
+    }, 0);
+  };
+
   useEffect(() => {
     const loadCadets = async () => {
-      if (!user?.id || !ptExamModuleId || !formData.course_id || !formData.semester_id || !formData.exam_type_id) {
+      if (!user?.id || !moduleId || !formData.course_id || !formData.semester_id || !formData.exam_type_id) {
         setCadetRows([]);
         setModuleAssigned(false);
         return;
@@ -187,45 +247,34 @@ export default function PtExamResultForm({ initialData, onSubmit, onCancel, load
 
         setModuleAssigned(true);
 
-        const params: any = {
+        const cadetParams: any = {
           per_page: 500,
-          instructor_id: user.id,
-          ctw_results_module_id: ptExamModuleId,
           course_id: formData.course_id,
           semester_id: formData.semester_id,
-          is_active: true,
+          is_current: 1,
         };
-        if (formData.program_id) params.program_id = formData.program_id;
-        if (formData.branch_id) params.branch_id = formData.branch_id;
-        if (formData.group_id) params.group_id = formData.group_id;
+        if (formData.program_id) cadetParams.program_id = formData.program_id;
+        if (formData.branch_id) cadetParams.branch_id = formData.branch_id;
+        if (formData.group_id) cadetParams.group_id = formData.group_id;
 
-        const assignedCadetsRes = await ctwInstructorAssignCadetService.getAll(params);
+        const cadetsRes = await cadetService.getAllCadets(cadetParams);
 
-        // Build initial detail entries for each cadet using currently loaded details
-        const currentEM = estimatedMarks.find((em: any) => em.exam_type_id === formData.exam_type_id);
-        const currentDetails: any[] = currentEM?.details || [];
-        const initialDetailEntries: { [detail_id: number]: DetailEntry } = {};
-        currentDetails.forEach((d: any) => {
-          initialDetailEntries[d.id] = { detail_id: d.id, quantity: 0, mark: 0 };
+        const rows: CadetRow[] = cadetsRes.data.map((cadet: any) => {
+          const currentRank = cadet.assigned_ranks?.find((ar: any) => ar.rank)?.rank;
+          return {
+            cadet_id: cadet.id,
+            cadet_number: cadet.cadet_number || "",
+            cadet_name: cadet.name,
+            cadet_rank: currentRank?.short_name || currentRank?.name || "Officer Cadet",
+            cadet_gender: cadet.gender || "Male",
+            branch: cadet.assigned_branchs?.find((ab: any) => ab.is_current)?.branch?.name || cadet.assigned_branchs?.[0]?.branch?.name || "N/A",
+            mark: 0,
+            conversation_mark: 0,
+            detail_marks: {},
+            detail_inputs: {},
+            is_active: true,
+          };
         });
-
-        const rows: CadetRow[] = assignedCadetsRes.data
-          .filter((ac: any) => ac.cadet)
-          .map((ac: any) => {
-            const cadet = ac.cadet;
-            const currentRank = cadet.assigned_ranks?.find((ar: any) => ar.rank)?.rank;
-            return {
-              cadet_id: cadet.id,
-              cadet_number: cadet.cadet_number || "",
-              cadet_name: cadet.name,
-              cadet_rank: currentRank?.short_name || currentRank?.name || "Officer Cadet",
-              branch: cadet.assigned_branchs?.find((ab: any) => ab.is_current)?.branch?.name || cadet.assigned_branchs?.[0]?.branch?.name || "N/A",
-              cadet_gender: normalizeGender(cadet.gender || ""),
-              detail_entries: { ...initialDetailEntries },
-              total_mark: 0,
-              is_active: true,
-            };
-          });
 
         setCadetRows(rows);
       } catch (err) {
@@ -238,13 +287,10 @@ export default function PtExamResultForm({ initialData, onSubmit, onCancel, load
     if (!initialData) {
       loadCadets();
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id, ptExamModuleId, formData.course_id, formData.semester_id, formData.program_id, formData.branch_id, formData.group_id, formData.exam_type_id, initialData]);
+  }, [user?.id, moduleId, formData.course_id, formData.semester_id, formData.program_id, formData.branch_id, formData.group_id, formData.exam_type_id, initialData]);
 
-  // Populate form with initial data (edit mode)
   useEffect(() => {
     if (!initialData) return;
-
     setFormData({
       course_id: initialData.course_id,
       semester_id: initialData.semester_id,
@@ -255,67 +301,107 @@ export default function PtExamResultForm({ initialData, onSubmit, onCancel, load
       remarks: initialData.remarks || "",
       is_active: initialData.is_active,
     });
+  }, [initialData]);
+
+  useEffect(() => {
+    if (!initialData || stationDetails.length === 0) return;
 
     if (initialData.achieved_marks && initialData.achieved_marks.length > 0) {
-      const uniqueCadetIds = Array.from(new Set(initialData.achieved_marks.map((m: any) => m.cadet_id)));
-      const rows: CadetRow[] = uniqueCadetIds.map(cadetId => {
-        const mark = initialData.achieved_marks?.find((m: any) => m.cadet_id === cadetId) as any;
+      setModuleAssigned(true);
+      const uniqueCadets = Array.from(new Set(initialData.achieved_marks.map(m => m.cadet_id)));
+      const rows: CadetRow[] = uniqueCadets.map(cadetId => {
+        const mark = initialData.achieved_marks?.find(m => m.cadet_id === cadetId);
         const currentRank = mark?.cadet?.assigned_ranks?.find((ar: any) => ar.rank)?.rank;
 
-        const detail_entries: { [detail_id: number]: DetailEntry } = {};
-        if (mark?.details && Array.isArray(mark.details)) {
-          mark.details.forEach((det: any) => {
-            const did = det.ctw_results_module_estimated_marks_details_id;
-            detail_entries[did] = {
-              detail_id: did,
-              quantity: parseFloat(det.qty || 0),
-              mark: parseFloat(det.marks || 0),
-            };
-          });
-        }
+        const detailMarks: { [key: number]: number } = {};
+        const detailInputs: { [key: number]: string } = {};
 
-        const total_mark = Object.values(detail_entries).reduce((sum, e) => sum + e.mark, 0);
+        mark?.details?.forEach((d: any) => {
+          const detailId = d.ctw_results_module_estimated_marks_details_id;
+          if (detailId) {
+            detailMarks[detailId] = parseFloat(d.marks) || 0;
+
+            const stationDetail = stationDetails.find((sd: any) => sd.id === detailId);
+            const isFemale = mark?.cadet?.gender?.toLowerCase() === 'female';
+            const firstScore = stationDetail?.scores?.[0];
+            const isTimeBased = isFemale ? !!firstScore?.female_time : !!firstScore?.male_time;
+
+            if (isTimeBased && d.qty) {
+              detailInputs[detailId] = secondsToTime(parseFloat(d.qty));
+            } else {
+              detailInputs[detailId] = d.achieved_time || d.qty?.toString() || d.marks?.toString() || "0";
+            }
+          }
+        });
+
+        const rawSum = Object.values(detailMarks).reduce((sum, m) => sum + m, 0);
 
         return {
-          cadet_id: cadetId as number,
+          cadet_id: cadetId,
           cadet_number: mark?.cadet?.cadet_number || "",
           cadet_name: mark?.cadet?.name || "Unknown",
           cadet_rank: currentRank?.short_name || currentRank?.name || "Officer Cadet",
-          branch: initialData.branch?.name || "N/A",
-          cadet_gender: normalizeGender(mark?.cadet?.gender || ""),
-          detail_entries,
-          total_mark,
-          is_active: mark?.is_active ?? true,
+          cadet_gender: mark?.cadet?.gender || "Male",
+          branch: mark?.cadet?.assigned_branchs?.find((ab: any) => ab.is_current)?.branch?.name || mark?.cadet?.assigned_branchs?.[0]?.branch?.name || "N/A",
+          mark: rawSum,
+          conversation_mark: mark?.achieved_mark || 0,
+          detail_marks: detailMarks,
+          detail_inputs: detailInputs,
+          is_active: mark?.is_active || true,
         };
       });
       setCadetRows(rows);
     }
-  }, [initialData]);
+  }, [initialData, stationDetails.length]);
 
   const handleChange = (field: string, value: any) => {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
-  const handleDetailChange = (cadetIndex: number, detailId: number, field: "quantity" | "mark", value: number) => {
+  const handleCadetInputChange = (cadetIndex: number, detailId: number, value: string, gender: string) => {
+    const detail = stationDetails.find((d: any) => d.id === detailId);
+    if (!detail) return;
+
+    const mark = calculateMark(detail, value, gender);
+
     setCadetRows(prev => {
       const updated = [...prev];
-      const cadet = { ...updated[cadetIndex] };
-      const detail = details.find((d: any) => d.id === detailId);
-      const entries = { ...cadet.detail_entries };
-      const entry = entries[detailId] || { detail_id: detailId, quantity: 0, mark: 0 };
+      const cadet = updated[cadetIndex];
+      const updatedDetailInputs = { ...cadet.detail_inputs, [detailId]: value };
+      const updatedDetailMarks = { ...cadet.detail_marks, [detailId]: mark };
 
-      if (field === "quantity" && detail?.scores?.length > 0) {
-        const newMark = lookupMark(detail, value, cadet.cadet_gender);
-        entries[detailId] = { ...entry, quantity: value, mark: newMark };
-      } else if (field === "mark") {
-        const maxMark = getDetailMaxMark(detail, cadet.cadet_gender);
-        const clampedMark = maxMark > 0 ? Math.min(value, maxMark) : value;
-        entries[detailId] = { ...entry, mark: clampedMark };
+      const totalRawMark = Object.values(updatedDetailMarks).reduce((sum: number, m: any) => sum + m, 0);
+      const isFemale = gender.toLowerCase() === 'female';
+      const cadetTotalMaxRaw = stationDetails.reduce((sum: number, d: any) => {
+        return sum + parseFloat(isFemale ? d.female_marks : d.male_marks);
+      }, 0);
+
+      const convMax = getMaxConvMark();
+      let calculatedConvMark = 0;
+      if (cadetTotalMaxRaw > 0 && convMax > 0) {
+        calculatedConvMark = (totalRawMark / cadetTotalMaxRaw) * convMax;
+      } else {
+        calculatedConvMark = totalRawMark;
       }
 
-      cadet.detail_entries = entries;
-      cadet.total_mark = Object.values(entries).reduce((sum, e) => sum + e.mark, 0);
-      updated[cadetIndex] = cadet;
+      updated[cadetIndex] = {
+        ...cadet,
+        detail_inputs: updatedDetailInputs,
+        detail_marks: updatedDetailMarks,
+        mark: totalRawMark,
+        conversation_mark: parseFloat(calculatedConvMark.toFixed(2))
+      };
+      return updated;
+    });
+  };
+
+  const handleCadetChange = (cadetIndex: number, field: keyof CadetRow, value: any) => {
+    setCadetRows(prev => {
+      const updated = [...prev];
+      updated[cadetIndex] = {
+        ...updated[cadetIndex],
+        [field]: value
+      };
       return updated;
     });
   };
@@ -330,15 +416,31 @@ export default function PtExamResultForm({ initialData, onSubmit, onCancel, load
     if (!user?.id) { setError("User session error: Instructor ID not found. Please re-login."); return; }
 
     try {
-      const marks: any[] = cadetRows.filter(c => c.cadet_id > 0).map(c => ({
-        cadet_id: c.cadet_id,
-        achieved_mark: c.total_mark || 0,
-        details: Object.values(c.detail_entries).map(e => ({
-          ctw_results_module_estimated_marks_details_id: e.detail_id,
-          qty: e.quantity || 0,
-          marks: e.mark || 0,
-        })),
-      }));
+      const marks: any[] = [];
+      cadetRows.filter(c => c.cadet_id > 0).forEach(c => {
+        const details: any[] = [];
+
+        Object.entries(c.detail_marks).forEach(([detailId, val]) => {
+          const detailInput = c.detail_inputs[parseInt(detailId)] || "0";
+          const detail = stationDetails.find((d: any) => d.id === parseInt(detailId));
+          const isFemale = c.cadet_gender.toLowerCase() === 'female';
+          const firstScore = detail?.scores?.[0];
+          const isTimeBased = isFemale ? !!firstScore?.female_time : !!firstScore?.male_time;
+
+          details.push({
+            ctw_results_module_estimated_marks_details_id: parseInt(detailId),
+            marks: val,
+            qty: isTimeBased ? timeToSeconds(detailInput) : parseFloat(detailInput) || 0,
+            achieved_time: isTimeBased ? detailInput : null
+          });
+        });
+
+        marks.push({
+          cadet_id: c.cadet_id,
+          achieved_mark: c.conversation_mark || 0,
+          details: details
+        });
+      });
 
       const submitData = {
         course_id: formData.course_id,
@@ -348,14 +450,14 @@ export default function PtExamResultForm({ initialData, onSubmit, onCancel, load
         group_id: formData.group_id || undefined,
         exam_type_id: formData.exam_type_id,
         instructor_id: user.id,
-        ctw_results_module_id: ptExamModuleId,
+        ctw_results_module_id: moduleId,
         remarks: formData.remarks || undefined,
         is_active: formData.is_active,
-        marks,
+        marks: marks,
       };
       await onSubmit(submitData);
     } catch (err: any) {
-      setError(err.message || `Failed to ${isEdit ? "update" : "create"} result`);
+      setError(err.message || `Failed to ${isEdit ? 'update' : 'create'} result`);
     }
   };
 
@@ -364,7 +466,7 @@ export default function PtExamResultForm({ initialData, onSubmit, onCancel, load
   if (loadingDropdowns) {
     return (
       <div className="w-full min-h-[20vh] flex items-center justify-center">
-        <Icon icon="hugeicons:fan-01" className="w-10 h-10 animate-spin mx-auto my-10 text-blue-500" />
+        <div><Icon icon="hugeicons:fan-01" className="w-10 h-10 animate-spin mx-auto my-10 text-blue-500" /></div>
       </div>
     );
   }
@@ -379,7 +481,6 @@ export default function PtExamResultForm({ initialData, onSubmit, onCancel, load
       )}
 
       <div className="space-y-6">
-        {/* Basic Information */}
         <div className="border border-gray-200 rounded-lg p-6">
           <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
             <Icon icon="hugeicons:file-01" className="w-5 h-5 text-blue-500" />
@@ -391,15 +492,23 @@ export default function PtExamResultForm({ initialData, onSubmit, onCancel, load
               <Label>Course <span className="text-red-500">*</span></Label>
               <select value={formData.course_id} onChange={(e) => handleChange("course_id", parseInt(e.target.value))} className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500" required>
                 <option value={0}>Select Course</option>
-                {courses.map(c => <option key={c.id} value={c.id}>{c.name} ({c.code})</option>)}
+                {courses.map(course => (<option key={course.id} value={course.id}>{course.name} ({course.code})</option>))}
               </select>
             </div>
 
             <div>
               <Label>Semester <span className="text-red-500">*</span></Label>
-              <select value={formData.semester_id} onChange={(e) => handleChange("semester_id", parseInt(e.target.value))} className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500" required>
-                <option value={0}>Select Semester</option>
-                {semesters.map(s => <option key={s.id} value={s.id}>{s.name} ({s.code})</option>)}
+              <select
+                value={formData.semester_id}
+                onChange={(e) => handleChange("semester_id", parseInt(e.target.value))}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500"
+                required
+                disabled={!formData.course_id || loadingSemesters}
+              >
+                <option value={0}>
+                  {loadingSemesters ? "Loading..." : !formData.course_id ? "Select course first" : "Select Semester"}
+                </option>
+                {semesters.map(semester => (<option key={semester.id} value={semester.id}>{semester.name} ({semester.code})</option>))}
               </select>
             </div>
 
@@ -407,7 +516,7 @@ export default function PtExamResultForm({ initialData, onSubmit, onCancel, load
               <Label>Program</Label>
               <select value={formData.program_id} onChange={(e) => handleChange("program_id", parseInt(e.target.value))} className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500">
                 <option value={0}>Select Program (Optional)</option>
-                {programs.map(p => <option key={p.id} value={p.id}>{p.name} ({p.code})</option>)}
+                {programs.map(program => (<option key={program.id} value={program.id}>{program.name} ({program.code})</option>))}
               </select>
             </div>
 
@@ -415,7 +524,7 @@ export default function PtExamResultForm({ initialData, onSubmit, onCancel, load
               <Label>Branch</Label>
               <select value={formData.branch_id} onChange={(e) => handleChange("branch_id", parseInt(e.target.value))} className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500">
                 <option value={0}>Select Branch (Optional)</option>
-                {branches.map(b => <option key={b.id} value={b.id}>{b.name} ({b.code})</option>)}
+                {branches.map(branch => (<option key={branch.id} value={branch.id}>{branch.name} ({branch.code})</option>))}
               </select>
             </div>
 
@@ -423,7 +532,7 @@ export default function PtExamResultForm({ initialData, onSubmit, onCancel, load
               <Label>Group</Label>
               <select value={formData.group_id} onChange={(e) => handleChange("group_id", parseInt(e.target.value))} className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500">
                 <option value={0}>Select Group (Optional)</option>
-                {groups.map(g => <option key={g.id} value={g.id}>{g.name} ({g.code})</option>)}
+                {groups.map(group => (<option key={group.id} value={group.id}>{group.name} ({group.code})</option>))}
               </select>
             </div>
 
@@ -442,8 +551,12 @@ export default function PtExamResultForm({ initialData, onSubmit, onCancel, load
                 {exams.map(exam => {
                   const hasEM = hasEstimatedMark(exam.id);
                   return (
-                    <option key={exam.id} value={exam.id} disabled={!hasEM}>
-                      {exam.name} ({exam.code}){!hasEM ? " - No Estimated Mark" : ""}
+                    <option
+                      key={exam.id}
+                      value={exam.id}
+                      disabled={!hasEM}
+                    >
+                      {exam.name} ({exam.code}) {!hasEM ? "- No Estimated Mark" : ""}
                     </option>
                   );
                 })}
@@ -452,17 +565,18 @@ export default function PtExamResultForm({ initialData, onSubmit, onCancel, load
 
             <div className="md:col-span-2">
               <Label>Remarks</Label>
-              <textarea value={formData.remarks} onChange={(e) => handleChange("remarks", e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500" rows={3} placeholder="Enter any remarks (optional)" />
+              <textarea value={formData.remarks} onChange={(e) => handleChange("remarks", e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500" rows={3} placeholder="Enter any remarks (optional)"></textarea>
             </div>
           </div>
         </div>
 
-        {/* Cadets Marks Entry */}
         <div className="border border-gray-200 rounded-lg p-6">
           <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
             <Icon icon="hugeicons:note-edit" className="w-5 h-5 text-blue-500" />
             Cadets Marks Entry
-            {loadingCadets && <Icon icon="hugeicons:fan-01" className="w-5 h-5 animate-spin text-blue-500" />}
+            {loadingCadets && (
+              <Icon icon="hugeicons:fan-01" className="w-10 h-10 animate-spin mx-auto my-10 text-blue-500" />
+            )}
           </h3>
 
           {!filtersSelected ? (
@@ -472,124 +586,100 @@ export default function PtExamResultForm({ initialData, onSubmit, onCancel, load
             </div>
           ) : loadingCadets ? (
             <div className="w-full min-h-[20vh] flex items-center justify-center">
-              <Icon icon="hugeicons:fan-01" className="w-10 h-10 animate-spin mx-auto my-10 text-blue-500" />
+              <div><Icon icon="hugeicons:fan-01" className="w-10 h-10 animate-spin mx-auto my-10 text-blue-500" /></div>
             </div>
-          ) : !moduleAssigned && !isEdit ? (
+          ) : !moduleAssigned ? (
             <div className="text-center py-12 text-red-500">
               <Icon icon="hugeicons:alert-circle" className="w-10 h-10 mx-auto mb-2" />
               <p className="font-medium">You are not assigned to the PT Exam module for the selected course & semester.</p>
-              <p className="text-sm text-gray-500 mt-1">Please contact admin to assign you to this module.</p>
             </div>
           ) : cadetRows.length === 0 ? (
             <div className="text-center py-12 text-gray-500">
               <Icon icon="hugeicons:user-group" className="w-10 h-10 mx-auto mb-2" />
               <p>No cadets assigned to you for the selected filters</p>
             </div>
-          ) : details.length === 0 ? (
-            <div className="text-center py-12 text-yellow-600">
-              <Icon icon="hugeicons:alert-circle" className="w-10 h-10 mx-auto mb-2" />
-              <p>No PT Exam details configured for this exam type. Please set up estimated mark details first.</p>
-            </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full border-collapse border border-black text-sm">
+              <table className="w-full border-collapse border border-black text-xs">
                 <thead>
-                  {/* Row 1: fixed columns + detail names + total */}
                   <tr>
-                    <th rowSpan={hasScoresRow ? 2 : 1} className="border border-black px-2 py-2 text-center whitespace-nowrap">SL</th>
-                    <th rowSpan={hasScoresRow ? 2 : 1} className="border border-black px-2 py-2 text-center whitespace-nowrap">BD No.</th>
-                    <th rowSpan={hasScoresRow ? 2 : 1} className="border border-black px-2 py-2 text-center whitespace-nowrap">Rank</th>
-                    <th rowSpan={hasScoresRow ? 2 : 1} className="border border-black px-2 py-2 text-left">Name</th>
-                    <th rowSpan={hasScoresRow ? 2 : 1} className="border border-black px-2 py-2 text-left">Branch</th>
-                    {details.map((detail: any) => {
-                      const hasScores = detail.scores && detail.scores.length > 0;
-                      return hasScores ? (
-                        <th key={detail.id} colSpan={2} className="border border-black px-2 py-2 text-center">
-                          {detail.name}
-                          <div className="text-xs font-normal text-gray-500 normal-case">
-                            {parseFloat(detail.male_marks || 0)} / {parseFloat(detail.female_marks || 0)}
-                          </div>
-                        </th>
-                      ) : (
-                        <th key={detail.id} rowSpan={hasScoresRow ? 2 : 1} className="border border-black px-2 py-2 text-center">
-                          {detail.name}
-                          <div className="text-xs font-normal text-gray-500 normal-case">
-                            {parseFloat(detail.male_marks || 0)} / {parseFloat(detail.female_marks || 0)}
-                          </div>
-                        </th>
+                    <th className="border border-black px-2 py-2 text-center uppercase whitespace-nowrap" rowSpan={2}>SL</th>
+                    <th className="border border-black px-2 py-2 text-center uppercase whitespace-nowrap" rowSpan={2}>BD</th>
+                    <th className="border border-black px-2 py-2 text-center uppercase whitespace-nowrap" rowSpan={2}>Rk</th>
+                    <th className="border border-black px-2 py-2 text-left uppercase whitespace-nowrap" rowSpan={2}>Name</th>
+                    <th className="border border-black px-2 py-2 text-left uppercase whitespace-nowrap" rowSpan={2}>Br</th>
+                    {stationDetails.map((detail: any) => (
+                      <th key={detail.id} className="border border-black px-1 py-2 text-center uppercase" colSpan={2}>
+                        {detail.name}
+                      </th>
+                    ))}
+                    <th className="border border-black px-2 py-2 text-center uppercase whitespace-nowrap" rowSpan={2}>
+                      Total {getTotalRawMax(cadetRows[0]?.cadet_gender || 'male')}
+                    </th>
+                    <th className="border border-black px-2 py-2 text-center uppercase whitespace-nowrap" rowSpan={2}>
+                      Out of {getMaxConvMark()}
+                    </th>
+                  </tr>
+                  <tr>
+                    {stationDetails.map((detail: any) => {
+                      const isFemale = (cadetRows[0]?.cadet_gender || 'male').toLowerCase() === 'female';
+                      const firstScore = detail.scores?.[0];
+                      const isTimeBased = isFemale ? !!firstScore?.female_time : !!firstScore?.male_time;
+                      return (
+                        <React.Fragment key={detail.id}>
+                          <th className="border border-black px-1 py-1 text-center uppercase font-normal">
+                            {isTimeBased ? "Time" : "Qty"}
+                          </th>
+                          <th className="border border-black px-1 py-1 text-center uppercase font-normal bg-gray-50">
+                            Mks
+                          </th>
+                        </React.Fragment>
                       );
                     })}
-                    <th rowSpan={hasScoresRow ? 2 : 1} className="border border-black px-2 py-2 text-center whitespace-nowrap">Total</th>
                   </tr>
-                  {/* Row 2: Qty | Mark sub-headers for score-based details */}
-                  {hasScoresRow && (
-                    <tr>
-                      {details.map((detail: any) => {
-                        const hasScores = detail.scores && detail.scores.length > 0;
-                        return hasScores ? (
-                          <React.Fragment key={detail.id}>
-                            <th className="border border-black px-2 py-1 text-center text-xs">Qty</th>
-                            <th className="border border-black px-2 py-1 text-center text-xs">Mark</th>
-                          </React.Fragment>
-                        ) : null;
-                      })}
-                    </tr>
-                  )}
                 </thead>
                 <tbody>
                   {cadetRows.map((cadet, index) => (
-                    <tr key={cadet.cadet_id} className={index % 2 === 0 ? "bg-white" : "bg-gray-50"}>
-                      <td className="border border-black px-2 py-2 text-center font-medium">{index + 1}</td>
-                      <td className="border border-black px-2 py-2 text-center">{cadet.cadet_number}</td>
-                      <td className="border border-black px-2 py-2 text-center">{cadet.cadet_rank}</td>
-                      <td className="border border-black px-2 py-2 font-medium">
+                    <tr key={cadet.cadet_id}>
+                      <td className="border border-black px-2 py-1 text-center">{index + 1}</td>
+                      <td className="border border-black px-2 py-1 text-center">{cadet.cadet_number}</td>
+                      <td className="border border-black px-2 py-1 text-center">{cadet.cadet_rank}</td>
+                      <td className="border border-black px-2 py-1 font-medium">
                         {cadet.cadet_name}
-                        {cadet.cadet_gender === "female" && <span className="ml-1 text-pink-600 text-xs font-semibold">(F)</span>}
+                        {cadet.cadet_gender?.toLowerCase() === "female" && (
+                          <span className="ml-1 text-pink-600 font-semibold text-xs">(F)</span>
+                        )}
                       </td>
-                      <td className="border border-black px-2 py-2">{cadet.branch}</td>
-                      {details.map((detail: any) => {
-                        const hasScores = detail.scores && detail.scores.length > 0;
-                        const entry = cadet.detail_entries[detail.id] || { detail_id: detail.id, quantity: 0, mark: 0 };
-                        const maxMark = getDetailMaxMark(detail, cadet.cadet_gender);
+                      <td className="border border-black px-2 py-1">{cadet.branch}</td>
 
-                        if (hasScores) {
-                          return (
-                            <React.Fragment key={detail.id}>
-                              <td className="border border-black px-1 py-1 text-center">
-                                <input
-                                  type="number"
-                                  min={0}
-                                  step={1}
-                                  value={entry.quantity === 0 ? "" : entry.quantity}
-                                  onChange={(e) => handleDetailChange(index, detail.id, "quantity", parseFloat(e.target.value) || 0)}
-                                  className="w-16 px-1 py-1 border border-gray-300 rounded text-center text-sm focus:ring-1 focus:ring-blue-500 bg-white [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                                  placeholder="0"
-                                />
-                              </td>
-                              <td className="border border-black px-2 py-2 text-center">
-                                {entry.mark.toFixed(2)}
-                              </td>
-                            </React.Fragment>
-                          );
-                        } else {
-                          return (
-                            <td key={detail.id} className="border border-black px-1 py-1 text-center">
+                      {stationDetails.map((detail: any) => {
+                        const isFemale = cadet.cadet_gender.toLowerCase() === 'female';
+                        const firstScore = detail.scores?.[0];
+                        const isTimeBased = isFemale ? !!firstScore?.female_time : !!firstScore?.male_time;
+                        
+                        return (
+                          <React.Fragment key={detail.id}>
+                            <td className="border border-black px-1 py-1 text-center">
                               <input
-                                type="number"
-                                min={0}
-                                max={maxMark > 0 ? maxMark : undefined}
-                                step={0.01}
-                                value={entry.mark === 0 ? "" : entry.mark}
-                                onChange={(e) => handleDetailChange(index, detail.id, "mark", parseFloat(e.target.value) || 0)}
-                                className="w-16 px-1 py-1 border border-gray-300 rounded text-center text-sm focus:ring-1 focus:ring-blue-500 bg-white [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                                placeholder="0"
+                                type="text"
+                                value={cadet.detail_inputs[detail.id] || ""}
+                                onChange={(e) => handleCadetInputChange(index, detail.id, e.target.value, cadet.cadet_gender)}
+                                className="w-12 px-1 py-1 border border-gray-300 rounded text-center text-xs focus:ring-2 focus:ring-blue-500 bg-white"
+                                placeholder={isTimeBased ? "0:00" : "0"}
                               />
                             </td>
-                          );
-                        }
+                            <td className="border border-black px-1 py-1 text-center bg-gray-50">
+                              {cadet.detail_marks[detail.id] || 0}
+                            </td>
+                          </React.Fragment>
+                        );
                       })}
-                      <td className="border border-black px-2 py-2 text-center font-bold">
-                        {cadet.total_mark.toFixed(2)}
+
+                      <td className="border border-black px-1 py-1 text-center bg-blue-50 font-bold">
+                        {cadet.mark || 0}
+                      </td>
+                      <td className="border border-black px-1 py-1 text-center bg-green-50 font-bold">
+                        {cadet.conversation_mark || 0}
                       </td>
                     </tr>
                   ))}

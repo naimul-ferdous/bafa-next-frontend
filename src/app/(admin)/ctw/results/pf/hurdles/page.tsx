@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { CtwHurdlesResult } from "@/libs/types/ctwHurdles";
 import { Icon } from "@iconify/react";
 import { ctwHurdlesResultService } from "@/libs/services/ctwHurdlesResultService";
-import { ctwResultsModuleService } from "@/libs/services/ctwResultsModuleService";
+import { ctwCommonService } from "@/libs/services/ctwCommonService";
 import { useAuth } from "@/libs/hooks/useAuth";
 import FullLogo from "@/components/ui/fulllogo";
 import DataTable, { Column } from "@/components/ui/DataTable";
@@ -44,27 +44,29 @@ export default function CtwHurdlesResultsPage() {
   const [moduleLoading, setModuleLoading] = useState(true);
 
   useEffect(() => {
+    if (!user?.id) return;
     const fetchModuleId = async () => {
       try {
         setModuleLoading(true);
-        const modulesRes = await ctwResultsModuleService.getAllModules({ per_page: 100 });
-        const hurdlesModule = modulesRes.data.find((m: any) => m.code === HURDLES_MODULE_CODE);
-        if (hurdlesModule) {
-          setHurdlesModuleId(hurdlesModule.id);
+        const options = await ctwCommonService.getHurdlesFormOptions(user?.id || 0);
+        if (options?.module) {
+          setHurdlesModuleId(options.module.id);
         } else {
-          console.error(`Module with code ${HURDLES_MODULE_CODE} not found.`);
+          setHurdlesModuleId(null);
+          setLoading(false);
         }
       } catch (err) {
-        console.error("Failed to fetch module ID:", err);
+        setHurdlesModuleId(null);
+        setLoading(false);
       } finally {
         setModuleLoading(false);
       }
     };
     fetchModuleId();
-  }, []);
+  }, [user?.id]);
 
   const loadResults = useCallback(async () => {
-    if (hurdlesModuleId === null || !user?.id) return;
+    if (hurdlesModuleId === null || !user?.id) { setLoading(false); return; }
 
     try {
       setLoading(true);
@@ -338,7 +340,7 @@ export default function CtwHurdlesResultsPage() {
       </div>
 
       {isInstructor ? (
-        (loading || moduleLoading) ? <TableLoading /> : (
+        (loading) ? <TableLoading /> : (
           <>
             <DataTable columns={columns} data={results} keyExtractor={(result) => result.id.toString()} emptyMessage="No results found" />
 

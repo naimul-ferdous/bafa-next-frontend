@@ -3,12 +3,11 @@
 import React, { useEffect, useState, use } from "react";
 import { useRouter } from "next/navigation";
 import { ftw11sqnCadetWarningService } from "@/libs/services/ftw11sqnCadetWarningService";
-import FullLogo from "@/components/ui/fulllogo";
-import Ftw11sqnCadetWarningForm from "@/components/ftw-11sqn-assessment-warnings/Ftw11sqnCadetWarningForm";
+import Ftw11SqnCadetWarningForm from "@/components/ftw-11sqn-warnings/Ftw11SqnCadetWarningForm";
 import { CadetWarning } from "@/libs/types/system";
 import { Icon } from "@iconify/react";
 
-export default function EditFtw11sqnCadetWarningPage({ params }: { params: Promise<{ id: string }> }) {
+export default function EditFtw11SqnCadetWarningPage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter();
   const resolvedParams = use(params);
   const id = parseInt(resolvedParams.id);
@@ -43,7 +42,7 @@ export default function EditFtw11sqnCadetWarningPage({ params }: { params: Promi
     setLoading(true);
     try {
       await ftw11sqnCadetWarningService.update(id, data);
-      router.push("/ftw/11sqn/assessments/warnings");
+      router.push("/ftw11sqn/assessments/warnings/view");
     } catch (err: any) {
       throw err;
     } finally {
@@ -52,7 +51,7 @@ export default function EditFtw11sqnCadetWarningPage({ params }: { params: Promi
   };
 
   const handleCancel = () => {
-    router.push("/ftw/11sqn/assessments/warnings");
+    router.push("/ftw11sqn/assessments/warnings/view");
   };
 
   if (loadingWarning) {
@@ -73,7 +72,7 @@ export default function EditFtw11sqnCadetWarningPage({ params }: { params: Promi
           <Icon icon="hugeicons:alert-circle" className="w-16 h-16 mx-auto mb-4" />
           <h2 className="text-xl font-bold">{error || "Warning not found"}</h2>
           <button 
-            onClick={() => router.push("/ftw/11sqn/assessments/warnings")} 
+            onClick={() => router.push("/ftw11sqn/assessments/warnings")} 
             className="mt-4 px-6 py-2 bg-blue-500 text-white rounded-xl hover:bg-blue-600 transition-all font-bold"
           >
             Back to Warnings
@@ -85,13 +84,7 @@ export default function EditFtw11sqnCadetWarningPage({ params }: { params: Promi
 
   return (
     <div className="bg-white p-6 rounded-lg border border-gray-200">
-      <div className="text-center mb-8">
-        <div className="flex justify-center mb-4"><FullLogo /></div>
-        <h1 className="text-xl font-bold text-gray-900 uppercase tracking-tight">Bangladesh Air Force Academy</h1>
-        <h2 className="text-md font-semibold text-gray-700 mt-2 uppercase tracking-widest underline decoration-2 underline-offset-4">Edit Cadet Warning (11SQN)</h2>
-      </div>
-
-      <Ftw11sqnCadetWarningForm 
+      <Ftw11SqnCadetWarningForm 
         initialData={warning} 
         onSubmit={handleSubmit}
         onCancel={handleCancel}

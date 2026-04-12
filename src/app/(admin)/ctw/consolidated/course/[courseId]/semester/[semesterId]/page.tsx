@@ -51,12 +51,36 @@ export default function CtwCourseSemesterConsolidatedPage() {
     if (courseId && semesterId) fetchData();
   }, [fetchData, courseId, semesterId]);
 
+  // All exam types (dynamic - includes MID, END, BMA, etc.)
+  const allExamTypes = useMemo(() => {
+    if (consolidatedData.length === 0) return [];
+    return consolidatedData[0].results.map((r: any) => r.exam_type_details);
+  }, [consolidatedData]);
+
   // END exam types (for CTW breakdown columns)
   const examTypes = useMemo(() => {
     if (consolidatedData.length === 0) return [];
     return consolidatedData[0].results
       .filter((r: any) => r.exam_type_details.code === "END")
       .map((r: any) => r.exam_type_details);
+  }, [consolidatedData]);
+
+  // All modules grouped by exam and assessment (for all exam types)
+  const allModulesByExamAndAssessment = useMemo(() => {
+    const map: Record<number, Record<string, any[]>> = {};
+    if (consolidatedData.length > 0) {
+      consolidatedData[0].results.forEach((examResult: any) => {
+        const et = examResult.exam_type_details;
+        const examId = et.id;
+        const grouped = examResult.modules || {};
+        if (Array.isArray(grouped)) {
+          map[examId] = {};
+          return;
+        }
+        map[examId] = { ...grouped };
+      });
+    }
+    return map;
   }, [consolidatedData]);
 
   // All assessment groups — within 'ao' only keep gsto_assessment (END exam)
@@ -97,28 +121,6 @@ export default function CtwCourseSemesterConsolidatedPage() {
     return grouped as Record<string, any[]>;
   }, [consolidatedData]);
 
-  // Total possible mark for END (ESE)
-  const totalPossibleMarkESE = useMemo(() => {
-    let total = 0;
-    Object.values(modulesByExamAndAssessment).forEach(examModules => {
-      Object.values(examModules).flat().forEach((mod: any) => {
-        total += (parseFloat(mod.conversation_mark) || 0);
-      });
-    });
-    return total;
-  }, [modulesByExamAndAssessment]);
-
-  // Total possible mark for MID (MSE)
-  const totalPossibleMarkMSE = useMemo(() => {
-    let total = 0;
-    Object.values(midModulesByAssessment).flat().forEach((mod: any) => {
-      total += (parseFloat(mod.conversation_mark) || 0);
-    });
-    return total;
-  }, [midModulesByAssessment]);
-
-  const totalPossibleMark = totalPossibleMarkMSE + totalPossibleMarkESE;
-
   const isPercentageBased = (mod: any): boolean => {
     return (parseFloat(mod.convert_of_practice) || 0) + (parseFloat(mod.convert_of_exam) || 0) > 0;
   };
@@ -127,8 +129,86 @@ export default function CtwCourseSemesterConsolidatedPage() {
     return !isPercentageBased(mod) && (mod.estimated_mark_config?.details?.length > 0);
   };
 
+  // When conversation_mark = 0 and module is detail-based, fall back to sum of detail marks
+  const getEffectiveConvMark = (mod: any): number => {
+    const convMark = parseFloat(mod.conversation_mark) || 0;
+    if (convMark > 0) return convMark;
+    if (isDetailBased(mod)) {
+      return (mod.estimated_mark_config?.details || []).reduce(
+        (sum: number, d: any) => sum + (parseFloat(d.male_marks) || 0), 0
+      );
+    }
+    if (isPercentageBased(mod)) {
+      const moduleTotal = parseFloat(mod.module_total_mark) || 0;
+      const convertExam = parseFloat(mod.convert_of_exam) || 0;
+      return moduleTotal * convertExam / 100;
+    }
+    return parseFloat(mod.estimated_mark) || 0;
+  };
+
+  // Breakdown tab: hide dt/pf columns when gsto is in the same group (merged into GSTO column)
+  const getBreakdownDisplayMods = (mods: any[]): any[] => {
+    const hasGsto = mods.some((m: any) => m.code === 'gsto_assessment');
+    if (!hasGsto) return mods;
+    return mods.filter((m: any) => !['dt_assessment', 'pf_assessment'].includes(m.code));
+  };
+
+  // For GSTO column header: conv mark = sum of ALL mods in the group (DT + PF + GSTO criteria)
+  const getBreakdownModConvMark = (mod: any, allMods: any[]): number => {
+    if (mod.code !== 'gsto_assessment') return getEffectiveConvMark(mod);
+    return allMods.reduce((sum: number, m: any) => sum + getEffectiveConvMark(m), 0);
+  };
+
+  // For GSTO cell value: sum all mods in group; for other mods: compute normally
+  const computeBreakdownGroupModMark = (mod: any, allMods: any[], cadetGrouped: any, assessKey: string): number => {
+    const getMark = (m: any) => {
+      const cm = (cadetGrouped[assessKey] || []).find((x: any) => x.id === m.id);
+      const im = cm?.instructor_marks || [];
+      return im.length > 0 ? computeConvertedMark(m, im) : 0;
+    };
+    if (mod.code !== 'gsto_assessment') return getMark(mod);
+    return allMods.reduce((sum: number, m: any) => sum + getMark(m), 0);
+  };
+
+  // Total possible mark for END (ESE)
+  const totalPossibleMarkESE = useMemo(() => {
+    let total = 0;
+    Object.values(modulesByExamAndAssessment).forEach(examModules => {
+      Object.values(examModules).flat().forEach((mod: any) => {
+        total += getEffectiveConvMark(mod);
+      });
+    });
+    return total;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modulesByExamAndAssessment]);
+
+  // Total possible mark for MID (MSE)
+  const totalPossibleMarkMSE = useMemo(() => {
+    let total = 0;
+    Object.values(midModulesByAssessment).flat().forEach((mod: any) => {
+      total += getEffectiveConvMark(mod);
+    });
+    return total;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [midModulesByAssessment]);
+
+  // MSE total from all non-END exam types (includes MID, BMA, etc.)
+  const totalPossibleMarkMSEAll = useMemo(() => {
+    let total = 0;
+    allExamTypes
+      .filter((et: any) => et.code !== "END")
+      .forEach((et: any) => {
+        const examModules = allModulesByExamAndAssessment[et.id] || {};
+        Object.values(examModules).flat().forEach((mod: any) => {
+          total += getEffectiveConvMark(mod);
+        });
+      });
+    return total;
+  }, [allExamTypes, allModulesByExamAndAssessment]);
+
+  const totalPossibleMark = totalPossibleMarkMSEAll + totalPossibleMarkESE;
+
   const computeConvertedMark = (mod: any, instructorMarks: any[]): number => {
-    const instCount = parseInt(mod.instructor_count) || 1;
     const convMarkLimit = parseFloat(mod.conversation_mark) || 0;
 
     if (isPercentageBased(mod)) {
@@ -155,13 +235,18 @@ export default function CtwCourseSemesterConsolidatedPage() {
       const totalAchieved = instructorMarks.reduce(
         (s: number, im: any) => s + (parseFloat(im.achieved_mark) || 0), 0
       );
-      return detailEstTotal > 0 ? (totalAchieved / detailEstTotal) * convMarkLimit : 0;
+      const markCount = instructorMarks.length || 1;
+      const avgAchieved = totalAchieved / markCount;
+      const effectiveConvMark = convMarkLimit > 0 ? convMarkLimit : detailEstTotal;
+      return detailEstTotal > 0 ? (avgAchieved / detailEstTotal) * effectiveConvMark : 0;
     } else {
-      const totalEst = (parseFloat(mod.estimated_mark) || 1) * instCount;
+      const totalEst = parseFloat(mod.estimated_mark) || 1;
       const totalAchieved = instructorMarks.reduce(
         (s: number, im: any) => s + (parseFloat(im.achieved_mark) || 0), 0
       );
-      return totalEst > 0 ? (totalAchieved / totalEst) * convMarkLimit : 0;
+      const markCount = instructorMarks.length || 1;
+      const avgAchieved = totalAchieved / markCount;
+      return totalEst > 0 ? (avgAchieved / totalEst) * convMarkLimit : 0;
     }
   };
 
@@ -180,6 +265,28 @@ export default function CtwCourseSemesterConsolidatedPage() {
         }
       });
     });
+    return mseTotal;
+  };
+
+  // Compute MSE total from all non-END exam types (includes MID, BMA, etc.)
+  const computeCadetMSEAll = (item: any): number => {
+    let mseTotal = 0;
+    allExamTypes
+      .filter((et: any) => et.code !== "END")
+      .forEach((et: any) => {
+        const examModules = allModulesByExamAndAssessment[et.id] || {};
+        const cadetExamResult = item.results.find((r: any) => r.exam_type_details.id === et.id);
+        const cadetGrouped = cadetExamResult?.modules || {};
+        Object.entries(examModules).forEach(([assessKey, mods]) => {
+          (mods as any[]).forEach((mod: any) => {
+            const cadetMod = (cadetGrouped[assessKey] || []).find((m: any) => m.id === mod.id);
+            const instructorMarks = cadetMod?.instructor_marks || [];
+            if (instructorMarks.length > 0) {
+              mseTotal += computeConvertedMark(mod, instructorMarks);
+            }
+          });
+        });
+      });
     return mseTotal;
   };
 
@@ -253,24 +360,12 @@ export default function CtwCourseSemesterConsolidatedPage() {
         <div className="mb-8">
           <div className="flex justify-center mb-4"><FullLogo /></div>
           <h1 className="text-center text-xl font-bold text-gray-900 uppercase tracking-wider">Bangladesh Air Force Academy</h1>
-          <p className="text-center font-medium text-gray-900 uppercase tracking-wider pb-2 inline-block w-full">CTW Consolidated Result Sheet</p>
-        </div>
-
-        {/* Course Info */}
-        <div className="mb-6">
-          <h2 className="text-lg font-bold text-gray-900 mb-4 pb-1 border-b border-dashed border-gray-400 uppercase text-base">Course Information</h2>
-          <div className="grid grid-cols-2 gap-x-12 gap-y-3 text-base">
-            <div className="flex"><span className="w-64 text-gray-900 font-bold uppercase">Course</span><span className="mr-4">:</span><span className="text-gray-900 flex-1">{course?.name || "N/A"} ({course?.code || "N/A"})</span></div>
-            <div className="flex"><span className="w-64 text-gray-900 font-bold uppercase">Semester</span><span className="mr-4">:</span><span className="text-gray-900 flex-1">{semester?.name || "N/A"} ({semester?.code || "N/A"})</span></div>
-            <div className="flex"><span className="w-64 text-gray-900 font-bold uppercase">Total Modules</span><span className="mr-4">:</span><span className="text-gray-900 flex-1">{Object.values(modulesByExamAndAssessment).reduce((sum, exam) => sum + Object.values(exam).flat().length, 0)} Module(s)</span></div>
-            <div className="flex"><span className="w-64 text-gray-900 font-bold uppercase">Max Weightage</span><span className="mr-4">:</span><span className="text-gray-900 flex-1 font-mono font-bold">{totalPossibleMark.toFixed(2)}</span></div>
-          </div>
+          <p className="text-center font-medium text-gray-900 uppercase tracking-wider pb-2 inline-block w-full">GST Consolidated Result</p>
         </div>
 
         {/* Matrix Table */}
         <div className="mb-6">
-          <div className="flex justify-between items-center gap-4 border-b border-dashed border-gray-400 mb-4">
-            <h2 className="text-lg font-bold text-gray-900 pb-1 uppercase text-base">Consolidated Performance Matrix</h2>
+          <div className="flex justify-end items-center gap-4 mb-4">
             <div className="flex items-center gap-1 p-1 rounded-full border border-gray-200 text-xs mb-2">
               <button onClick={() => setConsolidateTab("main")} className="px-3 py-1 rounded-full border border-gray-200 transition-all">
                 Main
@@ -290,26 +385,31 @@ export default function CtwCourseSemesterConsolidatedPage() {
                     <th className="border border-black px-2 py-2 text-center">Rank</th>
                     <th className="border border-black px-3 py-2 text-left min-w-[160px]">Name</th>
 
-                    {/* END exam assessment group columns */}
-                    {examTypes.map((et: any) => {
-                      const examModules = modulesByExamAndAssessment[et.id] || {};
+                    {/* All exam assessment group columns */}
+                    {allExamTypes.map((et: any) => {
+                      const examModules = allModulesByExamAndAssessment[et.id] || {};
                       return Object.entries(examModules).map(([assessKey, mods]) => {
                         const groupTotal = (mods as any[]).reduce(
-                          (sum, mod) => sum + (parseFloat(mod.conversation_mark) || 0), 0
+                          (sum, mod) => sum + getEffectiveConvMark(mod), 0
                         );
                         return (
                           <th
                             key={`assess-${et.id}-${assessKey}`}
                             className="border border-black px-1 py-1 text-center font-bold uppercase"
                           >
-                            {assessKey.toUpperCase() + ` - ${groupTotal.toFixed(0)}`}
+                            <button
+                              onClick={() => router.push(`/ctw/consolidated/course/${courseId}/semester/${semesterId}/${assessKey}`)}
+                              className="text-blue-700 hover:text-blue-900 hover:underline cursor-pointer"
+                            >
+                              {assessKey.toUpperCase() + ` - ${groupTotal.toFixed(0)}`}
+                            </button>
                           </th>
                         );
                       });
                     })}
 
                     <th className="border border-black px-2 py-2 text-center">
-                      MSE - {totalPossibleMarkMSE.toFixed(0)}
+                      MSE - {totalPossibleMarkMSEAll.toFixed(0)}
                     </th>
                     <th className="border border-black px-2 py-2 text-center">
                       ESE - {totalPossibleMarkESE.toFixed(0)}
@@ -325,10 +425,10 @@ export default function CtwCourseSemesterConsolidatedPage() {
 
                 <tbody>
                   {consolidatedData.map((item, index) => {
-                    // Compute ESE group totals for display
-                    const eseGroupTotals: Record<string, { total: number; hasMarks: boolean }> = {};
-                    examTypes.forEach((et: any) => {
-                      const examModules = modulesByExamAndAssessment[et.id] || {};
+                    // Compute all exam group totals for display
+                    const allGroupTotals: Record<string, { total: number; hasMarks: boolean }> = {};
+                    allExamTypes.forEach((et: any) => {
+                      const examModules = allModulesByExamAndAssessment[et.id] || {};
                       const cadetExamResult = item.results.find((r: any) => r.exam_type_details.id === et.id);
                       const cadetGrouped = cadetExamResult?.modules || {};
                       Object.entries(examModules).forEach(([assessKey, mods]) => {
@@ -342,11 +442,11 @@ export default function CtwCourseSemesterConsolidatedPage() {
                             groupHasMarks = true;
                           }
                         });
-                        eseGroupTotals[`${et.id}-${assessKey}`] = { total: groupTotal, hasMarks: groupHasMarks };
+                        allGroupTotals[`${et.id}-${assessKey}`] = { total: groupTotal, hasMarks: groupHasMarks };
                       });
                     });
 
-                    const mseTotal = computeCadetMSE(item);
+                    const mseTotal = computeCadetMSEAll(item);
                     const eseTotal = computeCadetESE(item);
                     const grandTotal = mseTotal + eseTotal;
 
@@ -357,12 +457,12 @@ export default function CtwCourseSemesterConsolidatedPage() {
                         <td className="border border-black px-1 py-1 text-center">{item.cadet_details.rank}</td>
                         <td className="border border-black px-2 py-1 text-left font-medium">{item.cadet_details.name}</td>
 
-                        {/* ESE assessment group cells */}
-                        {examTypes.map((et: any) => {
-                          const examModules = modulesByExamAndAssessment[et.id] || {};
+                        {/* All exam assessment group cells */}
+                        {allExamTypes.map((et: any) => {
+                          const examModules = allModulesByExamAndAssessment[et.id] || {};
                           return Object.entries(examModules).map(([assessKey]) => {
                             const key = `${et.id}-${assessKey}`;
-                            const { total, hasMarks } = eseGroupTotals[key] || { total: 0, hasMarks: false };
+                            const { total, hasMarks } = allGroupTotals[key] || { total: 0, hasMarks: false };
                             return (
                               <td
                                 key={`cell-${item.cadet_details.id}-${key}`}
@@ -417,26 +517,36 @@ export default function CtwCourseSemesterConsolidatedPage() {
                         colSpan={(mods as any[]).length}
                         className="border border-black px-1 py-1 text-center font-bold uppercase"
                       >
-                        MID - {assessKey.toUpperCase()}
+                        <button
+                          onClick={() => router.push(`/ctw/consolidated/course/${courseId}/semester/${semesterId}/${assessKey}`)}
+                          className="text-blue-700 hover:text-blue-900 hover:underline cursor-pointer"
+                        >
+                          MID - {assessKey.toUpperCase()}
+                        </button>
                       </th>
                     ))}
 
-                    {/* ESE group headers */}
-                    {examTypes.map((et: any) => {
-                      const examModules = modulesByExamAndAssessment[et.id] || {};
+                    {/* All exam group headers */}
+                    {allExamTypes.map((et: any) => {
+                      const examModules = allModulesByExamAndAssessment[et.id] || {};
                       return Object.entries(examModules).map(([assessKey, mods]) => (
                         <th
                           key={`assess-${et.id}-${assessKey}`}
                           colSpan={(mods as any[]).length}
                           className="border border-black px-1 py-1 text-center font-bold uppercase"
                         >
-                          END - {assessKey.toUpperCase()}
+                          <button
+                            onClick={() => router.push(`/ctw/consolidated/course/${courseId}/semester/${semesterId}/${assessKey}`)}
+                            className="text-blue-700 hover:text-blue-900 hover:underline cursor-pointer"
+                          >
+                            {et.code} - {assessKey.toUpperCase()}
+                          </button>
                         </th>
                       ));
                     })}
 
                     <th rowSpan={2} className="border border-black px-2 py-2 text-center">
-                      MSE - {totalPossibleMarkMSE.toFixed(0)}
+                      MSE - {totalPossibleMarkMSEAll.toFixed(0)}
                     </th>
                     <th rowSpan={2} className="border border-black px-2 py-2 text-center">
                       ESE - {totalPossibleMarkESE.toFixed(0)}
@@ -450,11 +560,31 @@ export default function CtwCourseSemesterConsolidatedPage() {
                   <tr>
                     {/* MID module sub-headers */}
                     {Object.values(midModulesByAssessment).map((mods) =>
-                      (mods as any[]).map((mod: any) => {
-                        const convMark = parseFloat(mod.conversation_mark) || 0;
-                        return (
+                      (mods as any[]).map((mod: any) => (
+                        <th
+                          key={`mid-mod-${mod.id}`}
+                          className="border border-black px-1 py-1 text-start align-bottom"
+                          style={{ minWidth: '35px', maxWidth: '60px' }}
+                        >
+                          <div className="flex flex-col items-center gap-1">
+                            <span
+                              className="font-semibold"
+                              style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)', textOrientation: 'mixed', height: '150px' }}
+                            >
+                              {mod.name} - {getEffectiveConvMark(mod).toFixed(0)}
+                            </span>
+                          </div>
+                        </th>
+                      ))
+                    )}
+
+                    {/* All exam module sub-headers */}
+                    {allExamTypes.map((et: any) => {
+                      const examModules = allModulesByExamAndAssessment[et.id] || {};
+                      return Object.values(examModules).map((mods) =>
+                        (mods as any[]).map((mod: any) => (
                           <th
-                            key={`mid-mod-${mod.id}`}
+                            key={`mod-${et.id}-${mod.id}`}
                             className="border border-black px-1 py-1 text-start align-bottom"
                             style={{ minWidth: '35px', maxWidth: '60px' }}
                           >
@@ -463,37 +593,11 @@ export default function CtwCourseSemesterConsolidatedPage() {
                                 className="font-semibold"
                                 style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)', textOrientation: 'mixed', height: '150px' }}
                               >
-                                {mod.name} - {convMark.toFixed(0)}
+                                {mod.name} - {getEffectiveConvMark(mod).toFixed(0)}
                               </span>
                             </div>
                           </th>
-                        );
-                      })
-                    )}
-
-                    {/* END module sub-headers */}
-                    {examTypes.map((et: any) => {
-                      const examModules = modulesByExamAndAssessment[et.id] || {};
-                      return Object.values(examModules).map((mods) =>
-                        (mods as any[]).map((mod: any) => {
-                          const convMark = parseFloat(mod.conversation_mark) || 0;
-                          return (
-                            <th
-                              key={`mod-${et.id}-${mod.id}`}
-                              className="border border-black px-1 py-1 text-start align-bottom"
-                              style={{ minWidth: '35px', maxWidth: '60px' }}
-                            >
-                              <div className="flex flex-col items-center gap-1">
-                                <span
-                                  className="font-semibold"
-                                  style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)', textOrientation: 'mixed', height: '150px' }}
-                                >
-                                  {mod.name} - {convMark.toFixed(0)}
-                                </span>
-                              </div>
-                            </th>
-                          );
-                        })
+                        ))
                       );
                     })}
                   </tr>
@@ -531,9 +635,9 @@ export default function CtwCourseSemesterConsolidatedPage() {
                           })
                         )}
 
-                        {/* END module cells */}
-                        {examTypes.map((et: any) => {
-                          const examModules = modulesByExamAndAssessment[et.id] || {};
+                        {/* All exam module cells */}
+                        {allExamTypes.map((et: any) => {
+                          const examModules = allModulesByExamAndAssessment[et.id] || {};
                           const cadetExamResult = item.results.find((r: any) => r.exam_type_details.id === et.id);
                           const cadetGrouped = cadetExamResult?.modules || {};
                           return Object.entries(examModules).map(([assessKey, mods]) =>
@@ -542,7 +646,8 @@ export default function CtwCourseSemesterConsolidatedPage() {
                               const instructorMarks = cadetMod?.instructor_marks || [];
                               const hasMarks = instructorMarks.length > 0;
                               const conv = hasMarks ? computeConvertedMark(mod, instructorMarks) : 0;
-                              eseTotal += conv;
+                              if (et.code === "END") eseTotal += conv;
+                              else mseTotal += conv;
                               return (
                                 <td key={`ese-cell-${item.cadet_details.id}-${et.id}-${mod.id}`} className="border border-black px-1 py-1 text-center">
                                   {hasMarks ? conv.toFixed(2) : "-"}
@@ -573,20 +678,6 @@ export default function CtwCourseSemesterConsolidatedPage() {
                 </tbody>
               </table>
             )}
-          </div>
-        </div>
-
-        {/* System Information */}
-        <div className="mb-6">
-          <h2 className="text-lg font-bold text-gray-900 mb-4 pb-1 border-b border-dashed border-gray-400 uppercase text-base">System Information</h2>
-          <div className="grid grid-cols-2 gap-x-12 gap-y-3 text-base">
-            <div className="flex"><span className="w-64 text-gray-900 font-bold uppercase">Status</span><span className="mr-4">:</span><span className="flex-1 text-green-600 font-bold uppercase">Consolidated & Verified</span></div>
-            <div className="flex">
-              <span className="w-64 text-gray-900 font-bold uppercase">Generated At</span><span className="mr-4">:</span>
-              <span className="text-gray-900 flex-1 font-medium">
-                {new Date().toLocaleString("en-GB", { day: "2-digit", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" })}
-              </span>
-            </div>
           </div>
         </div>
 

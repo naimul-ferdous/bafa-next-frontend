@@ -4,7 +4,8 @@
 import React, { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { ctwSwimmingResultService } from "@/libs/services/ctwSwimmingResultService";
-import { ctwResultsModuleService } from "@/libs/services/ctwResultsModuleService";
+import { ctwCommonService } from "@/libs/services/ctwCommonService";
+import { useAuth } from "@/libs/hooks/useAuth";
 import FullLogo from "@/components/ui/fulllogo";
 import SwimmingResultForm from "@/components/ctw-swimming/SwimmingResultForm";
 import { Icon } from "@iconify/react";
@@ -16,6 +17,7 @@ export default function EditSwimmingResultPage() {
   const router = useRouter();
   const params = useParams();
   const resultId = params?.id as string;
+  const { user } = useAuth();
 
   const [loading, setLoading] = useState(false);
   const [loadingResult, setLoadingResult] = useState(true);
@@ -26,29 +28,32 @@ export default function EditSwimmingResultPage() {
   const [moduleLoading, setModuleLoading] = useState(true);
 
   useEffect(() => {
+    if (!user?.id) return;
     const fetchModuleId = async () => {
       try {
         setModuleLoading(true);
-        const modulesRes = await ctwResultsModuleService.getAllModules({ per_page: 100 });
-        const swimmingModule = modulesRes.data.find((m: any) => m.code === SWIMMING_MODULE_CODE);
-        if (swimmingModule) {
-          setSwimmingModuleId(swimmingModule.id);
+        const options = await ctwCommonService.getSwimmingFormOptions(user?.id || 0);
+        if (options?.module) {
+          setSwimmingModuleId(options.module.id);
         } else {
-          setError(`Module with code ${SWIMMING_MODULE_CODE} not found.`);
+          setSwimmingModuleId(null);
+          setLoading(false);
+          setError("Module not found.");
         }
       } catch (err) {
-        console.error("Failed to fetch module ID:", err);
+        setSwimmingModuleId(null);
+        setLoading(false);
         setError("Failed to fetch module ID.");
       } finally {
         setModuleLoading(false);
       }
     };
     fetchModuleId();
-  }, []);
+  }, [user?.id]);
 
   useEffect(() => {
     const loadResult = async () => {
-      if (swimmingModuleId === null || !resultId) return;
+      if (swimmingModuleId === null || !resultId) { setLoading(false); return; }
 
       try {
         setLoadingResult(true);

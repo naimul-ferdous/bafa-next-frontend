@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
 import React, { useState, useEffect } from "react";
@@ -7,7 +6,7 @@ import { ftw12sqnAssessmentCounselingResultService } from "@/libs/services/ftw12
 import FullLogo from "@/components/ui/fulllogo";
 import ResultForm from "@/components/ftw-12sqn-assessment-counseling-results/ResultForm";
 import { Icon } from "@iconify/react";
-import type { Ftw12sqnAssessmentCounselingResult } from "@/libs/types/system";
+import { Ftw12SqnAssessmentCounselingResult } from "@/libs/types/ftw12sqnAssessmentCounseling";
 
 export default function EditResultPage() {
   const router = useRouter();
@@ -16,7 +15,7 @@ export default function EditResultPage() {
 
   const [loading, setLoading] = useState(false);
   const [loadingResult, setLoadingResult] = useState(true);
-  const [result, setResult] = useState<Ftw12sqnAssessmentCounselingResult | null>(null);
+  const [result, setResult] = useState<Ftw12SqnAssessmentCounselingResult | null>(null);
   const [error, setError] = useState("");
 
   useEffect(() => {

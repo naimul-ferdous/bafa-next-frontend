@@ -8,6 +8,8 @@ import { ctwAssessmentPenpictureResultService } from "@/libs/services/ctwAssessm
 import { ctwAssessmentPenpictureGradeService } from "@/libs/services/ctwAssessmentPenpictureGradeService";
 import FullLogo from "@/components/ui/fulllogo";
 import type { CtwAssessmentPenpictureResult, CtwAssessmentPenpictureGrade } from "@/libs/types/ctw";
+import type { FilePrintType } from "@/libs/types/filePrintType";
+import PrintTypeModal from "@/components/ui/modal/PrintTypeModal";
 
 export default function ResultDetailsPage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter();
@@ -19,19 +21,22 @@ export default function ResultDetailsPage({ params }: { params: Promise<{ id: st
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
+  const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
+  const [selectedPrintType, setSelectedPrintType] = useState<FilePrintType | null>(null);
+
   useEffect(() => {
     const loadData = async () => {
       try {
         setLoading(true);
         const resultData = await ctwAssessmentPenpictureResultService.getResult(resultId);
-        
+
         if (resultData) {
           setResult(resultData);
-          
+
           // Fetch all active grades for this course and semester
           const gradesData = await ctwAssessmentPenpictureGradeService.getActiveGrades({
             course_id: resultData.course_id,
-            semester_id: resultData.semester_id
+            semester_id: resultData.semester_id,
           });
           setGrades(gradesData);
         } else {
@@ -50,7 +55,17 @@ export default function ResultDetailsPage({ params }: { params: Promise<{ id: st
     }
   }, [resultId]);
 
-  const handlePrint = () => window.print();
+  const handlePrintClick = () => {
+    setIsPrintModalOpen(true);
+  };
+
+  const confirmPrint = (type: FilePrintType) => {
+    setSelectedPrintType(type);
+    setIsPrintModalOpen(false);
+    setTimeout(() => {
+      window.print();
+    }, 100);
+  };
 
   if (loading) {
     return (
@@ -79,14 +94,31 @@ export default function ResultDetailsPage({ params }: { params: Promise<{ id: st
     );
   }
 
-  // Helper to check if a grade is the selected one for this result
-  const isGradeSelected = (gradeId: number) => {
-    return result.ctw_assessment_penpicture_grade_id === gradeId;
-  };
+  const isGradeSelected = (gradeId: number) => result.ctw_assessment_penpicture_grade_id === gradeId;
 
   return (
     <div className="print-no-border bg-white rounded-lg border border-gray-200 min-h-screen">
-      {/* Action Buttons - Hidden on print */}
+      <style jsx global>{`
+        @media print {
+          @page {
+            size: A3 landscape;
+            margin: 10mm;
+          }
+          .cv-content {
+            width: 100% !important;
+            max-width: none !important;
+          }
+          table {
+            font-size: 14px !important;
+          }
+          .print-div {
+            max-width: 60vh !important;
+            margin: 0 auto !important;
+          }
+        }
+      `}</style>
+
+      {/* Action Buttons */}
       <div className="p-4 flex items-center justify-between no-print">
         <button
           onClick={() => router.push("/ctw/assessments/penpicture/results")}
@@ -97,25 +129,31 @@ export default function ResultDetailsPage({ params }: { params: Promise<{ id: st
         </button>
         <div className="flex items-center gap-3">
           <button
-            onClick={handlePrint}
+            onClick={handlePrintClick}
             className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 flex items-center gap-2 font-medium transition-all"
           >
             <Icon icon="hugeicons:printer" className="w-4 h-4" />
             Print
           </button>
-          <button
-            onClick={() => router.push(`/ctw/assessments/penpicture/results/${result.id}/edit`)}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2 font-medium transition-all"
-          >
-            <Icon icon="hugeicons:pencil-edit-01" className="w-4 h-4" />
-            Edit Result
-          </button>
         </div>
       </div>
 
-      {/* CV Content Area */}
+      {/* CV Content */}
       <div className="p-12 cv-content">
-        {/* Header Section */}
+        {/* Print type row */}
+        <div className="w-full flex justify-between mb-6 text-xs font-bold">
+          <div className="w-20">
+            <p className="text-center font-medium text-gray-900 uppercase tracking-wider"></p>
+          </div>
+          <div>
+            <p className="text-center font-medium text-gray-900 uppercase tracking-wider">{selectedPrintType?.name}</p>
+          </div>
+          <div>
+            <p className="text-center font-medium text-gray-900 tracking-wider">BAF</p>
+          </div>
+        </div>
+
+        {/* Header */}
         <div className="mb-8">
           <div className="flex justify-center mb-4">
             <FullLogo />
@@ -124,7 +162,7 @@ export default function ResultDetailsPage({ params }: { params: Promise<{ id: st
             Bangladesh Air Force Academy
           </h1>
           <p className="text-center font-medium text-gray-900 uppercase tracking-wider pb-2">
-            CTW ASSESSMENT PEN PICTURE REPORT
+            INTERVIEW/COUNSELLING REPORT
           </p>
         </div>
 
@@ -133,7 +171,7 @@ export default function ResultDetailsPage({ params }: { params: Promise<{ id: st
           <div className="flex flex-wrap justify-between items-center">
             <div className="flex gap-1.5">
               <span className="text-gray-600">BD No</span>
-              <span className="font-bold text-gray-900">{(result.cadet as any)?.cadet_number || (result.cadet as any)?.bd_no || (result.cadet as any)?.service_number || "—"}</span>
+              <span className="font-bold text-gray-900">{(result.cadet as any)?.cadet_number || (result.cadet as any)?.bd_no || "—"}</span>
             </div>
             <div className="flex gap-1.5">
               <span className="text-gray-600">Course</span>
@@ -150,10 +188,10 @@ export default function ResultDetailsPage({ params }: { params: Promise<{ id: st
           </div>
         </div>
 
-        {/* 1. Pen Picture */}
+        {/* 1. PER */}
         <div className="mb-10">
-          <h3 className="font-bold text-gray-900 mb-3">1. Pen Picture:</h3>
-          <div className="leading-relaxed text-gray-800 text-justify whitespace-pre-wrap">
+          <h3 className="font-bold text-gray-900 mb-3">1. PER:</h3>
+          <div className="leading-relaxed text-gray-800 text-justify">
             {result.pen_picture || "No pen picture provided."}
           </div>
         </div>
@@ -208,7 +246,7 @@ export default function ResultDetailsPage({ params }: { params: Promise<{ id: st
         {/* 3. Course Performance */}
         <div className="mb-12">
           <h3 className="font-bold text-gray-900 mb-2">3. Course Performance:</h3>
-          <div className="text-gray-600 mb-6 px-1 whitespace-pre-wrap">
+          <div className="text-gray-600 mb-6 px-1">
             {result.course_performance || "Overall performance assessment."}
           </div>
 
@@ -225,7 +263,9 @@ export default function ResultDetailsPage({ params }: { params: Promise<{ id: st
                 </span>
               </div>
             ))}
-            {grades.length === 0 && <p className="text-sm text-gray-400 italic col-span-full">No grades configured for this course/semester.</p>}
+            {grades.length === 0 && (
+              <p className="text-sm text-gray-400 italic col-span-full">No grades configured for this course/semester.</p>
+            )}
           </div>
         </div>
 
@@ -234,6 +274,12 @@ export default function ResultDetailsPage({ params }: { params: Promise<{ id: st
           Report Generated: {new Date().toLocaleString("en-GB", { day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" })}
         </div>
       </div>
+
+      <PrintTypeModal
+        isOpen={isPrintModalOpen}
+        onClose={() => setIsPrintModalOpen(false)}
+        onConfirm={confirmPrint}
+      />
     </div>
   );
 }

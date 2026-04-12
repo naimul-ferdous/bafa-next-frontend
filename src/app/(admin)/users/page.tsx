@@ -26,6 +26,11 @@ export default function UsersPage() {
   const router = useRouter();
   const { user: authUser, userIsSuperAdmin } = useAuth();
   const can = useCan();
+  const primaryRoleAssignment = (authUser?.role_assignments ?? authUser?.roleAssignments ?? [])
+    .find((ra: any) => ra.is_primary && ra.is_active);
+  const primaryRole = authUser?.roles?.find((r: any) => r.id === primaryRoleAssignment?.role_id) ?? authUser?.role;
+  const isManageUser = userIsSuperAdmin || !!(primaryRole?.is_manage);
+
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -97,10 +102,8 @@ export default function UsersPage() {
         if (!map[userId][key]) map[userId][key] = [];
         map[userId][key].push(courseName);
       };
-      data.penpicture.forEach((a) => push(a.user_id, "penpicture", a.course?.name || `Course ${a.course_id}`));
       data.counseling.forEach((a) => push(a.user_id, "counseling", a.course?.name || `Course ${a.course_id}`));
       data.olq.forEach((a)        => push(a.user_id, "olq",        a.course?.name || `Course ${a.course_id}`));
-      data.warning.forEach((a)    => push(a.user_id, "warning",    a.course?.name || `Course ${a.course_id}`));
       setUserAssignMap(map);
     } catch (error) {
       console.error("Failed to load assign map:", error);
@@ -316,34 +319,6 @@ export default function UsersPage() {
       );
       }
     },
-    {
-      key: "assessments" as keyof User, 
-      header: "Assessments", 
-      className: "text-center", 
-      render: (user) => {
-        const assigns = userAssignMap[user.id] || {};
-        const CHIPS = [
-          { key: "penpicture", label: "PenPicture", color: "bg-purple-100 text-purple-700 border-purple-200" },
-          { key: "counseling", label: "Counseling", color: "bg-blue-100   text-blue-700   border-blue-200"   },
-          { key: "olq",        label: "OLQ",        color: "bg-green-100  text-green-700  border-green-200"  },
-          { key: "warning",    label: "Warning",    color: "bg-red-100    text-red-700    border-red-200"    },
-        ];
-        const chips = CHIPS.flatMap((c) =>
-          (assigns[c.key] || []).map((courseName, i) => ({ ...c, courseName, uid: `${c.key}-${i}` }))
-        );
-        return (
-          <div className="flex flex-col items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
-            <div className="flex flex-wrap gap-1 justify-center">
-              {chips.map((c) => (
-                <span key={c.uid} className={`px-1.5 py-0.5 text-[9px] font-bold uppercase rounded border ${c.color}`}>
-                  {c.label}: {c.courseName}
-                </span>
-              ))}
-            </div>
-          </div>
-        );
-      }
-    },
     { 
       key: "actions", 
       header: "Action", 
@@ -356,6 +331,9 @@ export default function UsersPage() {
           )}
           {can('asign-wings') && (
             <button onClick={() => handleAssignWing(user)} className="p-1 text-green-600 hover:bg-green-50 rounded" title="Assign Wing"><Icon icon="hugeicons:hierarchy-square-01" className="w-4 h-4" /></button>
+          )}
+          {can('asign-role') && (
+            <button onClick={() => handleAssignRole(user)} className="p-1 text-purple-600 hover:bg-purple-50 rounded" title="Assign Role"><Icon icon="hugeicons:plus-sign-circle" className="w-4 h-4" /></button>
           )}
           {can('delete') && (
             (!user.is_active) ? (

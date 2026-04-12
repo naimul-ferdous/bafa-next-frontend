@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { CtwGskResult } from "@/libs/types/ctwGsk";
 import { Icon } from "@iconify/react";
 import { ctwGskResultService } from "@/libs/services/ctwGskResultService";
-import { ctwResultsModuleService } from "@/libs/services/ctwResultsModuleService";
+import { ctwCommonService } from "@/libs/services/ctwCommonService";
 import { useAuth } from "@/libs/hooks/useAuth";
 import FullLogo from "@/components/ui/fulllogo";
 import DataTable, { Column } from "@/components/ui/DataTable";
@@ -46,27 +46,29 @@ export default function CtwGskResultsPage() {
 
     // Fetch gskModuleId
     useEffect(() => {
+        if (!user?.id) return;
         const fetchModuleId = async () => {
             try {
                 setModuleLoading(true);
-                const modulesRes = await ctwResultsModuleService.getAllModules({ per_page: 100 });
-                const gskModule = modulesRes.data.find((m: any) => m.code === GSK_MODULE_CODE);
-                if (gskModule) {
-                    setGskModuleId(gskModule.id);
+                const options = await ctwCommonService.getGskFormOptions(user?.id || 0);
+                if (options?.module) {
+                    setGskModuleId(options.module.id);
                 } else {
-                    console.error(`Module with code ${GSK_MODULE_CODE} not found.`);
+                    setGskModuleId(null);
+                    setLoading(false);
                 }
             } catch (err) {
-                console.error("Failed to fetch module ID:", err);
+                setGskModuleId(null);
+                setLoading(false);
             } finally {
                 setModuleLoading(false);
             }
         };
         fetchModuleId();
-    }, []);
+    }, [user?.id]);
 
     const loadResults = useCallback(async () => {
-        if (gskModuleId === null || !user?.id) return;
+        if (gskModuleId === null || !user?.id) { setLoading(false); return; }
 
         try {
             setLoading(true);
@@ -342,7 +344,7 @@ export default function CtwGskResultsPage() {
 
 
             {isInstructor ? (
-                (loading || moduleLoading) ? <TableLoading /> : (
+                (loading) ? <TableLoading /> : (
                     <>
                         <DataTable columns={columns} data={results} keyExtractor={(result) => result.id.toString()} emptyMessage="No results found" />
 

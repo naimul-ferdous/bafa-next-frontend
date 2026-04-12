@@ -7,13 +7,21 @@ import { Modal } from "@/components/ui/modal";
 import { InstructorBiodata, User } from "@/libs/types/user";
 import type { SystemCourse } from "@/libs/types/system";
 import { atwUserAssignService } from "@/libs/services/atwUserAssignService";
+import { ctwUserAssignService } from "@/libs/services/ctwUserAssignService";
+import { ftw11sqnUserAssignService } from "@/libs/services/ftw11sqnUserAssignService";
 import { useAuth } from "@/libs/hooks/useAuth";
 import {
-  AtwPenpictureAssign,
   AtwCounselingAssign,
   AtwOlqAssign,
-  AtwWarningAssign,
 } from "@/libs/types/atwAssign";
+import {
+  CtwCounselingAssign,
+  CtwOlqAssign,
+} from "@/libs/types/ctwAssign";
+import {
+  Ftw11SqnCounselingAssign,
+  Ftw11SqnOlqAssign,
+} from "@/libs/types/ftw11sqnAssign";
 
 interface Props {
   isOpen: boolean;
@@ -22,46 +30,42 @@ interface Props {
   instructor?: InstructorBiodata | null;
   user?: User | null;
   courses: SystemCourse[];
+  wing?: 'ATW' | 'CTW' | 'FTW11SQN';
 }
 
-type AssessmentType = "penpicture" | "counseling" | "olq" | "warning";
+type AssessmentType = "counseling" | "olq";
 
 const ASSESSMENTS: { key: AssessmentType; label: string; color: string }[] = [
-  { key: "penpicture", label: "Pen Picture",  color: "bg-purple-100 text-purple-700 border-purple-200" },
   { key: "counseling", label: "Counseling",   color: "bg-blue-100   text-blue-700   border-blue-200"   },
   { key: "olq",        label: "OLQ",          color: "bg-green-100  text-green-700  border-green-200"  },
-  { key: "warning",    label: "Warning",      color: "bg-red-100    text-red-700    border-red-200"    },
 ];
 
 interface ExistingAssigns {
-  penpicture: AtwPenpictureAssign | null;
-  counseling: AtwCounselingAssign | null;
-  olq:        AtwOlqAssign        | null;
-  warning:    AtwWarningAssign    | null;
+  counseling: AtwCounselingAssign | CtwCounselingAssign | Ftw11SqnCounselingAssign | null;
+  olq:        AtwOlqAssign | CtwOlqAssign | Ftw11SqnOlqAssign | null;
 }
 
-export default function InstructorAssignAssessmentModal({ isOpen, onClose, onSuccess, instructor, user, courses }: Props) {
+export default function InstructorAssignAssessmentModal({ isOpen, onClose, onSuccess, instructor, user, courses, wing = 'ATW' }: Props) {
   const [selectedCourseId, setSelectedCourseId] = useState<string>("");
   const [checks, setChecks] = useState<Record<AssessmentType, boolean>>({
-    penpicture: false,
     counseling: false,
     olq:        false,
-    warning:    false,
   });
-  const [existing, setExisting] = useState<ExistingAssigns>({ penpicture: null, counseling: null, olq: null, warning: null });
+  const [existing, setExisting] = useState<ExistingAssigns>({ counseling: null, olq: null });
   const [loadingAssigns, setLoadingAssigns] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const userId = instructor?.user?.id ?? user?.id;
   const displayUser = instructor ? instructor.user : user;
+  const assignService = wing === 'CTW' ? ctwUserAssignService : wing === 'FTW11SQN' ? ftw11sqnUserAssignService : atwUserAssignService;
 
   // Reset on open
   useEffect(() => {
     if (isOpen) {
       setSelectedCourseId("");
-      setChecks({ penpicture: false, counseling: false, olq: false, warning: false });
-      setExisting({ penpicture: null, counseling: null, olq: null, warning: null });
+      setChecks({ counseling: false, olq: false });
+      setExisting({ counseling: null, olq: null });
       setError(null);
     }
   }, [isOpen]);
@@ -77,22 +81,18 @@ export default function InstructorAssignAssessmentModal({ isOpen, onClose, onSuc
       setLoadingAssigns(true);
       setError(null);
       try {
-        const data = await atwUserAssignService.getAll({
+        const data = await assignService.getAll({
           course_id: parseInt(selectedCourseId),
         });
 
-        const pp  = data.penpicture[0] || null;
         const cn  = data.counseling[0] || null;
         const olq = data.olq[0]        || null;
-        const wrn = data.warning[0]    || null;
 
-        setExisting({ penpicture: pp, counseling: cn, olq, warning: wrn });
+        setExisting({ counseling: cn, olq });
         // Pre-check only if the CURRENT user already has the assignment
         setChecks({
-          penpicture: !!pp  && pp.user_id  === userId,
           counseling: !!cn  && cn.user_id  === userId,
           olq:        !!olq && olq.user_id === userId,
-          warning:    !!wrn && wrn.user_id === userId,
         });
       } catch {
         setError("Failed to load existing assignments.");
@@ -118,18 +118,18 @@ export default function InstructorAssignAssessmentModal({ isOpen, onClose, onSuc
     try {
       const ops: Promise<unknown>[] = [];
 
-      (["penpicture", "counseling", "olq", "warning"] as AssessmentType[]).forEach((key) => {
+      (["counseling", "olq"] as AssessmentType[]).forEach((key) => {
         const isCurrentlyAssignedToThisUser = !!existing[key] && existing[key].user_id === userId;
 
         if (checks[key]) {
           if (!existing[key]) {
             // No one assigned, create new
-            ops.push(atwUserAssignService.store(key, payload));
+            ops.push(assignService.store(key, payload));
           } else if (existing[key].user_id !== userId) {
             // Someone else assigned, replace them (delete old, then store new)
             ops.push(
-              atwUserAssignService.destroy(key, existing[key].id).then(() => 
-                atwUserAssignService.store(key, payload)
+              assignService.destroy(key, existing[key].id).then(() => 
+                assignService.store(key, payload)
               )
             );
           }
@@ -138,10 +138,10 @@ export default function InstructorAssignAssessmentModal({ isOpen, onClose, onSuc
           // Unchecked
           if (isCurrentlyAssignedToThisUser) {
             // Remove my assignment
-            ops.push(atwUserAssignService.destroy(key, existing[key]!.id));
+            ops.push(assignService.destroy(key, existing[key]!.id));
           } else if (existing[key] && userIsSuperAdmin) {
             // Admin unchecking someone else's assignment to "free" the course
-            ops.push(atwUserAssignService.destroy(key, existing[key]!.id));
+            ops.push(assignService.destroy(key, existing[key]!.id));
           }
         }
       });
@@ -166,7 +166,7 @@ export default function InstructorAssignAssessmentModal({ isOpen, onClose, onSuc
           <div className="flex justify-center mb-4"><FullLogo /></div>
           <h1 className="text-xl font-bold text-gray-900 uppercase">Bangladesh Air Force Academy</h1>
           <h2 className="text-md font-semibold text-gray-700 mt-2 uppercase">
-            Assign Assessments
+            {wing === 'FTW11SQN' ? 'FTW 11SQN' : wing} — Assign Assessments
           </h2>
           {displayUser && (
             <p className="text-sm text-gray-500 mt-1">

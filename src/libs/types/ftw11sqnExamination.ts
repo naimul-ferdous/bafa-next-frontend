@@ -27,6 +27,7 @@ export interface Ftw11sqnFlyingExaminationMark {
   exam_type_id: number;
   phase_type_id: number;
   achieved_mark?: string;
+  mission_mark?: string;
   achieved_time?: string;
   participate_date?: string;
   is_present: boolean;
@@ -42,10 +43,19 @@ export interface Ftw11sqnFlyingExaminationMark {
     id: number;
     phase_full_name: string;
     phase_shortname: string;
+    flying_type_id?: number;
+  };
+  phase?: {
+    id: number;
+    phase_fullname: string;
+    phase_shortname: string;
+    phase_sort?: number;
+    flying_type_id?: number;
   };
   exercise?: {
     id: number;
     exercise_name: string;
+    exercise_shortname?: string;
   };
   course?: SystemCourse;
   semester?: SystemSemester;
@@ -63,7 +73,12 @@ export interface Ftw11sqnFlyingExaminationMark {
     };
   };
   examType?: SystemExam;
+  exam_type?: SystemExam;
   phaseType?: {
+    id: number;
+    type_name: string;
+  };
+  phase_type?: {
     id: number;
     type_name: string;
   };

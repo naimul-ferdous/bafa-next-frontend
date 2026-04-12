@@ -129,7 +129,7 @@ const AppSidebar: React.FC = () => {
     const hasChildren = menu.children && menu.children.length > 0;
     const menuPath = menu.route || "";
     const menuKey = `menu-${menu.id}`;
-    const isOpen = openSubmenus[menuKey] ?? autoOpenKeys[menuKey] ?? false;
+    const isOpen = openSubmenus[menuKey] ?? autoOpenKeys[menuKey] ?? hasChildren;
     const parentActive = hasChildren && !!menuPath ? hasActiveChild(menu) : false;
 
     const isPending = menu.wing_id ? pendingWingIds.includes(menu.wing_id) : false;

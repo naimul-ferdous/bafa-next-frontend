@@ -8,10 +8,10 @@ import { ftw12sqnFlyingPhaseTypeService } from "@/libs/services/ftw12sqnFlyingPh
 import FullLogo from "@/components/ui/fulllogo";
 import DataTable, { Column } from "@/components/ui/DataTable";
 import { Ftw12sqnFlyingTypeModalProvider, useFtw12sqnFlyingTypeModal } from "@/context/Ftw12sqnFlyingTypeModalContext";
-import { Ftw12sqnFlyingPhaseTypeModalProvider, useFtw12sqnFlyingPhaseTypeModal } from "@/context/Ftw12sqnFlyingPhaseTypeModalContext";
 import FlyingTypeFormModal from "@/components/ftw-12sqn-flying/FlyingTypeFormModal";
 import PhaseTypeFormModal from "@/components/ftw-12sqn-flying/PhaseTypeFormModal";
 import ConfirmationModal from "@/components/ui/modal/ConfirmationModal";
+import { Ftw12sqnFlyingPhaseTypeModalProvider, useFtw12sqnFlyingPhaseTypeModal } from "@/context/Ftw12sqnFlyingPhaseTypeModalContext";
 
 function FlyingTypesPageContent() {
     const { openModal: openFlyingTypeModal, openViewModal: openFlyingTypeViewModal } = useFtw12sqnFlyingTypeModal();
@@ -120,7 +120,7 @@ function FlyingTypesPageContent() {
 
     // Flying Type Columns
     const flyingTypeColumns: Column<Ftw12sqnFlyingType>[] = [
-        { key: "id", header: "SL.", headerAlign: "center", className: "text-center text-gray-900", render: (_, index) => (flyingTypePagination.from || 0) + (index + 1) },
+        { key: "id", header: "SL.", headerAlign: "center", className: "text-center text-gray-900", render: (_, index) => index + 1 },
         { key: "type_name", header: "Type Name", className: "font-medium text-gray-900" },
         { key: "type_code", header: "Code", className: "text-gray-700 font-mono text-sm" },
         {
@@ -144,7 +144,7 @@ function FlyingTypesPageContent() {
 
     // Phase Type Columns
     const phaseTypeColumns: Column<Ftw12sqnFlyingPhaseType>[] = [
-        { key: "id", header: "SL.", headerAlign: "center", className: "text-center text-gray-900", render: (_, index) => (phaseTypePagination.from || 0) + (index + 1) },
+        { key: "id", header: "SL.", headerAlign: "center", className: "text-center text-gray-900", render: (_, index) => index + 1 },
         { key: "type_name", header: "Type Name", className: "font-medium text-gray-900" },
         { key: "type_code", header: "Code", className: "text-gray-700 font-mono text-sm" },
         {
@@ -171,7 +171,7 @@ function FlyingTypesPageContent() {
             <div className="text-center mb-8">
                 <div className="flex justify-center mb-4"><FullLogo /></div>
                 <h1 className="text-xl font-bold text-gray-900 uppercase">Bangladesh Air Force Academy</h1>
-                <h2 className="text-md font-semibold text-gray-700 mt-2 uppercase">FTW 11 SQN Flying Types & Phase Types</h2>
+                <h2 className="text-md font-semibold text-gray-700 mt-2 uppercase">FTW 12 SQN Flying Types & Phase Types</h2>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">

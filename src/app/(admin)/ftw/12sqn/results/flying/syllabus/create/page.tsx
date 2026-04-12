@@ -12,6 +12,7 @@ export default function CreateFlyingSyllabusPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
 
+  // Single API call - no loop needed
   const handleSubmit = async (data: Ftw12sqnFlyingSyllabusCreateData) => {
     setLoading(true);
     try {
@@ -29,12 +30,11 @@ export default function CreateFlyingSyllabusPage() {
   };
 
   return (
-    <div className="bg-white p-8 rounded-xl border border-gray-200 shadow-sm">
+    <div className="bg-white p-6 rounded-lg border border-gray-200">
       <div className="text-center mb-8">
         <div className="flex justify-center mb-4"><FullLogo /></div>
         <h1 className="text-xl font-bold text-gray-900 uppercase">Bangladesh Air Force Academy</h1>
-        <h2 className="text-md font-semibold text-gray-700 uppercase">Create New Flying Syllabus</h2>
-        <h2 className="text-md font-semibold text-gray-700 mb-2 uppercase">FTW 12 SQN</h2>
+        <h2 className="text-md font-semibold text-gray-700 mt-2 uppercase">Create Flying Syllabus</h2>
       </div>
 
       <SyllabusForm

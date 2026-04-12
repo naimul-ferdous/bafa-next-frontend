@@ -134,7 +134,7 @@ function WingsPageContent() {
       key: "id",
       header: "SL.",
       className: "text-center text-gray-900",
-      render: (wing, index) => (pagination.from || 0) + (index + 1),
+      render: (wing, index) => (pagination.from || 0) + (index),
     },
     {
       key: "name",
@@ -157,10 +157,54 @@ function WingsPageContent() {
       ),
     },
     {
-      key: "location",
-      header: "Location",
-      className: "text-gray-700",
-      render: (wing) => wing.location || "—",
+      key: "is_academy",
+      header: "Academy",
+      className: "text-center",
+      render: (wing) => (
+        <span className={`inline-flex items-center justify-center w-5 h-5 rounded-full text-xs font-bold ${wing.is_academy ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-500'}`}>
+          {wing.is_academy ? '✓' : '✗'}
+        </span>
+      ),
+    },
+    {
+      key: "is_gst",
+      header: "GST",
+      className: "text-center",
+      render: (wing) => (
+        <span className={`inline-flex items-center justify-center w-5 h-5 rounded-full text-xs font-bold ${wing.is_gst ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-500'}`}>
+          {wing.is_gst ? '✓' : '✗'}
+        </span>
+      ),
+    },
+    {
+      key: "is_flying",
+      header: "Flying",
+      className: "text-center",
+      render: (wing) => (
+        <span className={`inline-flex items-center justify-center w-5 h-5 rounded-full text-xs font-bold ${wing.is_flying ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-500'}`}>
+          {wing.is_flying ? '✓' : '✗'}
+        </span>
+      ),
+    },
+    {
+      key: "is_professional",
+      header: "Professional",
+      className: "text-center",
+      render: (wing) => (
+        <span className={`inline-flex items-center justify-center w-5 h-5 rounded-full text-xs font-bold ${wing.is_professional ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-500'}`}>
+          {wing.is_professional ? '✓' : '✗'}
+        </span>
+      ),
+    },
+    {
+      key: "is_central",
+      header: "Central",
+      className: "text-center",
+      render: (wing) => (
+        <span className={`inline-flex items-center justify-center w-5 h-5 rounded-full text-xs font-bold ${wing.is_central ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-500'}`}>
+          {wing.is_central ? '✓' : '✗'}
+        </span>
+      ),
     },
     {
       key: "is_active",

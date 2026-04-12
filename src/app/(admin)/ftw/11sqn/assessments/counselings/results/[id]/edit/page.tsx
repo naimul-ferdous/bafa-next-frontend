@@ -6,7 +6,7 @@ import { ftw11sqnAssessmentCounselingResultService } from "@/libs/services/ftw11
 import FullLogo from "@/components/ui/fulllogo";
 import ResultForm from "@/components/ftw-11sqn-assessment-counseling-results/ResultForm";
 import { Icon } from "@iconify/react";
-import type { Ftw11sqnAssessmentCounselingResult } from "@/libs/types/system";
+import { Ftw11SqnAssessmentCounselingResult } from "@/libs/types/ftw11sqnAssessmentCounseling";
 
 export default function EditResultPage() {
   const router = useRouter();
@@ -15,7 +15,7 @@ export default function EditResultPage() {
 
   const [loading, setLoading] = useState(false);
   const [loadingResult, setLoadingResult] = useState(true);
-  const [result, setResult] = useState<Ftw11sqnAssessmentCounselingResult | null>(null);
+  const [result, setResult] = useState<Ftw11SqnAssessmentCounselingResult | null>(null);
   const [error, setError] = useState("");
 
   useEffect(() => {

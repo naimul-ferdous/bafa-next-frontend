@@ -5,14 +5,14 @@ import { useRouter, useParams } from "next/navigation";
 import { Icon } from "@iconify/react";
 import { ftw11sqnAssessmentCounselingTypeService } from "@/libs/services/ftw11sqnAssessmentCounselingTypeService";
 import FullLogo from "@/components/ui/fulllogo";
-import type { Ftw11sqnAssessmentCounselingType } from "@/libs/types/system";
+import type { Ftw11SqnAssessmentCounselingType } from "@/libs/types/ftw11sqnAssessmentCounseling";
 
-export default function Ftw11sqnCounselingTypeDetailsPage() {
+export default function CounselingTypeDetailsPage() {
   const router = useRouter();
   const params = useParams();
   const typeId = params?.id as string;
 
-  const [type, setType] = useState<Ftw11sqnAssessmentCounselingType | null>(null);
+  const [type, setType] = useState<Ftw11SqnAssessmentCounselingType | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [reordering, setReordering] = useState(false);
@@ -94,7 +94,7 @@ export default function Ftw11sqnCounselingTypeDetailsPage() {
           <Icon icon="hugeicons:alert-circle" className="w-10 h-10 mx-auto mb-4 text-red-500" />
           <p className="text-red-600">{error || "Counseling Type not found"}</p>
           <button
-            onClick={() => router.push("/ftw/11sqn/assessments/counselings/events")}
+            onClick={() => router.push("/ftw11sqn/assessments/counselings/events")}
             className="mt-4 px-6 py-2 bg-blue-500 text-white rounded-xl hover:bg-blue-600"
           >
             Back to Counseling Types
@@ -110,7 +110,7 @@ export default function Ftw11sqnCounselingTypeDetailsPage() {
       <div className="p-4 flex items-center justify-between no-print">
         <div className="flex items-center gap-2">
           <button
-            onClick={() => router.push("/ftw/11sqn/assessments/counselings/events")}
+            onClick={() => router.push("/ftw11sqn/assessments/counselings/events")}
             className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 flex items-center gap-2"
           >
             <Icon icon="hugeicons:arrow-left-01" className="w-4 h-4" />
@@ -126,7 +126,7 @@ export default function Ftw11sqnCounselingTypeDetailsPage() {
             Print
           </button>
           <button
-            onClick={() => router.push(`/ftw/11sqn/assessments/counselings/events/${type.id}/edit`)}
+            onClick={() => router.push(`/ftw11sqn/assessments/counselings/events/${type.id}/edit`)}
             className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2"
           >
             <Icon icon="hugeicons:pencil-edit-01" className="w-4 h-4" />
@@ -146,7 +146,7 @@ export default function Ftw11sqnCounselingTypeDetailsPage() {
             Bangladesh Air Force Academy
           </h1>
           <p className="text-center font-medium text-gray-900 uppercase tracking-wider pb-2">
-            FTW 11 SQN Counseling Type Details - {type.type_name}
+            Counseling Type Details - {type.type_name}
           </p>
         </div>
 
@@ -255,7 +255,7 @@ export default function Ftw11sqnCounselingTypeDetailsPage() {
               Applicable Semesters
             </h2>
             <div className="flex flex-wrap gap-2">
-              {type.semesters.map((sem: any) => (
+              {type.semesters.map((sem) => (
                 <span
                   key={sem.id}
                   className="px-3 py-1 bg-purple-100 text-purple-800 rounded-full text-sm font-medium"

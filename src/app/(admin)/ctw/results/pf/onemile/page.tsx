@@ -6,13 +6,13 @@ import { useRouter } from "next/navigation";
 import { CtwOneMileResult } from "@/libs/types/ctwOneMile";
 import { Icon } from "@iconify/react";
 import { ctwOneMileResultService } from "@/libs/services/ctwOneMileResultService";
-import { ctwResultsModuleService } from "@/libs/services/ctwResultsModuleService";
+import { ctwCommonService } from "@/libs/services/ctwCommonService";
 import { useAuth } from "@/libs/hooks/useAuth";
 import FullLogo from "@/components/ui/fulllogo";
 import DataTable, { Column } from "@/components/ui/DataTable";
 import ConfirmationModal from "@/components/ui/modal/ConfirmationModal";
 
-const ONE_MILE_MODULE_CODE = "one_mile";
+// const ONE_MILE_MODULE_CODE = "one_mile";
 
 export default function CtwOneMileResultsPage() {
   const router = useRouter();
@@ -44,27 +44,29 @@ export default function CtwOneMileResultsPage() {
   const [moduleLoading, setModuleLoading] = useState(true);
 
   useEffect(() => {
+    if (!user?.id) return;
     const fetchModuleId = async () => {
       try {
         setModuleLoading(true);
-        const modulesRes = await ctwResultsModuleService.getAllModules({ per_page: 100 });
-        const oneMileModule = modulesRes.data.find((m: any) => m.code === ONE_MILE_MODULE_CODE);
-        if (oneMileModule) {
-          setOneMileModuleId(oneMileModule.id);
+        const options = await ctwCommonService.getOneMileFormOptions(user?.id || 0);
+        if (options?.module) {
+          setOneMileModuleId(options.module.id);
         } else {
-          console.error(`Module with code ${ONE_MILE_MODULE_CODE} not found.`);
+          setOneMileModuleId(null);
+          setLoading(false);
         }
-      } catch (err) {
-        console.error("Failed to fetch module ID:", err);
+      } catch (err:any) {
+        setOneMileModuleId(null);
+        setLoading(false);
       } finally {
         setModuleLoading(false);
       }
     };
     fetchModuleId();
-  }, []);
+  }, [user?.id]);
 
   const loadResults = useCallback(async () => {
-    if (oneMileModuleId === null || !user?.id) return;
+    if (oneMileModuleId === null || !user?.id) { setLoading(false); return; }
 
     try {
       setLoading(true);
@@ -174,7 +176,7 @@ export default function CtwOneMileResultsPage() {
   );
 
   const columns: Column<CtwOneMileResult>[] = [
-    { key: "id", header: "SL.", headerAlign: "center", className: "text-center text-gray-900", render: (result, index) => (pagination.from || 0) + (index + 1) },
+    { key: "id", header: "SL.", headerAlign: "center", className: "text-center text-gray-900", render: (result, index) => (pagination.from || 0) + (index) },
     {
       key: "course",
       header: "Course",
@@ -194,18 +196,6 @@ export default function CtwOneMileResultsPage() {
           <div className="text-xs text-gray-500">{result.semester?.code || ""}</div>
         </div>
       ),
-    },
-    {
-      key: "program",
-      header: "Program",
-      className: "text-gray-700",
-      render: (result) => result.program?.name || "N/A",
-    },
-    {
-      key: "branch",
-      header: "Branch",
-      className: "text-gray-700",
-      render: (result) => result.branch?.name || "N/A",
     },
     {
       key: "exam_type",
@@ -339,7 +329,7 @@ export default function CtwOneMileResultsPage() {
       </div>
 
       {isInstructor ? (
-        (loading || moduleLoading) ? <TableLoading /> : (
+        (loading) ? <TableLoading /> : (
           <>
             <DataTable columns={columns} data={results} keyExtractor={(result) => result.id.toString()} emptyMessage="No results found" />
 

@@ -58,8 +58,32 @@ export default function CtwCourseSemesterPfConsolidatedPage() {
         return endResult.modules.pf;
     }, [consolidatedData]);
 
+    const isPercentageBased = (mod: any): boolean => {
+        return (parseFloat(mod.convert_of_practice) || 0) + (parseFloat(mod.convert_of_exam) || 0) > 0;
+    };
+
+    const isDetailBased = (mod: any): boolean => {
+        return !isPercentageBased(mod) && (mod.estimated_mark_config?.details?.length > 0);
+    };
+
+    const getEffectiveConvMark = (mod: any): number => {
+        const convMark = parseFloat(mod.conversation_mark) || 0;
+        if (convMark > 0) return convMark;
+        if (isDetailBased(mod)) {
+            return (mod.estimated_mark_config?.details || []).reduce(
+                (sum: number, d: any) => sum + (parseFloat(d.male_marks) || 0), 0
+            );
+        }
+        if (isPercentageBased(mod)) {
+            const moduleTotal = parseFloat(mod.module_total_mark) || 0;
+            const convertExam = parseFloat(mod.convert_of_exam) || 0;
+            return moduleTotal * convertExam / 100;
+        }
+        return parseFloat(mod.estimated_mark) || 0;
+    };
+
     const totalPossibleMarkEND = useMemo(() =>
-        endPfModules.reduce((sum: number, mod: any) => sum + (parseFloat(mod.conversation_mark) || 0), 0)
+        endPfModules.reduce((sum: number, mod: any) => sum + getEffectiveConvMark(mod), 0)
         , [endPfModules]);
 
     const computeConvertedMark = (mod: any, instructorMarks: any[]): number => {
@@ -146,22 +170,12 @@ export default function CtwCourseSemesterPfConsolidatedPage() {
                 <div className="mb-8">
                     <div className="flex justify-center mb-4"><FullLogo /></div>
                     <h1 className="text-center text-xl font-bold text-gray-900 uppercase tracking-wider">Bangladesh Air Force Academy</h1>
-                    <p className="text-center font-medium text-gray-900 uppercase tracking-wider pb-2 inline-block w-full text-blue-700">CTW PF Consolidated Result Sheet</p>
+                    <p className="text-center font-medium text-gray-900 uppercase tracking-wider inline-block w-full text-blue-700">Breakdown of PF Result : {course?.name}</p>
+                    <p className="text-center font-medium text-gray-900 uppercase tracking-wider pb-2 inline-block w-full text-blue-700">{semester?.name}</p>
                 </div>
 
                 <div className="mb-6">
-                    <h2 className="text-lg font-bold text-gray-900 mb-4 pb-1 border-b border-dashed border-gray-400 uppercase text-base">Course Information</h2>
-                    <div className="grid grid-cols-2 gap-x-12 gap-y-3 text-sm">
-                        <div className="flex"><span className="w-64 text-gray-900 font-bold uppercase">Course</span><span className="mr-4">:</span><span className="text-gray-900 flex-1">{course?.name || "N/A"}</span></div>
-                        <div className="flex"><span className="w-64 text-gray-900 font-bold uppercase">Semester</span><span className="mr-4">:</span><span className="text-gray-900 flex-1">{semester?.name || "N/A"}</span></div>
-                        <div className="flex"><span className="w-64 text-gray-900 font-bold uppercase">Assessment Category</span><span className="mr-4">:</span><span className="text-gray-900 flex-1 font-bold text-blue-600">PF (Physical Fitness)</span></div>
-                        <div className="flex"><span className="w-64 text-gray-900 font-bold uppercase">Exam Type</span><span className="mr-4">:</span><span className="text-gray-900 flex-1 font-bold uppercase">End Final Examination</span></div>
-                    </div>
-                </div>
-
-                <div className="mb-6">
-                    <div className="flex justify-between items-center gap-4 border-b border-dashed border-gray-400 mb-4 no-print">
-                        <h2 className="text-lg font-bold text-gray-900 pb-1 uppercase text-base">Performance Matrix</h2>
+                    <div className="flex justify-end items-center gap-4 mb-4 no-print">
                         <div className="flex items-center gap-1 p-1 rounded-full border border-gray-200 text-xs mb-2">
                             <button onClick={() => setConsolidateTab("main")} className={`px-4 py-1 rounded-full transition-all ${consolidateTab === "main" ? "bg-blue-600 text-white" : "hover:bg-gray-100"}`}>
                                 Summary
@@ -191,7 +205,7 @@ export default function CtwCourseSemesterPfConsolidatedPage() {
                                             <th key={`mod-head-${mod.id}`} className="border border-black px-1 py-1 text-start align-bottom" style={{ minWidth: '35px', maxWidth: '60px' }}>
                                                 <div className="flex flex-col items-center gap-1">
                                                     <span className="font-semibold" style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)', textOrientation: 'mixed', height: '130px' }}>
-                                                        {mod.name} - {(parseFloat(mod.conversation_mark) || 0).toFixed(0)}
+                                                        {mod.name} - {getEffectiveConvMark(mod).toFixed(0)}
                                                     </span>
                                                 </div>
                                             </th>
@@ -254,7 +268,7 @@ export default function CtwCourseSemesterPfConsolidatedPage() {
                                                     colSpan={colSpan}
                                                     className="border border-black px-1 py-1 text-center"
                                                 >
-                                                    {mod.name} - {(parseFloat(mod.conversation_mark) || 0).toFixed(0)}
+                                                    {mod.name} - {getEffectiveConvMark(mod).toFixed(0)}
                                                 </th>
                                             );
                                         })}

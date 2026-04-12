@@ -1,43 +1,110 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { Icon } from "@iconify/react";
 import { ftw12sqnGroundSyllabusService } from "@/libs/services/ftw12sqnGroundSyllabusService";
 import FullLogo from "@/components/ui/fulllogo";
-import type { Ftw12sqnGroundSyllabus } from "@/libs/types/ftw12sqnFlying";
+import type { Ftw12sqnGroundSyllabus, Ftw12sqnGroundSyllabusExercise, Ftw12sqnGroundSyllabusCreateData } from "@/libs/types/ftw12sqnFlying";
+import ConfirmationModal from "@/components/ui/modal/ConfirmationModal";
 
 export default function ViewGroundSyllabusPage() {
   const router = useRouter();
   const params = useParams();
-  const id = params?.id as string;
+  const id = Number(params.id);
 
   const [syllabus, setSyllabus] = useState<Ftw12sqnGroundSyllabus | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+
+  // Status toggle modal state for exercise
+  const [statusModalOpen, setStatusModalOpen] = useState(false);
+  const [statusExercise, setStatusExercise] = useState<Ftw12sqnGroundSyllabusExercise | null>(null);
+  const [statusLoading, setStatusLoading] = useState(false);
+
+  const loadSyllabus = useCallback(async () => {
+    try {
+      setLoading(true);
+      const data = await ftw12sqnGroundSyllabusService.get(id, { include_inactive: true });
+      setSyllabus(data);
+    } catch (error) {
+      console.error("Failed to load syllabus:", error);
+    } finally {
+      setLoading(false);
+    }
+  }, [id]);
 
   useEffect(() => {
-    const loadSyllabus = async () => {
-      try {
-        setLoading(true);
-        const data = await ftw12sqnGroundSyllabusService.get(parseInt(id));
-        if (data) {
-          setSyllabus(data);
-        } else {
-          setError("Ground syllabus not found");
-        }
-      } catch (err) {
-        console.error("Failed to load syllabus:", err);
-        setError("Failed to load ground syllabus data");
-      } finally {
-        setLoading(false);
-      }
-    };
-
     if (id) {
       loadSyllabus();
     }
-  }, [id]);
+  }, [id, loadSyllabus]);
+
+  // Derived data
+  const aggregated = useMemo(() => {
+    if (!syllabus?.exercises) return { totalMaxMark: 0, exercises: [] };
+    
+    let totalMaxMark = 0;
+    const exercises = [...syllabus.exercises];
+    
+    exercises.forEach(ex => {
+      totalMaxMark += parseFloat(String(ex.max_mark || 0));
+    });
+
+    return {
+      totalMaxMark,
+      exercises: exercises.sort((a, b) => (a.exercise_sort || 0) - (b.exercise_sort || 0))
+    };
+  }, [syllabus]);
+
+  // Actions
+  const handleEditExercise = (exercise: Ftw12sqnGroundSyllabusExercise) => {
+    // For ground syllabus, we redirect to the main edit page since exercises are managed there
+    router.push(`/ftw/12sqn/results/ground/syllabus/${id}/edit`);
+  };
+
+  const handleToggleExerciseStatus = (exercise: Ftw12sqnGroundSyllabusExercise) => {
+    setStatusExercise(exercise);
+    setStatusModalOpen(true);
+  };
+
+  const confirmToggleStatus = async () => {
+    if (!statusExercise || !syllabus) return;
+
+    try {
+      setStatusLoading(true);
+      
+      const updatedSyllabusData: Partial<Ftw12sqnGroundSyllabusCreateData> = {
+        ground_full_name: syllabus.ground_full_name,
+        ground_shortname: syllabus.ground_shortname,
+        ground_symbol: syllabus.ground_symbol,
+        ground_sort: syllabus.ground_sort,
+        no_of_test: syllabus.no_of_test,
+        highest_mark: Number(syllabus.highest_mark),
+        course_id: syllabus.course_id,
+        semester_id: syllabus.semester_id,
+        is_active: syllabus.is_active,
+        exercises: syllabus.exercises?.map(ex => ({
+            id: ex.id,
+            exercise_name: ex.exercise_name,
+            exercise_shortname: ex.exercise_shortname,
+            exercise_content: ex.exercise_content ?? undefined,
+            exercise_remarks: ex.exercise_remarks ?? undefined,
+            exercise_sort: ex.exercise_sort,
+            max_mark: Number(ex.max_mark),
+            is_active: ex.id === statusExercise.id ? !ex.is_active : ex.is_active,
+        })) || []
+      };
+
+      await ftw12sqnGroundSyllabusService.update(id, updatedSyllabusData);
+      await loadSyllabus();
+      setStatusModalOpen(false);
+      setStatusExercise(null);
+    } catch (error) {
+      console.error("Failed to update status:", error);
+    } finally {
+      setStatusLoading(false);
+    }
+  };
 
   const handlePrint = () => {
     window.print();
@@ -48,18 +115,18 @@ export default function ViewGroundSyllabusPage() {
       <div className="bg-white p-6 rounded-lg border border-gray-200">
         <div className="text-center py-12">
           <Icon icon="hugeicons:loading-03" className="w-10 h-10 animate-spin mx-auto mb-4 text-blue-500" />
-          <p className="text-gray-600">Loading ground syllabus details...</p>
+          <p className="text-gray-600">Loading syllabus details...</p>
         </div>
       </div>
     );
   }
 
-  if (error || !syllabus) {
+  if (!syllabus) {
     return (
       <div className="bg-white p-6 rounded-lg border border-gray-200">
         <div className="text-center py-12">
           <Icon icon="hugeicons:alert-circle" className="w-10 h-10 mx-auto mb-4 text-red-500" />
-          <p className="text-red-600">{error || "Ground syllabus not found"}</p>
+          <p className="text-red-600">Ground Syllabus not found</p>
           <button
             onClick={() => router.push("/ftw/12sqn/results/ground/syllabus")}
             className="mt-4 px-6 py-2 bg-blue-500 text-white rounded-xl hover:bg-blue-600"
@@ -70,10 +137,6 @@ export default function ViewGroundSyllabusPage() {
       </div>
     );
   }
-
-  // Calculate total max marks
-  const totalMaxMarks = syllabus.exercises?.reduce((sum, ex) => sum + parseFloat(String(ex.max_mark || 0)), 0) || 0;
-  const sortedExercises = syllabus.exercises?.sort((a, b) => a.exercise_sort - b.exercise_sort) || [];
 
   return (
     <div className="print-no-border bg-white rounded-lg border border-gray-200">
@@ -122,18 +185,18 @@ export default function ViewGroundSyllabusPage() {
         {/* Basic Information Section */}
         <div className="mb-6">
           <h2 className="text-lg font-bold text-gray-900 mb-4 pb-1 border-b border-dashed border-gray-400">
-            Syllabus Information
+            Basic Information
           </h2>
           <div className="grid grid-cols-2 gap-x-12 gap-y-3">
             <div className="flex">
-              <span className="w-48 text-gray-900 font-medium">Subject Name</span>
+              <span className="w-48 text-gray-900 font-medium">Subject Full Name</span>
               <span className="mr-4">:</span>
               <span className="text-gray-900 flex-1">{syllabus.ground_full_name}</span>
             </div>
             <div className="flex">
               <span className="w-48 text-gray-900 font-medium">Short Name</span>
               <span className="mr-4">:</span>
-              <span className="text-gray-900 flex-1 font-mono">{syllabus.ground_shortname}</span>
+              <span className="text-gray-900 flex-1">{syllabus.ground_shortname}</span>
             </div>
             <div className="flex">
               <span className="w-48 text-gray-900 font-medium">Symbol</span>
@@ -141,121 +204,137 @@ export default function ViewGroundSyllabusPage() {
               <span className="text-gray-900 flex-1">{syllabus.ground_symbol || "—"}</span>
             </div>
             <div className="flex">
+              <span className="w-48 text-gray-900 font-medium">Course</span>
+              <span className="mr-4">:</span>
+              <span className="text-gray-900 flex-1 uppercase font-bold text-blue-700">{syllabus.course?.name || "—"}</span>
+            </div>
+            <div className="flex">
+              <span className="w-48 text-gray-900 font-medium">Semester</span>
+              <span className="mr-4">:</span>
+              <span className="text-gray-900 flex-1 uppercase font-bold text-blue-700">{syllabus.semester?.name || "—"}</span>
+            </div>
+            <div className="flex">
               <span className="w-48 text-gray-900 font-medium">Sort Order</span>
               <span className="mr-4">:</span>
-              <span className="text-gray-900 flex-1">{syllabus.ground_sort}</span>
-            </div>
-            <div className="flex">
-              <span className="w-48 text-gray-900 font-medium">Number of Tests</span>
-              <span className="mr-4">:</span>
-              <span className="text-gray-900 flex-1">{syllabus.no_of_test}</span>
-            </div>
-            <div className="flex">
-              <span className="w-48 text-gray-900 font-medium">Highest Mark</span>
-              <span className="mr-4">:</span>
-              <span className="text-gray-900 flex-1">{syllabus.highest_mark}</span>
-            </div>
-            <div className="flex">
-              <span className="w-48 text-gray-900 font-medium">Total Max Marks</span>
-              <span className="mr-4">:</span>
-              <span className="text-gray-900 flex-1 font-semibold text-green-700">{totalMaxMarks}</span>
+              <span className="text-gray-900 flex-1 font-mono">{syllabus.ground_sort}</span>
             </div>
             <div className="flex">
               <span className="w-48 text-gray-900 font-medium">Status</span>
               <span className="mr-4">:</span>
-              <span className="text-gray-900 flex-1">{syllabus.is_active ? "Active" : "Inactive"}</span>
+              <span className="text-gray-900 flex-1">
+                <span className={`inline-flex items-center px-2.5 py-0.5 text-xs font-semibold rounded-full ${
+                  syllabus.is_active ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"
+                }`}>
+                  {syllabus.is_active ? "Active" : "Inactive"}
+                </span>
+              </span>
             </div>
-            {syllabus.creator && (
-              <div className="flex">
-                <span className="w-48 text-gray-900 font-medium">Created By</span>
-                <span className="mr-4">:</span>
-                <span className="text-gray-900 flex-1">{syllabus.creator.name}</span>
-              </div>
-            )}
           </div>
         </div>
 
-        {/* Tests/Exercises Section */}
+        {/* Assessment Summary Section */}
         <div className="mb-6">
           <h2 className="text-lg font-bold text-gray-900 mb-4 pb-1 border-b border-dashed border-gray-400">
-            Tests ({sortedExercises.length})
-          </h2>
-          {sortedExercises.length > 0 ? (
-            <div className="overflow-x-auto">
-              <table className="w-full border-collapse border border-black text-sm">
-                <thead>
-                  <tr>
-                    <th className="border border-black px-3 py-2 text-center font-semibold text-gray-900">SL</th>
-                    <th className="border border-black px-3 py-2 text-left font-semibold text-gray-900">Test Name</th>
-                    <th className="border border-black px-3 py-2 text-left font-semibold text-gray-900">Short Name</th>
-                    <th className="border border-black px-3 py-2 text-center font-semibold text-gray-900">Max Mark</th>
-                    <th className="border border-black px-3 py-2 text-left font-semibold text-gray-900">Remarks</th>
-                    <th className="border border-black px-3 py-2 text-center font-semibold text-gray-900">Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {sortedExercises.map((exercise, index) => (
-                    <tr key={exercise.id}>
-                      <td className="border border-black px-3 py-2 text-center">{index + 1}</td>
-                      <td className="border border-black px-3 py-2 font-medium">{exercise.exercise_name}</td>
-                      <td className="border border-black px-3 py-2 font-mono">{exercise.exercise_shortname}</td>
-                      <td className="border border-black px-3 py-2 text-center text-green-700 font-semibold">{exercise.max_mark}</td>
-                      <td className="border border-black px-3 py-2">{exercise.exercise_remarks || "—"}</td>
-                      <td className="border border-black px-3 py-2 text-center">
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${exercise.is_active ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}`}>
-                          {exercise.is_active ? "Active" : "Inactive"}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-                <tfoot>
-                  <tr className="font-bold">
-                    <td colSpan={3} className="border border-black px-3 py-2 text-right">Total Max Marks:</td>
-                    <td className="border border-black px-3 py-2 text-center text-green-700">{totalMaxMarks}</td>
-                    <td colSpan={2} className="border border-black px-3 py-2"></td>
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
-          ) : (
-            <p className="text-gray-500 text-center py-4">No tests/exercises found for this syllabus.</p>
-          )}
-        </div>
-
-        {/* System Information Section */}
-        <div className="mb-6">
-          <h2 className="text-lg font-bold text-gray-900 mb-4 pb-1 border-b border-dashed border-gray-400">
-            System Information
+            Assessment Summary
           </h2>
           <div className="grid grid-cols-2 gap-x-12 gap-y-3">
             <div className="flex">
-              <span className="w-48 text-gray-900 font-medium">Created At</span>
+              <span className="w-48 text-gray-900 font-medium">Number of Tests</span>
               <span className="mr-4">:</span>
-              <span className="text-gray-900 flex-1">
-                {syllabus.created_at ? new Date(syllabus.created_at).toLocaleString("en-GB", {
-                  day: "2-digit",
-                  month: "long",
-                  year: "numeric",
-                  hour: "2-digit",
-                  minute: "2-digit"
-                }) : "N/A"}
-              </span>
+              <span className="text-gray-900 flex-1 font-bold text-blue-600">{syllabus.no_of_test}</span>
             </div>
             <div className="flex">
-              <span className="w-48 text-gray-900 font-medium">Last Updated</span>
+              <span className="w-48 text-gray-900 font-medium">Highest Mark</span>
               <span className="mr-4">:</span>
-              <span className="text-gray-900 flex-1">
-                {syllabus.updated_at ? new Date(syllabus.updated_at).toLocaleString("en-GB", {
-                  day: "2-digit",
-                  month: "long",
-                  year: "numeric",
-                  hour: "2-digit",
-                  minute: "2-digit"
-                }) : "N/A"}
-              </span>
+              <span className="text-gray-900 flex-1 font-bold text-green-600">{syllabus.highest_mark}</span>
+            </div>
+            <div className="flex">
+              <span className="w-48 text-gray-900 font-medium">Component Total</span>
+              <span className="mr-4">:</span>
+              <span className="text-gray-900 flex-1 font-bold text-purple-600">{aggregated.totalMaxMark}</span>
             </div>
           </div>
+        </div>
+
+        {/* Components List Section */}
+        <div className="mb-6">
+          <div className="flex justify-between items-center mb-4 pb-1 border-b border-dashed border-gray-400">
+            <h2 className="text-lg font-bold text-gray-900">
+              Subject Components / Topics ({aggregated.exercises.length})
+            </h2>
+          </div>
+          
+          <table className="w-full border-collapse border border-gray-900">
+            <thead>
+              <tr>
+                <th className="border border-gray-900 px-4 py-2 text-center text-gray-900 font-semibold w-12">SL.</th>
+                <th className="border border-gray-900 px-4 py-2 text-left text-gray-900 font-semibold">Short Name</th>
+                <th className="border border-gray-900 px-4 py-2 text-left text-gray-900 font-semibold">Component Name</th>
+                <th className="border border-gray-900 px-4 py-2 text-center text-gray-900 font-semibold w-24">Max Mark</th>
+                <th className="border border-gray-900 px-4 py-2 text-center text-gray-900 font-semibold w-24">Status</th>
+                <th className="border border-gray-900 px-4 py-2 text-center text-gray-900 font-semibold w-24 no-print">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {aggregated.exercises.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="border border-gray-900 px-4 py-8 text-center text-gray-500 italic">
+                    No components found for this syllabus.
+                  </td>
+                </tr>
+              ) : (
+                aggregated.exercises.map((exercise, index) => (
+                  <tr key={exercise.id} className="hover:bg-gray-50 group cursor-pointer" onClick={() => handleEditExercise(exercise)}>
+                    <td className="border border-gray-900 px-4 py-2 text-center text-gray-900">{index + 1}</td>
+                    <td className="border border-gray-900 px-4 py-2 font-bold text-blue-700">{exercise.exercise_shortname}</td>
+                    <td className="border border-gray-900 px-4 py-2 text-gray-900">
+                        <div>{exercise.exercise_name}</div>
+                        {exercise.exercise_content && (
+                            <div className="text-[10px] text-gray-500 mt-0.5">{exercise.exercise_content}</div>
+                        )}
+                    </td>
+                    <td className="border border-gray-900 px-4 py-2 text-center">
+                      <span className="font-mono font-bold">{exercise.max_mark}</span>
+                    </td>
+                    <td className="border border-gray-900 px-4 py-2 text-center">
+                      <span className={`inline-flex items-center px-2 py-0.5 text-[10px] font-bold rounded-full ${
+                        exercise.is_active ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"
+                      }`}>
+                        {exercise.is_active ? "Active" : "Inactive"}
+                      </span>
+                    </td>
+                    <td className="border border-gray-900 px-4 py-2 text-center no-print" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center justify-center gap-1">
+                            <button
+                                onClick={() => handleEditExercise(exercise)}
+                                className="p-1 text-yellow-600 hover:bg-yellow-50 rounded transition-colors"
+                                title="Edit"
+                            >
+                                <Icon icon="hugeicons:pencil-edit-01" className="w-4 h-4" />
+                            </button>
+                            <button
+                                onClick={() => handleToggleExerciseStatus(exercise)}
+                                className={`p-1 rounded transition-colors ${exercise.is_active ? 'text-red-600 hover:bg-red-50' : 'text-green-600 hover:bg-green-50'}`}
+                                title={exercise.is_active ? "Deactivate" : "Activate"}
+                            >
+                                <Icon icon={exercise.is_active ? "hugeicons:unavailable" : "hugeicons:checkmark-circle-02"} className="w-4 h-4" />
+                            </button>
+                        </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+            {aggregated.exercises.length > 0 && (
+                <tfoot>
+                    <tr className="bg-gray-50 font-bold">
+                        <td colSpan={3} className="border border-gray-900 px-4 py-2 text-right uppercase text-xs">Total:</td>
+                        <td className="border border-gray-900 px-4 py-2 text-center">{aggregated.totalMaxMark}</td>
+                        <td colSpan={2} className="border border-gray-900"></td>
+                    </tr>
+                </tfoot>
+            )}
+          </table>
         </div>
 
         {/* Footer with date */}
@@ -263,6 +342,18 @@ export default function ViewGroundSyllabusPage() {
           <p>Generated on: {new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}</p>
         </div>
       </div>
+
+      <ConfirmationModal
+        isOpen={statusModalOpen}
+        onClose={() => setStatusModalOpen(false)}
+        onConfirm={confirmToggleStatus}
+        title={statusExercise?.is_active ? "Deactivate Component" : "Activate Component"}
+        message={`Are you sure you want to ${statusExercise?.is_active ? "deactivate" : "activate"} the component "${statusExercise?.exercise_name}"?`}
+        confirmText={statusExercise?.is_active ? "Deactivate" : "Activate"}
+        cancelText="Cancel"
+        loading={statusLoading}
+        variant={statusExercise?.is_active ? "danger" : "success"}
+      />
     </div>
   );
 }

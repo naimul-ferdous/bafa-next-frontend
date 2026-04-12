@@ -2,9 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { Icon } from "@iconify/react";
-import type { SystemCourse } from "@/libs/types/system";
 import type { AtwAssessmentCounselingEvent } from "@/libs/types/atwAssessmentCounseling";
-import { commonService } from "@/libs/services/commonService";
 
 interface EventFormProps {
   initialData?: AtwAssessmentCounselingEvent | null;
@@ -15,7 +13,6 @@ interface EventFormProps {
 }
 
 export interface EventFormData {
-  course_id?: number;
   event_name: string;
   event_code: string;
   event_type: string;
@@ -25,38 +22,17 @@ export interface EventFormData {
 
 export default function EventForm({ initialData, onSubmit, onCancel, loading, isEdit = false }: EventFormProps) {
   const [formData, setFormData] = useState<EventFormData>({
-    course_id: undefined,
     event_name: "",
     event_code: "",
     event_type: "",
     order: 0,
     is_active: true,
   });
-  const [courses, setCourses] = useState<SystemCourse[]>([]);
-  const [loadingCourses, setLoadingCourses] = useState(false);
   const [errors, setErrors] = useState<Partial<Record<keyof EventFormData, string>>>({});
-
-  useEffect(() => {
-    const fetchCourses = async () => {
-      try {
-        setLoadingCourses(true);
-        const options = await commonService.getResultOptions();
-        if (options) {
-          setCourses(options.courses.filter(c => c.is_active));
-        }
-      } catch (error) {
-        console.error("Failed to fetch courses:", error);
-      } finally {
-        setLoadingCourses(false);
-      }
-    };
-    fetchCourses();
-  }, []);
 
   useEffect(() => {
     if (initialData) {
       setFormData({
-        course_id: initialData.course_id,
         event_name: initialData.event_name,
         event_code: initialData.event_code,
         event_type: initialData.event_type,
@@ -116,35 +92,6 @@ export default function EventForm({ initialData, onSubmit, onCancel, loading, is
           Event Information
         </h3>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {/* Course */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Course
-            </label>
-            <div className="relative">
-              <select
-                value={formData.course_id || ""}
-                onChange={(e) => handleChange("course_id", e.target.value ? parseInt(e.target.value) : undefined)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none bg-white"
-                disabled={loadingCourses}
-              >
-                <option value="">Select Course (Global if empty)</option>
-                {courses.map((course) => (
-                  <option key={course.id} value={course.id}>
-                    {course.name} ({course.code})
-                  </option>
-                ))}
-              </select>
-              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-700">
-                {loadingCourses ? (
-                  <Icon icon="hugeicons:loading-03" className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Icon icon="hugeicons:arrow-down-01" className="w-4 h-4" />
-                )}
-              </div>
-            </div>
-          </div>
-
           {/* Event Name */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">

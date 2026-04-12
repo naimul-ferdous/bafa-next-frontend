@@ -196,7 +196,7 @@ export default function AtwAssessmentPenpictureGradesPage() {
       <div className="text-center mb-8">
         <div className="flex justify-center mb-4"><FullLogo /></div>
         <h1 className="text-xl font-bold text-gray-900 uppercase">Bangladesh Air Force Academy</h1>
-        <h2 className="text-md font-semibold text-gray-700 mt-2 uppercase">ATW Assessment Pen Picture Grades</h2>
+        <h2 className="text-md font-semibold text-gray-700 mt-2 uppercase">ATW Assessment PER Grades</h2>
       </div>
 
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">

@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /**
- * FTW 12sqn Flying Examination Mark Service
- * API calls for FTW 12sqn Flying Examination Mark management
+ * FTW 12SQN Flying Examination Mark Service
+ * API calls for FTW 12SQN Flying Examination Mark management
  */
 
 import apiClient from '@/libs/auth/api-client';
@@ -195,99 +195,131 @@ export const ftw12sqnFlyingExaminationMarkService = {
   },
 
   /**
-   * Explicit bulk create
+   * Create bulk marks explicitly
    */
-  async createBulkMark(data: any): Promise<Ftw12sqnFlyingExaminationMark[] | null> {
+  async createBulkMark(data: { marks: any[] }): Promise<Ftw12sqnFlyingExaminationMark[]> {
     try {
       const token = getToken();
       if (!token) throw new Error('Authentication token not found. Please login again.');
-      const result = await apiClient.post<ActionApiResponse>('/ftw-12sqn-flying-examination-marks/bulk', data, token);
-      if (!result || !result.success) throw new Error(result?.message || 'Failed to create examination marks');
-      return (result.data as Ftw12sqnFlyingExaminationMark[]) || null;
+      const result = await apiClient.post<any>('/ftw-12sqn-flying-examination-marks/bulk', data, token);
+      if (!result || result.status === 422 || result.status === 500) throw new Error(result?.error || result?.message || 'Failed to create bulk marks');
+      return (result.data as Ftw12sqnFlyingExaminationMark[]) || [];
     } catch (error) {
-      console.error('Failed to create bulk flying examination marks:', error);
+      console.error('Failed to create bulk marks:', error);
       throw error;
     }
   },
 
   /**
-   * Update single mark
+   * Update a mark by ID
    */
-  async updateMark(id: number, data: Partial<Ftw12sqnFlyingExaminationMarkCreateData>): Promise<Ftw12sqnFlyingExaminationMark | null> {
+  async updateMark(id: number, data: Partial<Ftw12sqnFlyingExaminationMark>): Promise<Ftw12sqnFlyingExaminationMark | null> {
     try {
       const token = getToken();
       if (!token) throw new Error('Authentication token not found. Please login again.');
-      const result = await apiClient.put<ActionApiResponse>(`/ftw-12sqn-flying-examination-marks/${id}`, data, token);
-      if (!result || !result.success) throw new Error(result?.message || 'Failed to update examination mark');
+      const result = await apiClient.put<any>(`/ftw-12sqn-flying-examination-marks/${id}`, data, token);
+      if (!result || result.status === 422 || result.status === 500) throw new Error(result?.error || result?.message || 'Failed to update mark');
       return (result.data as Ftw12sqnFlyingExaminationMark) || null;
     } catch (error) {
-      console.error(`Failed to update flying examination mark ${id}:`, error);
+      console.error('Failed to update flying examination mark:', error);
       throw error;
     }
   },
 
   /**
-   * Bulk update marks
-   */
-  async updateBulkMarks(data: { marks: Array<{ id: number; [key: string]: any }> }): Promise<Ftw12sqnFlyingExaminationMark[] | null> {
-    try {
-      const token = getToken();
-      if (!token) throw new Error('Authentication token not found. Please login again.');
-      const result = await apiClient.put<ActionApiResponse>(`/ftw-12sqn-flying-examination-marks/bulk`, data, token);
-      if (!result || !result.success) throw new Error(result?.message || 'Failed to update examination marks');
-      return (result.data as Ftw12sqnFlyingExaminationMark[]) || null;
-    } catch (error) {
-      console.error('Failed to bulk update flying examination marks:', error);
-      throw error;
-    }
-  },
-
-  /**
-   * Delete mark
+   * Delete a mark by ID
    */
   async deleteMark(id: number): Promise<boolean> {
     try {
       const token = getToken();
-      const result = await apiClient.delete<ActionApiResponse>(`/ftw-12sqn-flying-examination-marks/${id}`, token);
-      return result?.success || false;
+      if (!token) throw new Error('Authentication token not found. Please login again.');
+      const result = await apiClient.delete<any>(`/ftw-12sqn-flying-examination-marks/${id}`, token);
+      if (!result || result.status === 422 || result.status === 500) throw new Error(result?.error || result?.message || 'Failed to delete mark');
+      return true;
     } catch (error) {
-      console.error(`Failed to delete flying examination mark ${id}:`, error);
-      return false;
+      console.error('Failed to delete flying examination mark:', error);
+      throw error;
     }
   },
 
   /**
-   * Check if a mark already exists for the given combination
+   * Get all panel data for semester result page in one call
    */
-  async checkExistingMark(params: {
-    cadet_id: number;
-    course_id: number;
-    semester_id: number;
-    exam_type_id: number;
-    syllabus_id: number;
-    exercise_id: number;
-  }): Promise<{ exists: boolean; date?: string; mark?: Ftw12sqnFlyingExaminationMark }> {
+  async getPanelData(params: { course_id: number; semester_id: number }): Promise<{
+    flying_marks: any[];
+    ground_marks: any[];
+    approval_processes: any[];
+    approval_statuses: any[];
+    cadet_approval_statuses: any[];
+  } | null> {
     try {
+      const token = getToken();
+      if (!token) throw new Error('Authentication token not found. Please login again.');
       const query = new URLSearchParams();
-      query.append('cadet_id', params.cadet_id.toString());
       query.append('course_id', params.course_id.toString());
       query.append('semester_id', params.semester_id.toString());
-      query.append('exam_type_id', params.exam_type_id.toString());
-      query.append('ftw_12sqn_flying_syllabus_id', params.syllabus_id.toString());
-      query.append('ftw_12sqn_flying_syllabus_exercise_id', params.exercise_id.toString());
-      query.append('per_page', '1');
+      
+      const result = await apiClient.get<any>(`/ftw-12sqn-flying-examination-marks/panel-data?${query.toString()}`, token);
+      if (!result?.success) throw new Error(result?.message || 'Failed to fetch panel data');
+      return result.data;
+    } catch (error) {
+      console.error('Failed to fetch panel data:', error);
+      throw error;
+    }
+  },
 
-      const endpoint = `/ftw-12sqn-flying-examination-marks?${query.toString()}`;
+  /**
+   * Get all report data (final, bup, breakdown) with calculations done in backend
+   */
+  async getReportData(params: { course_id: number; semester_id: number }): Promise<{
+    semester_details: any;
+    course_details: any;
+    is_6th_semester: boolean;
+    exam_phases: any[];
+    final: any[];
+    bup: any[];
+    breakdown: {
+      flying_marks: any[];
+      ground_marks: any[];
+      approval_processes: any[];
+      approval_statuses: any[];
+      cadet_approval_statuses: any[];
+    };
+    ground_phases: any[];
+    flying_exam_phases: any[];
+  } | null> {
+    try {
       const token = getToken();
-      const result = await apiClient.get<ApiResponse>(endpoint, token);
+      if (!token) throw new Error('Authentication token not found. Please login again.');
+      const query = new URLSearchParams();
+      query.append('course_id', params.course_id.toString());
+      query.append('semester_id', params.semester_id.toString());
+      
+      const result = await apiClient.get<any>(`/ftw-12sqn-flying-examination-marks/semester/${params.semester_id}/report-data?${query.toString()}`, token);
+      return result?.data;
+    } catch (error) {
+      console.error('Failed to fetch report data:', error);
+      throw error;
+    }
+  },
 
-      if (result && result.data && result.data.length > 0) {
-        const existingMark = result.data[0];
-        return {
-          exists: true,
-          date: existingMark.participate_date || existingMark.created_at,
-          mark: existingMark
-        };
+  /**
+   * Check if mark exists for a cadet
+   */
+  async checkExistingMark(data: {
+    ftw_12sqn_flying_syllabus_id: number;
+    ftw_12sqn_flying_syllabus_exercise_id: number;
+    cadet_id: number;
+  }): Promise<{ exists: boolean; mark?: any }> {
+    try {
+      const token = getToken();
+      if (!token) throw new Error('Authentication token not found. Please login again.');
+      const result = await apiClient.get<any>(
+        `/ftw-12sqn-flying-examination-marks/check?ftw_12sqn_flying_syllabus_id=${data.ftw_12sqn_flying_syllabus_id}&ftw_12sqn_flying_syllabus_exercise_id=${data.ftw_12sqn_flying_syllabus_exercise_id}&cadet_id=${data.cadet_id}`,
+        token
+      );
+      if (result?.success && result?.data) {
+        return { exists: true, mark: result.data };
       }
       return { exists: false };
     } catch (error) {
@@ -370,6 +402,31 @@ export const ftw12sqnFlyingExaminationMarkService = {
   },
 
   /**
+   * Get marks for a specific cadet - alternative name for getMarksByCadet
+   */
+  async getCadetMarks(params: {
+    cadet_id: number;
+    course_id?: number;
+    semester_id?: number;
+    exam_type_id?: number;
+  }): Promise<{ marks: Ftw12sqnFlyingExaminationMark[] }> {
+    try {
+      const query = new URLSearchParams();
+      if (params.course_id) query.append('course_id', params.course_id.toString());
+      if (params.semester_id) query.append('semester_id', params.semester_id.toString());
+      if (params.exam_type_id) query.append('exam_type_id', params.exam_type_id.toString());
+
+      const endpoint = `/ftw-12sqn-flying-examination-marks/cadet/${params.cadet_id}${query.toString() ? `?${query.toString()}` : ''}`;
+      const token = getToken();
+      const result = await apiClient.get<ApiResponse>(endpoint, token);
+      return { marks: result?.data || [] };
+    } catch (error) {
+      console.error('Failed to fetch cadet marks:', error);
+      return { marks: [] };
+    }
+  },
+
+  /**
    * Get marks grouped by semester
    * Returns data grouped by course -> semester -> marks
    */
@@ -378,6 +435,7 @@ export const ftw12sqnFlyingExaminationMarkService = {
     semester_id?: number;
     exam_type_id?: number;
     phase_type_id?: number;
+    instructor_id?: number;
     is_active?: boolean;
   }): Promise<SemesterGroupedResponse[]> {
     try {
@@ -386,6 +444,7 @@ export const ftw12sqnFlyingExaminationMarkService = {
       if (params?.semester_id) query.append('semester_id', params.semester_id.toString());
       if (params?.exam_type_id) query.append('exam_type_id', params.exam_type_id.toString());
       if (params?.phase_type_id) query.append('phase_type_id', params.phase_type_id.toString());
+      if (params?.instructor_id) query.append('instructor_id', params.instructor_id.toString());
       if (params?.is_active !== undefined) query.append('is_active', params.is_active.toString());
 
       const endpoint = `/ftw-12sqn-flying-examination-marks/grouped/semester${query.toString() ? `?${query.toString()}` : ''}`;
@@ -395,6 +454,120 @@ export const ftw12sqnFlyingExaminationMarkService = {
     } catch (error) {
       console.error('Failed to fetch semester grouped marks:', error);
       return [];
+    }
+  },
+
+  /**
+   * Get all form data in one call - courses, semesters, exams, phases, cadets, instructors, existing marks
+   */
+  async getFormData(params: {
+    instructor_id?: number;
+    semester_id?: number;
+    course_id?: number;
+    cadet_id?: number;
+    exam_type_id?: number;
+  }): Promise<{
+    courses: any[];
+    semesters: any[];
+    exams: any[];
+    phase_types: any[];
+    syllabuses: any[];
+    instructors: any[];
+    cadets: any[];
+    instructor_assigned: {
+      phases: any[];
+      exercises: number[];
+      cadets: any[];
+    };
+    existing_marks: any[];
+  } | null> {
+    try {
+      const query = new URLSearchParams();
+      if (params.instructor_id) query.append('instructor_id', params.instructor_id.toString());
+      if (params.semester_id) query.append('semester_id', params.semester_id.toString());
+      if (params.course_id) query.append('course_id', params.course_id.toString());
+      if (params.cadet_id) query.append('cadet_id', params.cadet_id.toString());
+      if (params.exam_type_id) query.append('exam_type_id', params.exam_type_id.toString());
+
+      const endpoint = `/ftw-12sqn-flying-result-form${query.toString() ? `?${query.toString()}` : ''}`;
+      const token = getToken();
+      const result = await apiClient.get<{ success: boolean; data: any }>(endpoint, token);
+      return result?.data || null;
+    } catch (error) {
+      console.error('Failed to fetch form data:', error);
+      return null;
+    }
+  },
+
+  /**
+   * Create additional mark for flying examination
+   */
+  async createAdditionalMark(data: {
+    ftw_12sqn_flying_syllabus_id: number;
+    ftw_12sqn_flying_syllabus_exercise_id: number;
+    course_id: number;
+    semester_id: number;
+    instructor_id: number;
+    cadet_id: number;
+    exam_type_id?: number;
+    phase_type_id: number;
+    achieved_mark: string;
+    achieved_time: string;
+    participate_date: string;
+    is_present?: boolean;
+    absent_reason?: string;
+    remark?: string;
+    is_active?: boolean;
+  }): Promise<any | null> {
+    try {
+      const token = getToken();
+      if (!token) throw new Error('Authentication token not found. Please login again.');
+      const result = await apiClient.post<any>('/ftw-12sqn-flying-examination-marks-additional', data, token);
+      if (!result) throw new Error('Failed to create additional mark');
+      if (result.message && result.message.toLowerCase().includes('success')) {
+        return result.data || null;
+      }
+      if (result.success === false) throw new Error(result?.message || 'Failed to create additional mark');
+      return result.data || null;
+    } catch (error) {
+      console.error('Failed to create additional flying examination mark:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Update additional mark for flying examination
+   */
+  async updateAdditionalMark(id: number, data: Partial<{
+    ftw_12sqn_flying_syllabus_id: number;
+    ftw_12sqn_flying_syllabus_exercise_id: number;
+    course_id: number;
+    semester_id: number;
+    instructor_id: number;
+    cadet_id: number;
+    exam_type_id?: number;
+    phase_type_id: number;
+    achieved_mark: string;
+    achieved_time: string;
+    participate_date: string;
+    is_present: boolean;
+    absent_reason?: string;
+    remark?: string;
+    is_active: boolean;
+  }>): Promise<any | null> {
+    try {
+      const token = getToken();
+      if (!token) throw new Error('Authentication token not found. Please login again.');
+      const result = await apiClient.put<any>(`/ftw-12sqn-flying-examination-marks-additional/${id}`, data, token);
+      if (!result) throw new Error('Failed to update additional mark');
+      if (result.message && result.message.toLowerCase().includes('success')) {
+        return result.data || null;
+      }
+      if (result.success === false) throw new Error(result?.message || 'Failed to update additional mark');
+      return result.data || null;
+    } catch (error) {
+      console.error(`Failed to update additional flying examination mark ${id}:`, error);
+      throw error;
     }
   },
 };
