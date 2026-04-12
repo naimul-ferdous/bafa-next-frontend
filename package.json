@@ -11,6 +11,8 @@
         "deploy": "npm run export && touch out/.nojekyll"
     },
     "dependencies": {
+        "@fontsource/outfit": "^5.2.8",
+        "@fontsource/tiro-bangla": "^5.2.7",
         "@fullcalendar/core": "^6.1.15",
         "@fullcalendar/daygrid": "^6.1.15",
         "@fullcalendar/interaction": "^6.1.15",
@@ -27,7 +29,7 @@
         "autoprefixer": "^10.4.20",
         "flatpickr": "^4.6.13",
         "js-cookie": "^3.0.5",
-        "next": "^15.5.12",
+        "next": "15.2.3",
         "react": "^19.0.0",
         "react-apexcharts": "^1.7.0",
         "react-dnd": "^16.0.1",
