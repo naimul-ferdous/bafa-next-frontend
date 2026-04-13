@@ -147,9 +147,16 @@ export default function Ftw12sqnDetailedFlyingSyllabusPage() {
         const currentRow = tableData[index];
         const prevRow = tableData[index - 1];
 
+        const currentSort = currentRow.phase_sort;
+        const prevSort = prevRow.phase_sort;
+        const newCurrentSort = prevSort === currentSort ? currentSort : prevSort;
+        const newPrevSort = prevSort === currentSort ? currentSort + 1 : currentSort;
+
         try {
-            await ftw12sqnFlyingSyllabusService.update(currentRow.id, { phase_sort: prevRow.phase_sort });
-            await ftw12sqnFlyingSyllabusService.update(prevRow.id, { phase_sort: currentRow.phase_sort });
+            await Promise.all([
+                ftw12sqnFlyingSyllabusService.update(currentRow.id, { phase_sort: newCurrentSort }),
+                ftw12sqnFlyingSyllabusService.update(prevRow.id, { phase_sort: newPrevSort }),
+            ]);
             await loadSyllabus();
         } catch (error) {
             console.error("Failed to reorder:", error);
@@ -161,9 +168,16 @@ export default function Ftw12sqnDetailedFlyingSyllabusPage() {
         const currentRow = tableData[index];
         const nextRow = tableData[index + 1];
 
+        const currentSort = currentRow.phase_sort;
+        const nextSort = nextRow.phase_sort;
+        const newCurrentSort = nextSort === currentSort ? currentSort + 1 : nextSort;
+        const newNextSort = nextSort === currentSort ? currentSort : currentSort;
+
         try {
-            await ftw12sqnFlyingSyllabusService.update(currentRow.id, { phase_sort: nextRow.phase_sort });
-            await ftw12sqnFlyingSyllabusService.update(nextRow.id, { phase_sort: currentRow.phase_sort });
+            await Promise.all([
+                ftw12sqnFlyingSyllabusService.update(currentRow.id, { phase_sort: newCurrentSort }),
+                ftw12sqnFlyingSyllabusService.update(nextRow.id, { phase_sort: newNextSort }),
+            ]);
             await loadSyllabus();
         } catch (error) {
             console.error("Failed to reorder:", error);

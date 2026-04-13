@@ -126,7 +126,7 @@ export default function CtwMedicalDisposalCourseSemesterPage({
       key: "actions", header: "Actions", headerAlign: "center", className: "text-center no-print",
       render: (row) => (
         <div className="flex items-center justify-center gap-1" onClick={(e) => e.stopPropagation()}>
-          {can("view") && (
+          {/* {can("view") && ( */}
             <button
               onClick={(e) => { e.stopPropagation(); router.push(`/ctw/assessments/medical-disposal/disposal/${row.id}`); }}
               className="p-1.5 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-lg transition-all"
@@ -134,7 +134,7 @@ export default function CtwMedicalDisposalCourseSemesterPage({
             >
               <Icon icon="hugeicons:view" className="w-4 h-4" />
             </button>
-          )}
+          {/* )} */}
           {can("edit") && (
             <button
               onClick={(e) => { e.stopPropagation(); router.push(`/ctw/assessments/medical-disposal/disposal/${row.id}/edit`); }}

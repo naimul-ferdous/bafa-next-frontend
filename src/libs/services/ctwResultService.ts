@@ -15,11 +15,20 @@ interface CtwResultCreateData {
   group_id?: number;
   exam_type_id: number;
   instructor_id: number;
+  result_date?: string;
   remarks?: string;
   is_active?: boolean;
   marks: {
     cadet_id: number;
     achieved_mark: number;
+    remark?: string;
+    details?: {
+      ctw_results_module_estimated_marks_details_id: number;
+      marks: number;
+      practices_marks?: number;
+      qty?: number;
+      achieved_time?: string;
+    }[];
   }[];
 }
 

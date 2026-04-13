@@ -178,7 +178,7 @@ export default function CtwDtAssessmentResultsPage() {
       header: "SL.", 
       headerAlign: "center", 
       className: "text-center text-gray-900", 
-      render: (index) => (pagination.from || 0) + index 
+      render: (_, index) => (pagination.from || 0) + index
     },
     {
       key: "course",

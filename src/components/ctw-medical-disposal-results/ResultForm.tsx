@@ -11,6 +11,7 @@ import { cadetService } from "@/libs/services/cadetService";
 import { ctwMedicalDisposalSyllabusService } from "@/libs/services/ctwMedicalDisposalSyllabusService";
 import { ctwMedicalDisposalResultService } from "@/libs/services/ctwMedicalDisposalResultService";
 import SearchableSelect from "@/components/form/SearchableSelect";
+import DatePicker from "@/components/form/input/DatePicker";
 
 interface ResultFormProps {
   initialData?: CtwMedicalDisposalResult | null;
@@ -31,6 +32,7 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
   const [isActive, setIsActive]     = useState(true);
   const [schemaContents, setSchemaContents] = useState<Record<number, string>>({});
   const [error, setError] = useState("");
+  const [selectedDate, setSelectedDate] = useState<string>("");
 
   const [courses, setCourses]       = useState<SystemCourse[]>([]);
   const [semesters, setSemesters]   = useState<SystemSemester[]>([]);
@@ -47,7 +49,6 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
 
   const selectedSyllabus = syllabuses.find((s) => s.id === syllabusId);
   const filledCount = Object.values(schemaContents).filter((v) => v.trim()).length;
-  const todayText = new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
 
   const existingCount = !isEdit && cadetId > 0 ? (cadetResultMap[cadetId] ?? 0) : 0;
 
@@ -125,6 +126,7 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
     setCadetId(initialData.cadet_id);
     setSyllabusId(initialData.ctw_medical_disposal_id);
     setIsActive(initialData.is_active);
+    setSelectedDate(initialData.date || "");
     const map: Record<number, string> = {};
     initialData.result_schemas?.forEach((rs) => {
       map[rs.ctw_medical_disposal_syllabus_schema_id] = rs.result_content || "";
@@ -160,6 +162,7 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
       cadet_id: cadetId,
       ctw_medical_disposal_id: syllabusId,
       is_active: isActive,
+      date: selectedDate || undefined,
       schemas,
     });
   };
@@ -332,14 +335,22 @@ export default function ResultForm({ initialData, onSubmit, onCancel, loading, i
             <tbody>
               <tr>
                 <td className="px-4 py-3 text-center text-sm font-bold text-gray-500 border-r border-black align-middle">1</td>
-                <td className="px-4 py-3 text-center text-sm font-medium text-gray-700 border-r border-black align-middle whitespace-nowrap">{todayText}</td>
+                <td className="px-2 py-3 align-middle border-r border-black">
+                    <DatePicker
+                      value={selectedDate}
+                      onChange={(e: any) => setSelectedDate(e.target.value)}
+                      placeholder="dd/mm/yyyy"
+                      className="w-full px-2 py-1.5 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                    />
+                  </td>
                 {(selectedSyllabus?.schemas || []).map((schema, i, arr) => (
-                  <td key={schema.id} className={`px-3 py-3 align-top border-r border-black${i === arr.length - 1 ? " border-r-0" : ""}`}>
-                    <textarea
+                  <td key={schema.id} className={`px-2 py-3 align-top border-r border-black${i === arr.length - 1 ? " border-r-0" : ""}`}>
+                    <input
+                      type="text"
                       value={schemaContents[schema.id] || ""}
                       onChange={(e) => setSchemaContents((p) => ({ ...p, [schema.id]: e.target.value }))}
-                      className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none min-h-[80px] resize-none text-sm min-w-[160px]"
-                      placeholder="Enter content..."
+                      className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none text-sm"
+                      placeholder="Enter..."
                     />
                   </td>
                 ))}

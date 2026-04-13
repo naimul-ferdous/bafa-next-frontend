@@ -54,39 +54,58 @@ const secondsToTime = (seconds: number): string => {
 };
 
 const calculateMark = (detail: any, value: string, gender: string): number => {
-  const scores = detail.scores || [];
+  const scores = detail?.scores || [];
   const isFemale = gender.toLowerCase() === 'female';
   
-  if (scores.length === 0) return 0;
+  if (!scores || scores.length === 0) {
+    const directValue = parseFloat(value);
+    return isNaN(directValue) ? 0 : directValue;
+  }
 
   const firstScore = scores[0];
-  const isTimeBased = isFemale ? !!firstScore.female_time : !!firstScore.male_time;
+  const isTimeBased = isFemale ? !!firstScore?.female_time : !!firstScore?.male_time;
 
-  if (isTimeBased) {
+if (isTimeBased) {
     const cadetSeconds = timeToSeconds(value);
     if (cadetSeconds === 0) return 0;
 
-    let bestMark = 0;
-    scores.forEach((s: any) => {
-      const scoreTime = timeToSeconds(isFemale ? s.female_time : s.male_time);
-      const scoreMark = parseFloat(isFemale ? s.female_mark : s.male_mark);
-      if (cadetSeconds <= scoreTime) {
-        if (scoreMark > bestMark) bestMark = scoreMark;
-      }
+    // Sort scores by time (DESCENDING - slowest first)
+    const sortedScores = [...scores].sort((a: any, b: any) => {
+      const timeA = timeToSeconds(isFemale ? a.female_time : a.male_time);
+      const timeB = timeToSeconds(isFemale ? b.female_time : b.male_time);
+      return timeB - timeA;
     });
+
+    // For time-based: lower time = better. Find first where cadet >= scoreTime
+    let bestMark = 0;
+    for (const s of sortedScores) {
+      const scoreTime = timeToSeconds(isFemale ? s.female_time : s.male_time);
+      if (cadetSeconds >= scoreTime) {
+        bestMark = parseFloat(isFemale ? s.female_mark : s.male_mark);
+        break;
+      }
+    }
     return bestMark;
   } else {
     const cadetQty = parseFloat(value) || 0;
     if (cadetQty === 0) return 0;
 
-    let bestMark = 0;
-    scores.forEach((s: any) => {
-      const scoreQty = parseFloat(isFemale ? s.female_quantity : s.male_quantity) || 0;
-      const scoreMark = parseFloat(isFemale ? s.female_mark : s.male_mark);
-      if (cadetQty >= scoreQty) {
-        if (scoreMark > bestMark) bestMark = scoreMark;
-      }
+    // Sort scores by quantity (descending)
+    const sortedScores = [...scores].sort((a: any, b: any) => {
+      const qtyA = parseFloat(isFemale ? a.female_quantity : a.male_quantity) || 0;
+      const qtyB = parseFloat(isFemale ? b.female_quantity : b.male_quantity) || 0;
+      return qtyB - qtyA;
     });
+
+    // For quantity-based: higher qty = better
+    let bestMark = 0;
+    for (const s of sortedScores) {
+      const scoreQty = parseFloat(isFemale ? s.female_quantity : s.male_quantity) || 0;
+      if (cadetQty >= scoreQty) {
+        bestMark = parseFloat(isFemale ? s.female_mark : s.male_mark);
+        break;
+      }
+    }
     return bestMark;
   }
 };

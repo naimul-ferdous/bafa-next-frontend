@@ -17,6 +17,17 @@ const STATUS_BADGE: Record<string, string> = {
     excused: "bg-blue-100 text-blue-800",
 };
 
+interface AttendanceTypeCard {
+    id: number;
+    name: string;
+    short_name: string;
+    total_sessions: number;
+    present_count: number;
+    absent_count: number;
+    late_count: number;
+    excused_count: number;
+}
+
 export default function CtwAttendanceCourseSemesterPage() {
     const router = useRouter();
     const params = useParams();
@@ -33,6 +44,7 @@ export default function CtwAttendanceCourseSemesterPage() {
 
     const [courseName, setCourseName] = useState("");
     const [semesterName, setSemesterName] = useState("");
+    const [attendanceTypes, setAttendanceTypes] = useState<AttendanceTypeCard[]>([]);
 
     const [deleteModalOpen, setDeleteModalOpen] = useState(false);
     const [deletingResult, setDeletingResult] = useState<CtwAttendenceResult | null>(null);
@@ -41,21 +53,32 @@ export default function CtwAttendanceCourseSemesterPage() {
     const loadResults = useCallback(async () => {
         setLoading(true);
         try {
-            const res = await ctwAttendenceResultService.getAll({
-                course_id: courseId,
-                semester_id: semesterId,
-                page: currentPage,
-                per_page: perPage,
+            const [resultsRes, typesRes] = await Promise.all([
+                ctwAttendenceResultService.getAll({
+                    course_id: courseId,
+                    semester_id: semesterId,
+                    page: 1,
+                    per_page: 1000,
+                }),
+                ctwAttendenceResultService.getAttendanceTypesByCourseSemester(courseId, semesterId),
+            ]);
+            setResults(resultsRes.data);
+            setPagination({
+                current_page: resultsRes.current_page,
+                last_page: resultsRes.last_page,
+                per_page: resultsRes.per_page,
+                total: resultsRes.total,
+                from: resultsRes.from,
+                to: resultsRes.to,
             });
-            setResults(res.data);
-            setPagination({ current_page: res.current_page, last_page: res.last_page, per_page: res.per_page, total: res.total, from: res.from, to: res.to });
-            if (res.data.length > 0) {
-                setCourseName(res.data[0].course?.name ?? "");
-                setSemesterName(res.data[0].semester?.name ?? "");
+            setAttendanceTypes(typesRes);
+            if (resultsRes.data.length > 0) {
+                setCourseName(resultsRes.data[0].course?.name ?? "");
+                setSemesterName(resultsRes.data[0].semester?.name ?? "");
             }
         } catch (e) { console.error(e); }
         finally { setLoading(false); }
-    }, [courseId, semesterId, currentPage, perPage]);
+    }, [courseId, semesterId]);
 
     useEffect(() => { loadResults(); }, [loadResults]);
 
@@ -293,7 +316,7 @@ export default function CtwAttendanceCourseSemesterPage() {
                     </button>
                 </div>
             </div>
-            
+
             <div className="p-4 cv-content space-y-4">
                 {/* Header */}
                 <div className="text-center mb-6">
@@ -305,18 +328,75 @@ export default function CtwAttendanceCourseSemesterPage() {
                     )}
                 </div>
 
+                {/* Attendance Type Cards */}
+                <div className="mb-6">
+                    <div className="flex justify-end mb-4">
+                        <button
+                            onClick={() => router.push(`/ctw/attendence/attend/create?course_id=${courseId}&semester_id=${semesterId}`)}
+                            className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium flex items-center gap-2 hover:bg-blue-700"
+                        >
+                            <Icon icon="hugeicons:add-circle" className="w-4 h-4" /> Add Attendance
+                        </button>
+                    </div>
+                    {loading ? (
+                        <div className="w-full min-h-[20vh] flex items-center justify-center">
+                            <Icon icon="hugeicons:fan-01" className="w-10 h-10 animate-spin text-blue-500" />
+                        </div>
+                    ) : attendanceTypes.length === 0 ? (
+                        <div className="text-center py-8 text-gray-500">No attendance types found</div>
+                    ) : (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                            {attendanceTypes.map((type) => (
+                                <div
+                                    key={type.id}
+                                    onClick={() => router.push(`/ctw/attendence/attend/course/${courseId}/semester/${semesterId}/${type.id}`)}
+                                    className="bg-white border border-gray-200 rounded-lg p-4 cursor-pointer hover:border-blue-400 hover:shadow-md transition-all"
+                                >
+                                    <div className="flex items-start justify-between mb-3">
+                                        <div>
+                                            <h4 className="font-semibold text-gray-900">{type.name}</h4>
+                                            <p className="text-xs text-gray-500">{type.short_name}</p>
+                                        </div>
+                                        <span className="px-2 py-1 bg-blue-100 text-blue-800 text-xs font-semibold rounded-full">
+                                            {type.total_sessions} sessions
+                                        </span>
+                                    </div>
+                                    <div className="grid grid-cols-4 gap-2 text-center">
+                                        <div className="bg-green-50 rounded py-1">
+                                            <div className="text-xs font-semibold text-green-700">{type.present_count}</div>
+                                            <div className="text-[10px] text-green-600">P</div>
+                                        </div>
+                                        <div className="bg-red-50 rounded py-1">
+                                            <div className="text-xs font-semibold text-red-700">{type.absent_count}</div>
+                                            <div className="text-[10px] text-red-600">A</div>
+                                        </div>
+                                        <div className="bg-yellow-50 rounded py-1">
+                                            <div className="text-xs font-semibold text-yellow-700">{type.late_count}</div>
+                                            <div className="text-[10px] text-yellow-600">L</div>
+                                        </div>
+                                        <div className="bg-blue-50 rounded py-1">
+                                            <div className="text-xs font-semibold text-blue-700">{type.excused_count}</div>
+                                            <div className="text-[10px] text-blue-600">E</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+
                 {/* Toolbar */}
-                <div className="flex items-center justify-end gap-4">
+                {/* <div className="flex items-center justify-end gap-4">
                     <button
                         onClick={() => router.push(`/ctw/attendence/attend/create?course_id=${courseId}&semester_id=${semesterId}`)}
                         className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium flex items-center gap-2 hover:bg-blue-700"
                     >
                         <Icon icon="hugeicons:add-circle" className="w-4 h-4" /> Add Attendance
                     </button>
-                </div>
+                </div> */}
 
                 {/* Table */}
-                {loading ? (
+                {/* {loading ? (
                     <div className="w-full min-h-[20vh] flex items-center justify-center">
                         <Icon icon="hugeicons:fan-01" className="w-10 h-10 animate-spin text-blue-500" />
                     </div>
@@ -328,10 +408,10 @@ export default function CtwAttendanceCourseSemesterPage() {
                         emptyMessage="No attendance sessions found"
                         onRowClick={(r) => router.push(`/ctw/attendence/attend/${r.id}`)}
                     />
-                )}
+                )} */}
 
                 {/* Pagination */}
-                {!loading && (
+                {/* {!loading && (
                     <div className="flex items-center justify-between text-sm">
                         <div className="flex items-center gap-4">
                             <span className="text-gray-600">Showing {pagination.from || 0} to {pagination.to || 0} of {pagination.total} results</span>
@@ -355,7 +435,7 @@ export default function CtwAttendanceCourseSemesterPage() {
                             </button>
                         </div>
                     </div>
-                )}
+                )} */}
             </div>
 
             <ConfirmationModal

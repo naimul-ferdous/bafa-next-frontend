@@ -6,13 +6,60 @@ import { useRouter, useParams } from "next/navigation";
 import { Icon } from "@iconify/react";
 import { ctwGstoAssessmentResultService } from "@/libs/services/ctwGstoAssessmentResultService";
 import { ctwDtAssessmentResultService } from "@/libs/services/ctwDtAssessmentResultService";
+import { ctwApprovalService } from "@/libs/services/ctwApprovalService";
+import { useAuth } from "@/libs/hooks/useAuth";
 import FullLogo from "@/components/ui/fulllogo";
+import { Modal } from "@/components/ui/modal/index";
 
 const GSTO_ASSESSMENT_MODULE_CODE = "gsto_assessment";
+
+function SignatureBox({ auth, signer, approvedAt, position }: {
+  auth: any;
+  signer: { name: string; rank?: { name: string; short_name: string } | null; signature?: string | null; designation?: string | null } | null;
+  approvedAt?: string | null;
+  position?: 'first' | 'middle' | 'last';
+}) {
+  const [imgFailed, setImgFailed] = React.useState(false);
+  const dateStr = approvedAt ? (() => {
+    const d = new Date(approvedAt);
+    return `${String(d.getDate()).padStart(2, '0')}-${d.toLocaleDateString('en-US', { month: 'short' }).toUpperCase()}-${d.getFullYear()}`;
+  })() : null;
+  const label = position === 'first' ? 'Prepared & Checked By' : position === 'last' ? 'Approved By' : auth.role?.name ?? auth.user?.name ?? '—';
+  const roleName = auth.role?.name ?? auth.user?.name ?? null;
+  return (
+    <div className="signature-box flex flex-col items-start min-w-[180px]">
+      <p className="sig-label text-sm font-bold uppercase text-gray-900 mb-1 tracking-wide">{label}</p>
+      <div className="sig-area w-full flex items-end justify-start pb-1 h-16">
+        {signer?.signature && !imgFailed ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={signer.signature} alt="" className="max-h-14 max-w-[150px] object-contain" onError={() => setImgFailed(true)} />
+        ) : (
+          <span className="text-sm italic text-gray-400">—</span>
+        )}
+      </div>
+      {signer ? (
+        <>
+          <p className="sig-name text-sm font-bold text-gray-900 uppercase mt-1">{signer.name}</p>
+          {signer?.rank?.short_name && <p className="sig-rank text-xs font-semibold text-orange-500">{signer.rank.short_name}</p>}
+          {signer?.designation && <p className="sig-designation text-xs text-gray-700">{signer.designation}</p>}
+          {dateStr && <p className="sig-date text-xs text-gray-500 pt-0.5 border-t border-gray-800 mt-1">{dateStr}</p>}
+        </>
+      ) : (
+        roleName && (
+          <>
+            <p className="text-sm text-gray-700 mt-1">{roleName}</p>
+            <p className="text-xs text-gray-400 pt-0.5 border-t border-gray-800 mt-1 w-full">Date: ___________</p>
+          </>
+        )
+      )}
+    </div>
+  );
+}
 
 export default function GstoAssessmentCourseSemesterResultPage() {
   const router = useRouter();
   const params = useParams();
+  const { user } = useAuth();
   const courseId = parseInt(params?.courseId as string);
   const semesterId = parseInt(params?.semesterId as string);
 
@@ -23,15 +70,37 @@ export default function GstoAssessmentCourseSemesterResultPage() {
   const [semesterDetails, setSemesterDetails] = useState<any>(null);
   const [examType, setExamType] = useState<string>("");
   const [cadets, setCadets] = useState<any[]>([]);
-
+  const [submissions, setSubmissions] = useState<any[]>([]);
+  const [moduleDetails, setModuleDetails] = useState<any>(null);
   const [estimatedMark, setEstimatedMark] = useState<any>(null);
 
   // Per-cadet mark map: cadetId => { achieved_mark, details: { detailId => marks } }
   const [cadetMarksMap, setCadetMarksMap] = useState<Map<number, any>>(new Map());
 
-  // DT/PF generated marks: cadetId => { combined_converted, dt_converted, pf_converted, dt_achieved, pf_achieved, avg_achieved }
+  // DT/PF generated marks
   const [generatedCadetMarks, setGeneratedCadetMarks] = useState<Map<number, any>>(new Map());
   const [generatedConfig, setGeneratedConfig] = useState({ dt_conversation_mark: 0, pf_conversation_mark: 0 });
+
+  // Approval data
+  const [approvalAuthorities, setApprovalAuthorities] = useState<any[]>([]);
+  const [cadetApprovals, setCadetApprovals] = useState<any[]>([]);
+  const [moduleApprovals, setModuleApprovals] = useState<any[]>([]);
+
+  // Approval UI state
+  const [selectedCadetIds, setSelectedCadetIds] = useState<number[]>([]);
+  const [approvalModal, setApprovalModal] = useState<{
+    open: boolean; cadetIds: number[]; status: "approved" | "rejected";
+    rejectedReason: string; loading: boolean; error: string;
+  }>({ open: false, cadetIds: [], status: "approved", rejectedReason: "", loading: false, error: "" });
+
+  const [forwardModal, setForwardModal] = useState<{
+    open: boolean; loading: boolean; error: string;
+  }>({ open: false, loading: false, error: "" });
+
+  const [moduleApprovalModal, setModuleApprovalModal] = useState<{
+    open: boolean; status: "approved" | "rejected";
+    rejectedReason: string; loading: boolean; error: string;
+  }>({ open: false, status: "approved", rejectedReason: "", loading: false, error: "" });
 
   const loadData = useCallback(async () => {
     if (isNaN(courseId) || isNaN(semesterId)) return;
@@ -51,33 +120,30 @@ export default function GstoAssessmentCourseSemesterResultPage() {
         }),
       ]);
 
-      if (!data) {
-        setError("Failed to retrieve initial data");
-        return;
-      }
+      if (!data) { setError("Failed to retrieve initial data"); return; }
 
+      setModuleDetails(data.module || null);
       setEstimatedMark(data.estimated_mark_config || null);
       setCourseDetails(data.course_details || null);
       setSemesterDetails(data.semester_details || null);
       setCadets(data.cadets || []);
+      setApprovalAuthorities(data.approval_authorities || []);
+      setCadetApprovals(data.cadet_approvals || []);
+      setModuleApprovals(data.module_approvals || []);
 
       if (data.grouped_results && data.grouped_results.length > 0) {
         setExamType(data.grouped_results[0].exam_type || "");
+        setSubmissions(data.grouped_results[0].submissions || []);
 
-        // Build per-cadet marks from all submissions
         const marksMap = new Map<number, any>();
         for (const group of data.grouped_results) {
           for (const sub of group.submissions || []) {
             const marks: any[] = sub.instructor_details?.marks || [];
             for (const m of marks) {
               const cid = m.cadet_id;
-              if (!marksMap.has(cid)) {
-                marksMap.set(cid, { achieved_mark: 0, details: {} });
-              }
+              if (!marksMap.has(cid)) marksMap.set(cid, { achieved_mark: 0, details: {} });
               const entry = marksMap.get(cid)!;
-              // achieved_mark: use the latest/sum (GSTO typically one submission)
               entry.achieved_mark = parseFloat(String(m.achieved_mark || 0));
-              // details: map by estimated_marks_details_id => marks value
               for (const d of m.details || []) {
                 const did = d.ctw_results_module_estimated_marks_details_id;
                 if (did) entry.details[did] = parseFloat(d.marks || 0);
@@ -90,7 +156,6 @@ export default function GstoAssessmentCourseSemesterResultPage() {
         setError("No results found for this course and semester");
       }
 
-      // DT/PF map
       const dtPfMap = new Map<number, any>();
       (dtPfRes.data || []).forEach((row: any) => dtPfMap.set(row.cadet_id, row));
       setGeneratedCadetMarks(dtPfMap);
@@ -98,7 +163,6 @@ export default function GstoAssessmentCourseSemesterResultPage() {
         dt_conversation_mark: dtPfRes.dt_conversation_mark || 0,
         pf_conversation_mark: dtPfRes.pf_conversation_mark || 0,
       });
-
     } catch (err) {
       console.error("Failed to load data:", err);
       setError("An unexpected error occurred while loading data");
@@ -107,9 +171,7 @@ export default function GstoAssessmentCourseSemesterResultPage() {
     }
   }, [courseId, semesterId]);
 
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
+  useEffect(() => { loadData(); }, [loadData]);
 
   // ── Derived config ────────────────────────────────────────────────────────────
   const allDetails: any[] = useMemo(() => estimatedMark?.details || [], [estimatedMark]);
@@ -121,7 +183,6 @@ export default function GstoAssessmentCourseSemesterResultPage() {
   const maxTotal = detailsTotal + ncoTotal;
   const passThreshold = maxTotal * 0.5;
 
-  // Cadets who have marks, sorted by BD number
   const cadetRows = useMemo(() => {
     return cadets
       .filter(c => cadetMarksMap.has(c.id))
@@ -129,6 +190,208 @@ export default function GstoAssessmentCourseSemesterResultPage() {
         String(a.cadet_number ?? "").localeCompare(String(b.cadet_number ?? ""), undefined, { numeric: true })
       );
   }, [cadets, cadetMarksMap]);
+
+  // ── Authority / permission logic ─────────────────────────────────────────────
+  const primaryRoleIds = (user as any)?.roles?.filter((r: any) => r.pivot?.is_primary).map((r: any) => r.id) ?? [];
+  const allRoleIds = (user as any)?.roles?.map((r: any) => r.id) ?? [];
+  const userRoleIds = primaryRoleIds.length > 0 ? primaryRoleIds : allRoleIds;
+  const userId = user?.id;
+
+  const myAuthority = approvalAuthorities.find((a: any) =>
+    (a.user_id && a.user_id === userId) || (a.role_id && userRoleIds.includes(a.role_id))
+  ) ?? null;
+
+  const canApprove = approvalAuthorities.some((a: any) => {
+    const hasPermission = a.is_initial_cadet_approve || a.is_cadet_approve;
+    if (!hasPermission) return false;
+    if (a.user_id && a.user_id === userId) return true;
+    if (a.role_id && userRoleIds.includes(a.role_id)) return true;
+    return false;
+  });
+
+  const canInitialForward = approvalAuthorities.some((a: any) => {
+    if (!a.is_initial_cadet_approve || !a.is_active) return false;
+    if (a.user_id && a.user_id === userId) return true;
+    if (a.role_id && userRoleIds.includes(a.role_id)) return true;
+    return false;
+  });
+
+  const allInstructorsSubmitted = (moduleDetails?.instructor_count ?? 0) > 0 && submissions.length >= (moduleDetails?.instructor_count ?? 0);
+
+  const isForwarded = submissions.length > 0 && submissions.every((sub: any) =>
+    moduleApprovals.some((ma: any) => Number(ma.ctw_result_id) === Number(sub?.id))
+  );
+
+  // cadetRows used as aggregatedMarks proxy
+  const aggregatedMarks = useMemo(() => cadetRows.map(c => ({ cadet: c })), [cadetRows]);
+
+  const allResultsApprovedByPreviousLevel = useMemo(() => {
+    if (submissions.length === 0 || aggregatedMarks.length === 0) return false;
+    if (canInitialForward) return true;
+    if (!myAuthority) return false;
+    const mySort = (myAuthority as any).sort ?? 0;
+    const prevAuthorities = approvalAuthorities.filter((a: any) => a.is_active && (a.sort ?? 0) < mySort);
+    if (prevAuthorities.length === 0) return true;
+    return submissions.every((sub: any) => {
+      const resultId = sub?.id;
+      if (!resultId) return false;
+      return prevAuthorities.every((prevAuth: any) =>
+        aggregatedMarks.every((item: any) =>
+          cadetApprovals.some((a: any) =>
+            Number(a.cadet_id) === Number(item.cadet.id) &&
+            Number(a.ctw_result_id) === Number(resultId) &&
+            Number(a.authority_id) === Number(prevAuth.id) &&
+            a.is_active && a.status === "approved"
+          )
+        )
+      );
+    });
+  }, [submissions, aggregatedMarks, cadetApprovals, approvalAuthorities, myAuthority, canInitialForward]);
+
+  const allCadetsApproved = useMemo(() => {
+    if (aggregatedMarks.length === 0 || !myAuthority) return false;
+    const authorityId = (myAuthority as any)?.id;
+    return aggregatedMarks.every((item: any) => {
+      const approval = cadetApprovals.find((a: any) =>
+        a.cadet_id === item.cadet.id && a.authority_id === authorityId
+      );
+      return approval?.status === "approved";
+    });
+  }, [aggregatedMarks, cadetApprovals, myAuthority]);
+
+  const isMyTurn = canInitialForward
+    ? !isForwarded
+    : ((moduleApprovals?.find((sa: any) => sa.authority_id === (myAuthority as any)?.id))?.status === "pending");
+  const canApproveAction = canApprove && isMyTurn && allResultsApprovedByPreviousLevel;
+
+  const allCadetsApprovedByMe = useMemo(() => {
+    if (!myAuthority) return false;
+    return aggregatedMarks.every((item: any) => {
+      const a = cadetApprovals.find((ap: any) =>
+        ap.cadet_id === item.cadet.id && ap.authority_id === (myAuthority as any).id
+      );
+      return a?.status === "approved";
+    });
+  }, [aggregatedMarks, cadetApprovals, myAuthority]);
+
+  const myModuleApproval = myAuthority
+    ? moduleApprovals?.find((sa: any) => sa.authority_id === (myAuthority as any).id)
+    : null;
+  const isModuleApproved = myModuleApproval?.status === "approved";
+
+  const canApproveModule = canApprove && isMyTurn && allCadetsApprovedByMe && !isModuleApproved && !canInitialForward && allInstructorsSubmitted;
+  const showForwardButton = canInitialForward && !isForwarded && allCadetsApproved && allInstructorsSubmitted;
+
+  const getNextAuthority = useCallback(() => {
+    const sorted = [...approvalAuthorities].filter((a: any) => a.is_active).sort((a: any, b: any) => (a.sort ?? 0) - (b.sort ?? 0));
+    if (!myAuthority) return sorted.find((a: any) => !a.is_initial_cadet_approve) ?? null;
+    return sorted.find((a: any) => (a.sort ?? 0) > ((myAuthority as any).sort ?? 0)) ?? null;
+  }, [approvalAuthorities, myAuthority]);
+
+  const getCadetApprovalStatus = useCallback((cadetId: number) => {
+    const authorityId = (myAuthority as any)?.id;
+    if (!authorityId) return "pending";
+    const approval = cadetApprovals.find((a: any) =>
+      Number(a.cadet_id) === Number(cadetId) && Number(a.authority_id) === Number(authorityId) && a.is_active
+    );
+    return approval?.status ?? "pending";
+  }, [cadetApprovals, myAuthority]);
+
+  const getResultAuthorityStatus = useCallback((ctwResultId: number | undefined, cadetId: number, authorityId: number): string => {
+    if (!ctwResultId) return "waiting";
+    const approval = cadetApprovals.find((a: any) =>
+      Number(a.cadet_id) === Number(cadetId) &&
+      Number(a.ctw_result_id) === Number(ctwResultId) &&
+      Number(a.authority_id) === Number(authorityId) &&
+      a.is_active
+    );
+    if (approval?.status === "approved") return "approved";
+    if (approval?.status === "rejected") return "rejected";
+    return "pending";
+  }, [cadetApprovals]);
+
+  const pendingCadetIds = useMemo(() => {
+    return aggregatedMarks.filter((item: any) => {
+      if (!myAuthority) return false;
+      const approval = cadetApprovals.find((a: any) =>
+        Number(a.cadet_id) === Number(item.cadet.id) && Number(a.authority_id) === Number((myAuthority as any).id) && a.is_active
+      );
+      return !approval || approval.status === "pending";
+    }).map((item: any) => item.cadet.id);
+  }, [aggregatedMarks, cadetApprovals, myAuthority]);
+
+  const allPendingSelected = pendingCadetIds.length > 0 && pendingCadetIds.every((id: number) => selectedCadetIds.includes(id));
+  const toggleCadet = (cadetId: number) => setSelectedCadetIds(prev => prev.includes(cadetId) ? prev.filter(id => id !== cadetId) : [...prev, cadetId]);
+  const toggleSelectAll = () => setSelectedCadetIds(allPendingSelected ? [] : pendingCadetIds);
+
+  // ── Actions ───────────────────────────────────────────────────────────────────
+  const confirmApproval = async () => {
+    if (!moduleDetails) return;
+    if (approvalModal.status === "rejected" && !approvalModal.rejectedReason.trim()) {
+      setApprovalModal(prev => ({ ...prev, error: "Rejection reason is required." })); return;
+    }
+    setApprovalModal(prev => ({ ...prev, loading: true, error: "" }));
+    try {
+      for (const sub of submissions) {
+        await ctwApprovalService.approveCadets({
+          course_id: courseId, semester_id: semesterId,
+          module_id: moduleDetails.id, ctw_result_id: sub?.id,
+          cadet_ids: approvalModal.cadetIds,
+          authority_id: (myAuthority as any)?.id ?? null,
+          status: approvalModal.status,
+          rejected_reason: approvalModal.status === "rejected" ? approvalModal.rejectedReason : undefined,
+        });
+      }
+      setApprovalModal({ open: false, cadetIds: [], status: "approved", rejectedReason: "", loading: false, error: "" });
+      setSelectedCadetIds([]);
+      await loadData();
+    } catch (err: any) {
+      const msg = err?.errors ? Object.values(err.errors).flat().join(" ") : err?.message || "Failed to update approval status.";
+      setApprovalModal(prev => ({ ...prev, loading: false, error: msg }));
+    }
+  };
+
+  const confirmForward = async () => {
+    if (!moduleDetails) return;
+    setForwardModal(prev => ({ ...prev, loading: true, error: "" }));
+    try {
+      const nextAuth = getNextAuthority();
+      for (const sub of submissions) {
+        await ctwApprovalService.forwardModule({
+          course_id: courseId, semester_id: semesterId,
+          module_id: moduleDetails.id, ctw_result_id: sub?.id,
+          authority_ids: nextAuth ? [nextAuth.id] : [],
+        });
+      }
+      setForwardModal({ open: false, loading: false, error: "" });
+      await loadData();
+    } catch (err: any) {
+      setForwardModal(prev => ({ ...prev, loading: false, error: err?.message || "Failed to forward result." }));
+    }
+  };
+
+  const confirmModuleApproval = async () => {
+    if (!moduleDetails) return;
+    setModuleApprovalModal(prev => ({ ...prev, loading: true, error: "" }));
+    try {
+      const nextAuthority = getNextAuthority();
+      for (const sub of submissions) {
+        await ctwApprovalService.approveModule({
+          course_id: courseId, semester_id: semesterId,
+          module_id: moduleDetails.id, ctw_result_id: sub?.id,
+          status: moduleApprovalModal.status,
+          rejected_reason: moduleApprovalModal.status === "rejected" ? moduleApprovalModal.rejectedReason : undefined,
+          cadet_ids: aggregatedMarks.map((item: any) => item.cadet.id),
+          authority_id: (myAuthority as any)?.id ?? null,
+          authority_ids: nextAuthority ? [nextAuthority.id] : [],
+        });
+      }
+      setModuleApprovalModal(prev => ({ ...prev, open: false, loading: false }));
+      await loadData();
+    } catch (err: any) {
+      setModuleApprovalModal(prev => ({ ...prev, loading: false, error: err?.message || "Failed to update module approval." }));
+    }
+  };
 
   const handlePrint = () => window.print();
 
@@ -160,9 +423,43 @@ export default function GstoAssessmentCourseSemesterResultPage() {
     );
   }
 
+  const instructorCount = moduleDetails?.instructor_count || 0;
+
   return (
     <div className="print-no-border bg-white rounded-lg border border-gray-200">
-      {/* Top bar */}
+      <style jsx global>{`
+        @media print {
+          @page { size: A3 landscape; margin: 15mm 15mm 20mm 15mm; }
+          .cv-content { width: 100% !important; max-width: none !important; }
+          table { font-size: 11px !important; border-collapse: collapse !important; width: 100% !important; }
+          th, td { border: 1px solid black !important; padding: 4px !important; }
+          .no-print { display: none !important; }
+          .signature-section {
+            margin-top: 40px !important;
+            padding-top: 20px !important;
+            display: flex !important;
+            justify-content: space-between !important;
+            gap: 40px !important;
+            padding-left: 8px !important;
+            padding-right: 8px !important;
+            page-break-inside: avoid !important;
+          }
+          .signature-box {
+            min-width: 180px !important;
+            display: flex !important;
+            flex-direction: column !important;
+            align-items: flex-start !important;
+          }
+          .signature-box .sig-label { font-size: 10px !important; font-weight: 700 !important; color: #111827 !important; text-transform: uppercase !important; letter-spacing: 0.05em !important; margin-bottom: 4px !important; }
+          .signature-box .sig-area { height: 60px !important; display: flex !important; align-items: flex-end !important; padding-bottom: 4px !important; margin-bottom: 4px !important; }
+          .signature-box .sig-name { font-size: 11px !important; font-weight: 700 !important; text-transform: uppercase !important; color: #111827 !important; margin-top: 2px !important; }
+          .signature-box .sig-rank { font-size: 11px !important; font-weight: 600 !important; color: #f97316 !important; }
+          .signature-box .sig-designation { font-size: 10px !important; color: #374151 !important; }
+          .signature-box .sig-date { font-size: 10px !important; color: #6b7280 !important; padding-top: 3px !important; border-top: 1px solid #1f2937 !important; margin-top: 4px !important; }
+        }
+      `}</style>
+
+      {/* Action Buttons */}
       <div className="p-4 flex items-center justify-between no-print">
         <button
           onClick={() => router.push("/ctw/results/assessment_observation/gsto")}
@@ -171,23 +468,72 @@ export default function GstoAssessmentCourseSemesterResultPage() {
           <Icon icon="hugeicons:arrow-left-01" className="w-4 h-4" />
           Back to List
         </button>
-        <button
-          onClick={handlePrint}
-          className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 flex items-center gap-2"
-        >
-          <Icon icon="hugeicons:printer" className="w-4 h-4" /> Print
-        </button>
+        <div className="flex items-center gap-3">
+          {canApproveAction && selectedCadetIds.length > 0 && allInstructorsSubmitted && (
+            <button
+              onClick={() => setApprovalModal({ open: true, cadetIds: selectedCadetIds, status: "approved", rejectedReason: "", loading: false, error: "" })}
+              className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2 text-sm font-medium"
+            >
+              <Icon icon="hugeicons:checkmark-circle-02" className="w-4 h-4" />
+              Approve Selected ({selectedCadetIds.length})
+            </button>
+          )}
+          {showForwardButton && (
+            <button
+              onClick={() => setForwardModal({ open: true, loading: false, error: "" })}
+              className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 flex items-center gap-2 text-sm font-medium"
+            >
+              <Icon icon="hugeicons:share-04" className="w-4 h-4" />
+              Forward {getNextAuthority() ? `to ${getNextAuthority()?.role?.name || getNextAuthority()?.user?.name || "Next"}` : ""}
+            </button>
+          )}
+          {canInitialForward && isForwarded && (
+            <span className="px-4 py-2 rounded-lg flex items-center gap-2 text-sm font-medium bg-green-50 text-green-700 border border-green-200">
+              <Icon icon="hugeicons:checkmark-circle-02" className="w-4 h-4" />Already Forwarded
+            </span>
+          )}
+          {isModuleApproved && !canInitialForward && canApprove && (
+            <span className="px-4 py-2 rounded-lg flex items-center gap-2 text-sm font-medium bg-green-50 text-green-700 border border-green-200">
+              <Icon icon="hugeicons:checkmark-circle-02" className="w-4 h-4" />Module Approved
+            </span>
+          )}
+          {canApproveModule && (
+            <button
+              onClick={() => setModuleApprovalModal({ open: true, status: "approved", rejectedReason: "", loading: false, error: "" })}
+              className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2 text-sm font-medium"
+            >
+              <Icon icon="hugeicons:checkmark-circle-02" className="w-4 h-4" />Approve Module
+            </button>
+          )}
+          {!allInstructorsSubmitted && canApprove && (
+            <span className="px-4 py-2 rounded-lg flex items-center gap-2 text-sm font-medium bg-yellow-50 text-yellow-700 border border-yellow-200">
+              <Icon icon="hugeicons:alert-circle" className="w-4 h-4" />
+              Awaiting {instructorCount - submissions.length} instructor{instructorCount - submissions.length > 1 ? "s" : ""}
+            </span>
+          )}
+          <button
+            onClick={handlePrint}
+            className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+          >
+            <Icon icon="hugeicons:printer" className="w-4 h-4" /> Print
+          </button>
+        </div>
       </div>
 
-      <div className="p-8 cv-content">
+      <div className="p-4 cv-content">
         {/* Header */}
-        <div className="mb-8 text-center">
+        <div className="mb-8">
           <div className="flex justify-center mb-4"><FullLogo /></div>
-          <h1 className="text-xl font-bold text-gray-900 uppercase tracking-wider">Bangladesh Air Force Academy</h1>
-          <p className="font-medium text-gray-900 uppercase tracking-wider pb-2">SQN CDR/GSTO Impression Result Sheet</p>
-          <p className="text-sm text-gray-700 uppercase">
-            {courseDetails?.name || ""}{semesterDetails?.name ? ` — ${semesterDetails.name}` : ""}{examType ? ` — ${examType}` : ""}
-          </p>
+          <h1 className="text-center text-xl font-bold text-gray-900 uppercase tracking-wider">Bangladesh Air Force Academy</h1>
+          <div className="mb-2">
+            <p className="text-center font-medium text-gray-900 uppercase underline tracking-wider">Cadet Training Wing</p>
+            <p className="text-center font-medium text-gray-900 uppercase underline tracking-wider">
+              {courseDetails?.name} ({moduleDetails?.full_name || "GSTO Assessment"})
+            </p>
+            <p className="text-center font-medium text-gray-900 uppercase underline tracking-wider">
+              {semesterDetails?.name}{examType ? ` | ${examType}` : ""}
+            </p>
+          </div>
         </div>
 
         {/* Marks Table */}
@@ -196,6 +542,11 @@ export default function GstoAssessmentCourseSemesterResultPage() {
             <table className="w-full border-collapse border border-black text-xs">
               <thead>
                 <tr className="font-semibold">
+                  {canApproveAction && pendingCadetIds.length > 0 && allInstructorsSubmitted && (
+                    <th className="border border-black px-2 py-2 text-center align-middle no-print">
+                      <input type="checkbox" checked={allPendingSelected} onChange={toggleSelectAll} className="w-4 h-4" />
+                    </th>
+                  )}
                   <th className="border border-black px-2 py-2 text-center align-middle">Ser</th>
                   <th className="border border-black px-2 py-2 text-center align-middle">BD</th>
                   <th className="border border-black px-2 py-2 text-center align-middle">Rk</th>
@@ -224,6 +575,10 @@ export default function GstoAssessmentCourseSemesterResultPage() {
                     </div>
                   </th>
                   <th className="border border-black px-2 py-2 text-center align-middle">Rmk</th>
+                  <th className="border border-black px-2 py-2 text-center align-middle no-print">Status</th>
+                  {canApproveAction && !isForwarded && (
+                    <th className="border border-black px-2 py-2 text-center align-middle no-print">Action</th>
+                  )}
                 </tr>
               </thead>
               <tbody>
@@ -234,18 +589,25 @@ export default function GstoAssessmentCourseSemesterResultPage() {
                   const combinedConverted = genData?.combined_converted || 0;
                   const totalOA = achievedMark + combinedConverted;
                   const remark = totalOA < passThreshold ? "Failed" : "-";
+                  const status = getCadetApprovalStatus(cadet.id);
+                  const isPending = status === "pending";
 
                   const rank =
                     cadet.assigned_ranks?.find((ar: any) => ar.rank)?.rank?.short_name ||
-                    cadet.assigned_ranks?.[0]?.rank?.name ||
-                    "OC";
+                    cadet.assigned_ranks?.[0]?.rank?.name || "OC";
                   const branch =
                     cadet.assigned_branchs?.[0]?.branch?.short_name ||
-                    cadet.assigned_branchs?.[0]?.branch?.name ||
-                    "—";
+                    cadet.assigned_branchs?.[0]?.branch?.name || "—";
 
                   return (
-                    <tr key={cadet.id} className="transition-colors">
+                    <tr key={cadet.id} className="hover:bg-gray-50 transition-colors">
+                      {canApproveAction && pendingCadetIds.length > 0 && allInstructorsSubmitted && (
+                        <td className="border border-black px-2 py-2 text-center no-print">
+                          {isPending ? (
+                            <input type="checkbox" checked={selectedCadetIds.includes(cadet.id)} onChange={() => toggleCadet(cadet.id)} className="w-4 h-4" />
+                          ) : <span className="text-xs text-gray-400">-</span>}
+                        </td>
+                      )}
                       <td className="border border-black px-2 py-2 text-center font-medium">{index + 1}</td>
                       <td className="border border-black px-2 py-2 text-center font-mono">{cadet.cadet_number || "N/A"}</td>
                       <td className="border border-black px-2 py-2 text-center">{rank}</td>
@@ -271,30 +633,79 @@ export default function GstoAssessmentCourseSemesterResultPage() {
                       <td className={`border border-black px-2 py-1 text-center font-medium ${remark === "Failed" ? "text-red-600" : "text-gray-400"}`}>
                         {remark}
                       </td>
+                      {/* Status column */}
+                      <td className="border border-black px-2 py-2 no-print">
+                        <div className="flex flex-col gap-1.5 min-w-[100px]">
+                          {submissions.length === 0 ? (
+                            <div className="flex items-center gap-1">
+                              <Icon icon="hugeicons:clock-02" className="w-3 h-3 text-gray-400" />
+                              <span className="text-[9px] text-gray-500">No Result</span>
+                            </div>
+                          ) : (
+                            <div className="flex flex-col gap-0.5">
+                              {approvalAuthorities.filter((a: any) => a.is_active).sort((a: any, b: any) => (a.sort ?? 0) - (b.sort ?? 0)).map((auth: any) => {
+                                const resultId = submissions[0]?.id;
+                                const authStatus = getResultAuthorityStatus(resultId, cadet.id, auth.id);
+                                const isMe = auth.id === myAuthority?.id;
+                                return (
+                                  <div key={auth.id} className="flex items-center gap-1">
+                                    <span className="text-[8px] text-gray-500 flex-1">
+                                      {auth.role?.name || `Auth ${auth.sort}`}{isMe && <span className="text-blue-600">(me)</span>}
+                                    </span>
+                                    {authStatus === "approved" ? (
+                                      <span className="inline-flex items-center gap-0.5 text-green-700 text-[8px] font-bold">
+                                        <Icon icon="hugeicons:checkmark-circle-02" className="w-2.5 h-2.5" />Approved
+                                      </span>
+                                    ) : authStatus === "rejected" ? (
+                                      <span className="inline-flex items-center gap-0.5 text-red-700 text-[8px] font-bold">
+                                        <Icon icon="hugeicons:cancel-circle" className="w-2.5 h-2.5" />Rejected
+                                      </span>
+                                    ) : (
+                                      <span className="inline-flex items-center gap-0.5 text-yellow-700 text-[8px] font-bold">
+                                        <Icon icon="hugeicons:clock-01" className="w-2.5 h-2.5" />Pending
+                                      </span>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      </td>
+                      {/* Action column */}
+                      {canApproveAction && !isForwarded && (
+                        <td className="border border-black px-2 py-2 text-center no-print">
+                          {isPending ? (
+                            <button
+                              onClick={() => setApprovalModal({ open: true, cadetIds: [cadet.id], status: "approved", rejectedReason: "", loading: false, error: "" })}
+                              className="px-2 py-1 text-[10px] font-semibold bg-green-600 text-white rounded hover:bg-green-700"
+                            >Approve</button>
+                          ) : status === "approved" ? (
+                            <button
+                              onClick={() => setApprovalModal({ open: true, cadetIds: [cadet.id], status: "approved", rejectedReason: "", loading: false, error: "" })}
+                              className="px-2 py-1 text-[10px] font-semibold bg-gray-200 text-gray-700 rounded hover:bg-gray-300"
+                            >Change</button>
+                          ) : null}
+                        </td>
+                      )}
                     </tr>
                   );
                 })}
                 {/* Totals row */}
                 <tr className="font-black text-xs">
-                  <td colSpan={5 + allDetails.length} className="border border-black px-2 py-2 text-right uppercase">Total</td>
+                  <td colSpan={5 + allDetails.length + (canApproveAction && pendingCadetIds.length > 0 && allInstructorsSubmitted ? 1 : 0)} className="border border-black px-2 py-2 text-right uppercase">Total</td>
                   <td className="border border-black px-2 py-2 text-center text-blue-800">
-                    {Array.from(cadetMarksMap.values())
-                      .reduce((sum, e) => sum + parseFloat(String(e.achieved_mark || 0)), 0)
-                      .toFixed(2)}
+                    {Array.from(cadetMarksMap.values()).reduce((sum, e) => sum + parseFloat(String(e.achieved_mark || 0)), 0).toFixed(2)}
                   </td>
                   <td className="border border-black px-2 py-2 text-center text-orange-700">
-                    {Array.from(cadetMarksMap.keys())
-                      .reduce((sum, cid) => sum + (generatedCadetMarks.get(cid)?.combined_converted || 0), 0)
-                      .toFixed(2)}
+                    {Array.from(cadetMarksMap.keys()).reduce((sum, cid) => sum + (generatedCadetMarks.get(cid)?.combined_converted || 0), 0).toFixed(2)}
                   </td>
                   <td className="border border-black px-2 py-2 text-center text-green-800">
-                    {Array.from(cadetMarksMap.keys())
-                      .reduce((sum, cid) => {
-                        const e = cadetMarksMap.get(cid);
-                        const gd = generatedCadetMarks.get(cid);
-                        return sum + parseFloat(String(e?.achieved_mark || 0)) + (gd?.combined_converted || 0);
-                      }, 0)
-                      .toFixed(2)}
+                    {Array.from(cadetMarksMap.keys()).reduce((sum, cid) => {
+                      const e = cadetMarksMap.get(cid);
+                      const gd = generatedCadetMarks.get(cid);
+                      return sum + parseFloat(String(e?.achieved_mark || 0)) + (gd?.combined_converted || 0);
+                    }, 0).toFixed(2)}
                   </td>
                   <td colSpan={100} className="border border-black px-2 py-2"></td>
                 </tr>
@@ -303,10 +714,203 @@ export default function GstoAssessmentCourseSemesterResultPage() {
           </div>
         </div>
 
+        {/* Signature Section */}
+        {(() => {
+          const signatureAuthorities = [...approvalAuthorities]
+            .filter((a: any) => a.is_signature)
+            .sort((a: any, b: any) => (a.sort ?? 0) - (b.sort ?? 0));
+          if (signatureAuthorities.length === 0) return null;
+          const allAuthsSorted = [...approvalAuthorities].sort((a: any, b: any) => (a.sort ?? 0) - (b.sort ?? 0));
+          return (
+            <div className="signature-section max-w-5xl mx-auto mt-10 flex justify-between gap-10 pr-2">
+              {signatureAuthorities.map((auth: any, sigIdx: number) => {
+                const sigPosition: 'first' | 'middle' | 'last' =
+                  sigIdx === 0 ? 'first' : sigIdx === signatureAuthorities.length - 1 ? 'last' : 'middle';
+                const authIdx = allAuthsSorted.findIndex((a: any) => a.id === auth.id);
+                const nextAuth = authIdx >= 0 && authIdx < allAuthsSorted.length - 1 ? allAuthsSorted[authIdx + 1] : null;
+                let rawSigner: any = null;
+                if (nextAuth) {
+                  const nextApproval = moduleApprovals.find((ma: any) => ma.authority_id === nextAuth.id && ma.forwarded_by != null);
+                  rawSigner = nextApproval?.forwarder ?? null;
+                }
+                if (!rawSigner) {
+                  const ownApproval = moduleApprovals.find((ma: any) => ma.authority_id === auth.id && ma.approved_by != null);
+                  rawSigner = ownApproval?.approver ?? null;
+                }
+                const ownRecord = moduleApprovals.find((ma: any) => ma.authority_id === auth.id);
+                const nextRecord = nextAuth ? moduleApprovals.find((ma: any) => ma.authority_id === nextAuth.id) : null;
+                const approvedAt: string | null = ownRecord?.approved_at ?? ownRecord?.updated_at ?? ownRecord?.created_at ?? nextRecord?.created_at ?? null;
+                let designation: string | null = null;
+                if (rawSigner?.roles) {
+                  const primary = rawSigner.roles.find((r: any) => r.pivot?.is_primary);
+                  designation = primary?.name ?? rawSigner.roles[0]?.name ?? null;
+                }
+                const signer = rawSigner ? { ...rawSigner, designation } : null;
+                return <SignatureBox key={auth.id} auth={auth} signer={signer} approvedAt={approvedAt} position={sigPosition} />;
+              })}
+            </div>
+          );
+        })()}
+
         <div className="mt-12 text-center text-[10px] text-gray-500 font-medium italic">
           <p>Generated on: {new Date().toLocaleString("en-GB", { day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" })}</p>
         </div>
       </div>
+
+      {/* Approval Modal */}
+      <Modal isOpen={approvalModal.open} onClose={() => setApprovalModal(prev => ({ ...prev, open: false }))} showCloseButton className="max-w-lg">
+        <div className="p-6">
+          <div className="text-center mb-4">
+            <div className="flex justify-center mb-2"><FullLogo /></div>
+            <h1 className="text-lg font-bold text-gray-900 uppercase">Bangladesh Air Force Academy</h1>
+            <p className="text-sm font-medium text-gray-700 uppercase">CTW GSTO Assessment</p>
+          </div>
+          <h2 className="text-lg font-bold text-gray-900 mb-1">
+            {approvalModal.cadetIds.length === 1 ? "Cadet Approval" : `Cadets Approval (${approvalModal.cadetIds.length} cadets)`}
+          </h2>
+          {!canInitialForward && (
+            <div className="flex gap-3 mb-4 mt-4">
+              {(["approved", "rejected"] as const).map(s => (
+                <button key={s} onClick={() => setApprovalModal(prev => ({ ...prev, status: s, rejectedReason: "", error: "" }))}
+                  className={`flex-1 py-2 rounded-lg border text-sm font-semibold capitalize transition-colors ${approvalModal.status === s
+                    ? s === "approved" ? "bg-green-600 text-white border-green-600" : "bg-red-600 text-white border-red-600"
+                    : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"}`}>
+                  {s === "approved" ? "Approve" : "Reject"}
+                </button>
+              ))}
+            </div>
+          )}
+          {approvalModal.status === "rejected" && (
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Reason for Rejection <span className="text-red-500">*</span></label>
+              <textarea rows={3} value={approvalModal.rejectedReason}
+                onChange={e => setApprovalModal(prev => ({ ...prev, rejectedReason: e.target.value }))}
+                placeholder="Enter rejection reason..."
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-400 resize-none" />
+            </div>
+          )}
+          {approvalModal.error && (
+            <div className="mb-3 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm flex items-center gap-2">
+              <Icon icon="hugeicons:alert-circle" className="w-4 h-4 flex-shrink-0" />{approvalModal.error}
+            </div>
+          )}
+          <div className="flex gap-3 justify-end pt-2 border-t border-gray-100 mt-2">
+            <button onClick={() => setApprovalModal(prev => ({ ...prev, open: false }))} disabled={approvalModal.loading}
+              className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 text-sm hover:bg-gray-50 disabled:opacity-50">Cancel</button>
+            <button onClick={confirmApproval} disabled={approvalModal.loading}
+              className={`px-6 py-2 rounded-lg text-white text-sm font-semibold flex items-center gap-2 disabled:opacity-50 ${approvalModal.status === "approved" ? "bg-green-600 hover:bg-green-700" : "bg-red-600 hover:bg-red-700"}`}>
+              {approvalModal.loading && <Icon icon="hugeicons:fan-01" className="w-4 h-4 animate-spin" />}
+              {approvalModal.status === "approved" ? "Confirm Approve" : "Confirm Reject"}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Forward Modal */}
+      <Modal isOpen={forwardModal.open} onClose={() => setForwardModal(prev => ({ ...prev, open: false }))} showCloseButton className="max-w-lg">
+        <div className="p-6">
+          <div className="flex items-center gap-1 mb-4">
+            <div className="flex items-center justify-center w-12 h-12">
+              <img src="/images/logo/logo.png" alt="BAFA Logo" width={50} height={50} className="dark:hidden" />
+            </div>
+            <div>
+              <h2 className="text-lg font-bold text-gray-900">Forward to Higher Authority</h2>
+              <p className="text-xs text-gray-500">Initial module result forwarding</p>
+            </div>
+          </div>
+          {courseDetails && (
+            <div className="mb-5 rounded-lg border border-gray-200 divide-y divide-gray-100 text-sm">
+              {([["Course", courseDetails?.name], ["Semester", semesterDetails?.name], ["Module", moduleDetails?.full_name], ["Exam Type", examType]] as [string, string][]).map(([label, value]) => (
+                <div key={label} className="flex px-4 py-2.5">
+                  <span className="w-28 text-gray-500 shrink-0">{label}</span>
+                  <span className="font-medium text-gray-900">{value || "—"}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {myAuthority && (
+            <div className="flex justify-between items-center gap-2 mb-4">
+              <div>
+                <h3 className="text-sm font-semibold text-gray-900">Your Level</h3>
+                <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 font-medium text-xs">{(myAuthority as any).role?.name}</span>
+              </div>
+              <Icon icon="hugeicons:arrow-right-02" className="w-5 h-5 text-blue-600 shrink-0" />
+              <div>
+                <h3 className="text-sm font-semibold text-gray-900">Next Level</h3>
+                <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 font-medium text-xs">{getNextAuthority()?.role?.name || "—"}</span>
+              </div>
+            </div>
+          )}
+          <p className="text-sm text-gray-600 mb-5">This will mark the module result as forwarded to the higher authority for further review.</p>
+          {forwardModal.error && (
+            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm flex items-center gap-2">
+              <Icon icon="hugeicons:alert-circle" className="w-4 h-4 flex-shrink-0" />{forwardModal.error}
+            </div>
+          )}
+          <div className="flex gap-3 justify-end pt-3 border-t border-gray-100">
+            <button onClick={() => setForwardModal(prev => ({ ...prev, open: false }))} disabled={forwardModal.loading}
+              className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 text-sm hover:bg-gray-50 disabled:opacity-50">Cancel</button>
+            <button onClick={confirmForward} disabled={forwardModal.loading}
+              className="px-6 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold hover:bg-indigo-700 flex items-center gap-2 disabled:opacity-50">
+              {forwardModal.loading && <Icon icon="hugeicons:fan-01" className="w-4 h-4 animate-spin" />}
+              <Icon icon="hugeicons:share-04" className="w-4 h-4" />Confirm Forward
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Module Approval Modal */}
+      <Modal isOpen={moduleApprovalModal.open} onClose={() => setModuleApprovalModal(prev => ({ ...prev, open: false }))} showCloseButton className="max-w-lg">
+        <div className="p-6">
+          <div className="flex items-center gap-1 mb-4">
+            <div className="flex items-center justify-center w-12 h-12">
+              <img src="/images/logo/logo.png" alt="BAFA Logo" width={50} height={50} className="dark:hidden" />
+            </div>
+            <div>
+              <h2 className="text-lg font-bold text-gray-900">Module Approval</h2>
+              <p className="text-xs text-gray-500">Approve module result at your authority level</p>
+            </div>
+          </div>
+          {courseDetails && (
+            <div className="mb-5 rounded-lg border border-gray-200 divide-y divide-gray-100 text-sm">
+              {([["Course", courseDetails?.name], ["Semester", semesterDetails?.name], ["Module", moduleDetails?.full_name], ["Exam Type", examType]] as [string, string][]).map(([label, value]) => (
+                <div key={label} className="flex px-4 py-2.5">
+                  <span className="w-28 text-gray-500 shrink-0">{label}</span>
+                  <span className="font-medium text-gray-900">{value || "—"}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {myAuthority && (
+            <div className="flex justify-between items-center gap-2 mb-5">
+              <div>
+                <h3 className="text-sm font-semibold text-gray-900">Your Level</h3>
+                <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 font-medium text-xs">{(myAuthority as any).role?.name}</span>
+              </div>
+              <Icon icon="hugeicons:arrow-right-02" className="w-5 h-5 text-blue-600 shrink-0" />
+              <div>
+                <h3 className="text-sm font-semibold text-gray-900">Next Level</h3>
+                <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 font-medium text-xs">{getNextAuthority()?.role?.name || "—"}</span>
+              </div>
+            </div>
+          )}
+          <p className="text-sm text-gray-600 mb-5">This will approve the module result at your authority level and forward it to the next authority.</p>
+          {moduleApprovalModal.error && (
+            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm flex items-center gap-2">
+              <Icon icon="hugeicons:alert-circle" className="w-4 h-4 flex-shrink-0" />{moduleApprovalModal.error}
+            </div>
+          )}
+          <div className="flex gap-3 justify-end pt-3 border-t border-gray-100">
+            <button onClick={() => setModuleApprovalModal(prev => ({ ...prev, open: false }))} disabled={moduleApprovalModal.loading}
+              className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 text-sm hover:bg-gray-50 disabled:opacity-50">Cancel</button>
+            <button onClick={confirmModuleApproval} disabled={moduleApprovalModal.loading}
+              className="px-6 py-2 bg-green-600 text-white rounded-lg text-sm font-semibold hover:bg-green-700 flex items-center gap-2 disabled:opacity-50">
+              {moduleApprovalModal.loading && <Icon icon="hugeicons:fan-01" className="w-4 h-4 animate-spin" />}
+              <Icon icon="hugeicons:checkmark-circle-02" className="w-4 h-4" />Confirm Approval
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

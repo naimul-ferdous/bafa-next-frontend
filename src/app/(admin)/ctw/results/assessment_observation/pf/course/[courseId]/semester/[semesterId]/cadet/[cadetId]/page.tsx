@@ -21,11 +21,8 @@ export default function PfAssessmentCourseSemesterCadetPage() {
     const [semesterDetails, setSemesterDetails] = useState<any>(null);
     const [moduleDetails, setModuleDetails] = useState<any>(null);
     const [estimatedMark, setEstimatedMark] = useState<any>(null);
-
     const [cadetInfo, setCadetInfo] = useState<any>(null);
     const [submissions, setSubmissions] = useState<any[]>([]);
-
-    const criteriaDetails: any[] = (estimatedMark as any)?.details || [];
 
     const loadData = useCallback(async () => {
         if (isNaN(courseId) || isNaN(semesterId) || isNaN(cadetId)) return;
@@ -47,7 +44,6 @@ export default function PfAssessmentCourseSemesterCadetPage() {
 
                 const allCadets = data.cadets || [];
                 const targetCadet = allCadets.find((c: any) => c.id === cadetId);
-
                 if (targetCadet) {
                     setCadetInfo(targetCadet);
                 } else {
@@ -57,8 +53,11 @@ export default function PfAssessmentCourseSemesterCadetPage() {
                 }
 
                 if (data.grouped_results && data.grouped_results.length > 0) {
-                    const resultGroup = data.grouped_results[0];
-                    const subs = resultGroup.submissions || [];
+                    const subs = (data.grouped_results[0].submissions || []).slice().sort((a: any, b: any) => {
+                        const dA = new Date(a.result_date || a.created_at).getTime();
+                        const dB = new Date(b.result_date || b.created_at).getTime();
+                        return dA - dB;
+                    });
                     setSubmissions(subs);
                 } else {
                     setError("No results found for this course and semester");
@@ -80,81 +79,54 @@ export default function PfAssessmentCourseSemesterCadetPage() {
         }
     }, [loadData]);
 
-    const handleViewResult = (resultId: number) => {
-        router.push(`/ctw/results/assessment_observation/pf/${resultId}`);
-    };
-
     const getCadetRank = (cadet: any): string => {
         if (!cadet?.assigned_ranks) return "Officer Cadet";
         const currentRank = cadet.assigned_ranks.find((ar: any) => ar.is_current);
         return currentRank?.rank?.short_name || cadet.assigned_ranks[0]?.rank?.name || "Officer Cadet";
     };
 
-    const getCadetMark = (submission: any, criteriaId?: number): number => {
-        const marks = submission?.instructor_details?.marks || [];
-        const cadetMark = marks.find((m: any) => m.cadet_id === cadetId);
-        if (!cadetMark) return 0;
-
-        if (criteriaId) {
-            const detail = cadetMark.details?.find((d: any) => d.ctw_results_module_estimated_marks_details_id === criteriaId);
-            return detail ? parseFloat(String(detail.marks || 0)) : 0;
-        }
-
-        return parseFloat(String(cadetMark.achieved_mark || cadetMark.mark || 0));
-    };
-
     const getCadetTotalMark = (submission: any): number => {
         const marks = submission?.instructor_details?.marks || [];
         const cadetMark = marks.find((m: any) => m.cadet_id === cadetId);
         if (!cadetMark) return 0;
-
         if (cadetMark.details && cadetMark.details.length > 0) {
             return cadetMark.details.reduce((sum: number, d: any) => sum + parseFloat(String(d.marks || 0)), 0);
         }
         return parseFloat(String(cadetMark.achieved_mark || cadetMark.mark || 0));
     };
 
-    const hasCriteriaDetails = criteriaDetails.length > 0;
-    const maxCriteriaTotal = criteriaDetails.reduce((sum: number, d: any) => sum + parseFloat(String(d.male_marks || 0)), 0);
-    const estimatedMarkPerInstructor = (estimatedMark as any)?.estimated_mark_per_instructor || 0;
-    const conversationMarkLimit = (estimatedMark as any)?.conversation_mark || 0;
-    const instructorCount = moduleDetails?.instructor_count || submissions.length || 1;
+    const formatDate = (dateStr: string) => {
+        if (!dateStr) return "—";
+        return new Date(dateStr).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "2-digit" });
+    };
+
+    const criteriaDetails: any[] = estimatedMark?.details || [];
+    const estimatedMarkPerInstructor = estimatedMark?.estimated_mark_per_instructor || 0;
+    const conversationMarkLimit = estimatedMark?.conversation_mark || 0;
+    const criteriaMax = criteriaDetails.reduce((sum: number, d: any) => sum + parseFloat(String(d.male_marks || 0)), 0);
+    const effectiveMax = criteriaMax > 0 ? criteriaMax : estimatedMarkPerInstructor;
 
     const calculatedData = useMemo(() => {
-        const results = submissions.map((submission, index) => {
-            const totalMark = getCadetTotalMark(submission);
-            const instructorName = submission?.instructor_details?.name || `Instructor ${index + 1}`;
+        const rows = submissions.map((sub, index) => ({
+            index,
+            submission: sub,
+            instructorName: sub?.instructor_details?.name || `Instructor ${index + 1}`,
+            resultDate: sub.result_date || sub.created_at,
+            mark: getCadetTotalMark(sub),
+        }));
 
-            return {
-                submission,
-                index,
-                instructorName,
-                totalMark,
-            };
-        });
+        const grandTotal = rows.reduce((sum, r) => sum + r.mark, 0);
+        const avgMark = rows.length > 0 ? grandTotal / rows.length : 0;
+        const conv = effectiveMax > 0 && conversationMarkLimit > 0
+            ? (avgMark / effectiveMax) * conversationMarkLimit
+            : avgMark;
+        const inPercent = effectiveMax > 0 ? (avgMark / effectiveMax) * 100 : 0;
+        const passThreshold = conversationMarkLimit * 0.5;
+        const remark = conv >= passThreshold ? "Pass" : "Fail";
 
-        const grandTotal = results.reduce((sum, r) => sum + r.totalMark, 0);
-
-        const rowCount = results.length;
-        const maxGrandTotal = maxCriteriaTotal * rowCount;
-
-        const grandConverted = maxGrandTotal > 0 ? (grandTotal / maxGrandTotal) * conversationMarkLimit : 0;
-        const avgConverted = results.length > 0 ? grandConverted / results.length : 0;
-
-        const totalInPercent = maxGrandTotal > 0 ? (grandTotal / maxGrandTotal) * 100 : 0;
-        const convInPercent = conversationMarkLimit > 0 ? (grandConverted / conversationMarkLimit) * 100 : 0;
-
-        return {
-            results,
-            grandTotal,
-            grandConverted,
-            avgConverted,
-            maxGrandTotal,
-            totalInPercent,
-            convInPercent,
-            rowCount,
-        };
-    }, [submissions, hasCriteriaDetails, maxCriteriaTotal, estimatedMarkPerInstructor, conversationMarkLimit]);
+        return { rows, grandTotal, conv, inPercent, remark };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [submissions, effectiveMax, conversationMarkLimit]);
 
     if (loading) {
         return (
@@ -183,20 +155,19 @@ export default function PfAssessmentCourseSemesterCadetPage() {
         );
     }
 
-    const hasData = calculatedData.results.length > 0;
-    const rowSpanValue = hasData ? calculatedData.rowCount + 1 : 1;
+    const rowCount = calculatedData.rows.length;
 
     return (
         <div className="bg-white rounded-lg border border-gray-200">
             <style jsx global>{`
-        @media print {
-          @page { size: A4 portrait; margin: 15mm; }
-          .cv-content { wipfh: 100% !important; max-wipfh: none !important; }
-          table { font-size: 11px !important; border-collapse: collapse !important; wipfh: 100% !important; }
-          th, td { border: 1px solid black !important; padding: 4px !important; }
-          .no-print { display: none !important; }
-        }
-      `}</style>
+                @media print {
+                    @page { size: A4 portrait; margin: 15mm; }
+                    .cv-content { width: 100% !important; max-width: none !important; }
+                    table { font-size: 11px !important; border-collapse: collapse !important; width: 100% !important; }
+                    th, td { border: 1px solid black !important; padding: 4px !important; }
+                    .no-print { display: none !important; }
+                }
+            `}</style>
 
             <div className="p-4 flex items-center justify-between no-print">
                 <button
@@ -215,103 +186,81 @@ export default function PfAssessmentCourseSemesterCadetPage() {
             </div>
 
             <div className="p-4 cv-content">
+                {/* Header */}
                 <div className="mb-8 text-center">
                     <div className="flex justify-center mb-4"><FullLogo /></div>
                     <h1 className="text-xl font-bold text-gray-900 uppercase tracking-wider">Bangladesh Air Force Academy</h1>
-                    <p className="font-medium text-gray-900 uppercase tracking-wider">GST PF Data Score Sheet for Individual Offr Capfs</p>
+                    <p className="font-medium text-gray-900 uppercase tracking-wider">GST PF Data Score Sheet for Individual Offr Cadts</p>
                     <p className="font-medium text-gray-900 uppercase tracking-wider pb-2">Cadets Trg Wing, Bafa</p>
                 </div>
+
+                {/* Cadet Info */}
                 <div className="mb-6">
-                    <div className="grid grid-cols-3 md:grid-cols-6 text-sm">
-                        <div className="flex"><span className="w-24 text-gray-900 font-medium">BD/No</span><span className="mr-4">:</span><span className="text-gray-900 font-bold">{cadetInfo?.cadet_number || "N/A"}</span></div>
-                        <div className="flex"><span className="w-24 text-gray-900 font-medium">Rank</span><span className="mr-4">:</span><span className="text-gray-900 font-bold">{getCadetRank(cadetInfo)}</span></div>
-                        <div className="flex"><span className="w-24 text-gray-900 font-medium">Name</span><span className="mr-4">:</span><span className="text-gray-900 font-bold uppercase">{cadetInfo?.name || "N/A"}</span></div>
-                        <div className="flex"><span className="w-24 text-gray-900 font-medium">Branch</span><span className="mr-4">:</span><span className="text-gray-900 font-bold">{cadetInfo?.assigned_branchs?.filter((b: any) => b.is_current)?.[0]?.branch?.name || cadetInfo?.assigned_branchs?.[0]?.branch?.name || "-"}</span></div>
-                        <div className="flex"><span className="w-24 text-gray-900 font-medium">Semester</span><span className="mr-4">:</span><span className="text-gray-900 font-bold">{semesterDetails?.name || "N/A"}</span></div>
-                        <div className="flex"><span className="w-24 text-gray-900 font-medium">Course</span><span className="mr-4">:</span><span className="text-gray-900 font-bold">{courseDetails?.name || "N/A"}</span></div>
+                    <div className="grid grid-cols-3 md:grid-cols-6 text-sm gap-y-1">
+                        <div className="flex"><span className="w-24 text-gray-900 font-medium">BD/No</span><span className="mr-2">:</span><span className="text-gray-900 font-bold">{cadetInfo?.cadet_number || "N/A"}</span></div>
+                        <div className="flex"><span className="w-24 text-gray-900 font-medium">Rank</span><span className="mr-2">:</span><span className="text-gray-900 font-bold">{getCadetRank(cadetInfo)}</span></div>
+                        <div className="flex"><span className="w-24 text-gray-900 font-medium">Name</span><span className="mr-2">:</span><span className="text-gray-900 font-bold uppercase">{cadetInfo?.name || "N/A"}</span></div>
+                        <div className="flex"><span className="w-24 text-gray-900 font-medium">Branch</span><span className="mr-2">:</span><span className="text-gray-900 font-bold">{cadetInfo?.assigned_branchs?.filter((b: any) => b.is_current)?.[0]?.branch?.name || cadetInfo?.assigned_branchs?.[0]?.branch?.name || "—"}</span></div>
+                        <div className="flex"><span className="w-24 text-gray-900 font-medium">Semester</span><span className="mr-2">:</span><span className="text-gray-900 font-bold">{semesterDetails?.name || "N/A"}</span></div>
+                        <div className="flex"><span className="w-24 text-gray-900 font-medium">Course</span><span className="mr-2">:</span><span className="text-gray-900 font-bold">{courseDetails?.name || "N/A"}</span></div>
                     </div>
                 </div>
 
-                <div className="mb-6">
-                    <div className="overflow-x-auto">
-                        <table className="w-full border-collapse border border-black text-xs">
-                            <thead>
-                                <tr>
-                                    <th className="border border-black px-2 py-2 text-center align-middle" rowSpan={hasCriteriaDetails ? 2 : 1}>Ser</th>
-                                    <th className="border border-black px-2 py-2 text-center align-middle" rowSpan={hasCriteriaDetails ? 2 : 1}>Instructor</th>
-                                    {hasCriteriaDetails ? (
+                {/* Marks Table */}
+                <div className="mb-6 overflow-x-auto">
+                    <table className="w-full border-collapse border border-black text-xs">
+                        <thead>
+                            <tr>
+                                <th className="border border-black px-2 py-2 text-center align-middle">Ser</th>
+                                <th className="border border-black px-2 py-2 text-center align-middle">Instructor</th>
+                                <th className="border border-black px-2 py-2 text-center align-middle">Result Date</th>
+                                <th className="border border-black px-2 py-2 text-center align-middle font-bold">
+                                    Mark - {estimatedMarkPerInstructor || "—"}
+                                </th>
+                                <th className="border border-black px-2 py-2 text-center align-middle font-bold">
+                                    Total - {effectiveMax > 0 ? effectiveMax * rowCount : "—"}
+                                </th>
+                                <th className="border border-black px-2 py-2 text-center align-middle font-bold">
+                                    Conv - {conversationMarkLimit || "—"}
+                                </th>
+                                <th className="border border-black px-2 py-2 text-center align-middle font-bold">In %</th>
+                                <th className="border border-black px-2 py-2 text-center align-middle font-bold">Remark</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {calculatedData.rows.map((row, index) => (
+                                <tr key={row.submission.id} className="hover:bg-gray-50 transition-colors">
+                                    <td className="border border-black px-2 py-2 text-center font-medium">{index + 1}</td>
+                                    <td className="border border-black px-2 py-2 text-center">{row.instructorName}</td>
+                                    <td className="border border-black px-2 py-2 text-center">{formatDate(row.resultDate)}</td>
+                                    <td className="border border-black px-2 py-2 text-center font-bold">{row.mark.toFixed(2)}</td>
+
+                                    {/* Summary cells rowspan from first row */}
+                                    {index === 0 && rowCount > 0 && (
                                         <>
-                                            {criteriaDetails.map((d: any) => (
-                                                <th key={d.id} className="border border-black px-1 py-2 text-center align-middle font-semibold text-xs max-w-[50px]">{d.name}</th>
-                                            ))}
-                                        </>
-                                    ) : null}
-                                    <th className="border border-black px-2 py-2 text-center align-middle font-bold" rowSpan={hasCriteriaDetails ? 2 : 1}>
-                                        Total<br /><span className="font-normal text-gray-500">{hasCriteriaDetails ? maxCriteriaTotal : estimatedMarkPerInstructor}</span>
-                                    </th>
-                                    <th className="border border-black px-2 py-2 text-center align-middle font-bold" rowSpan={hasCriteriaDetails ? 2 : 1}>
-                                        Grand Total<br /><span className="font-normal text-gray-500">{(hasCriteriaDetails ? maxCriteriaTotal : estimatedMarkPerInstructor) * (calculatedData.rowCount || 1)}</span>
-                                    </th>
-                                    <th className="border border-black px-2 py-2 text-center align-middle font-bold" rowSpan={hasCriteriaDetails ? 2 : 1}>
-                                        In %
-                                    </th>
-                                    <th className="border border-black px-2 py-2 text-center align-middle font-bold" rowSpan={hasCriteriaDetails ? 2 : 1}>
-                                        Conv.<br /><span className="font-normal text-gray-500">{conversationMarkLimit}</span>
-                                    </th>
-                                </tr>
-                                {hasCriteriaDetails && (
-                                    <tr>
-                                        {criteriaDetails.map((d: any) => (
-                                            <th key={d.id} className="border border-black px-1 py-1 text-center text-gray-500 text-xs">
-                                                {parseFloat(d.male_marks || d.female_marks || 0)}
-                                            </th>
-                                        ))}
-                                    </tr>
-                                )}
-                            </thead>
-                            <tbody>
-                                {calculatedData.results.map((row, index) => {
-                                    return (
-                                        <tr key={row.submission.id} className="hover:bg-gray-50 transition-colors">
-                                            <td className="border border-black px-2 py-2 text-center font-medium">{index + 1}</td>
-                                            <td className="border border-black px-2 py-2 text-center">{row.instructorName}</td>
-                                            {hasCriteriaDetails ? (
-                                                <>
-                                                    {criteriaDetails.map((d: any) => (
-                                                        <td key={d.id} className="border border-black px-2 py-2 text-center">
-                                                            {getCadetMark(row.submission, d.id).toFixed(2)}
-                                                        </td>
-                                                    ))}
-                                                </>
-                                            ) : null}
-                                            <td className="border border-black px-2 py-2 text-center font-bold">
-                                                {row.totalMark.toFixed(2)}
+                                            <td className="border border-black px-2 py-2 text-center font-bold" rowSpan={rowCount}>
+                                                {calculatedData.grandTotal.toFixed(2)}
                                             </td>
-                                            {index === 0 && hasData && (
-                                                <>
-                                                    <td className="border border-black px-2 py-2 text-center font-bold" rowSpan={calculatedData.rowCount}>
-                                                        {calculatedData.grandTotal.toFixed(2)}
-                                                    </td>
-                                                    <td className="border border-black px-2 py-2 text-center0" rowSpan={calculatedData.rowCount}>
-                                                        {calculatedData.totalInPercent.toFixed(2)}%
-                                                    </td>
-                                                    <td className="border border-black px-2 py-2 text-center font-black" rowSpan={calculatedData.rowCount}>
-                                                        {calculatedData.grandConverted.toFixed(2)}
-                                                    </td>
-                                                </>
-                                            )}
-                                        </tr>
-                                    );
-                                })}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-
-                <div className="mt-8 grid grid-cols-3 gap-8 text-center no-print">
-                    <div className="border-t-2 border-black pt-2"><p className="font-bold text-sm uppercase tracking-widest">Instructor</p></div>
-                    <div className="border-t-2 border-black pt-2"><p className="font-bold text-sm uppercase tracking-widest">Chief Instructor</p></div>
-                    <div className="border-t-2 border-black pt-2"><p className="font-bold text-sm uppercase tracking-widest">Commandant</p></div>
+                                            <td className="border border-black px-2 py-2 text-center font-black text-emerald-700" rowSpan={rowCount}>
+                                                {calculatedData.conv.toFixed(2)}
+                                            </td>
+                                            <td className="border border-black px-2 py-2 text-center" rowSpan={rowCount}>
+                                                {calculatedData.inPercent.toFixed(2)}%
+                                            </td>
+                                            <td className={`border border-black px-2 py-2 text-center font-bold ${calculatedData.remark === "Fail" ? "text-red-600" : "text-green-700"}`} rowSpan={rowCount}>
+                                                {calculatedData.remark}
+                                            </td>
+                                        </>
+                                    )}
+                                </tr>
+                            ))}
+                            {rowCount === 0 && (
+                                <tr>
+                                    <td colSpan={8} className="border border-black px-2 py-6 text-center text-gray-400">No mark entries found</td>
+                                </tr>
+                            )}
+                        </tbody>
+                    </table>
                 </div>
 
                 <div className="mt-12 text-center text-[10px] text-gray-500 font-medium italic">

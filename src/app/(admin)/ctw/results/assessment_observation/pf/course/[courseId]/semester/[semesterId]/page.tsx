@@ -15,6 +15,49 @@ import { getOrdinal } from "@/libs/utils/formatter";
 
 const PF_ASSESSMENT_MODULE_CODE = "pf_assessment";
 
+function SignatureBox({ auth, signer, approvedAt, position }: {
+  auth: any;
+  signer: { name: string; rank?: { name: string; short_name: string } | null; signature?: string | null; designation?: string | null } | null;
+  approvedAt?: string | null;
+  position?: 'first' | 'middle' | 'last';
+}) {
+  const [imgFailed, setImgFailed] = React.useState(false);
+  const dateStr = approvedAt ? (() => {
+    const d = new Date(approvedAt);
+    return `${String(d.getDate()).padStart(2, '0')}-${d.toLocaleDateString('en-US', { month: 'short' }).toUpperCase()}-${d.getFullYear()}`;
+  })() : null;
+  const label = position === 'first' ? 'Prepared & Checked By' : position === 'last' ? 'Approved By' : auth.role?.name ?? auth.user?.name ?? '—';
+  const roleName = auth.role?.name ?? auth.user?.name ?? null;
+  return (
+    <div className="signature-box flex flex-col items-start min-w-[180px]">
+      <p className="sig-label text-sm font-bold uppercase text-gray-900 mb-1 tracking-wide">{label}</p>
+      <div className="sig-area w-full flex items-end justify-start pb-1 h-16">
+        {signer?.signature && !imgFailed ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={signer.signature} alt="" className="max-h-14 max-w-[150px] object-contain" onError={() => setImgFailed(true)} />
+        ) : (
+          <span className="text-sm italic text-gray-400">—</span>
+        )}
+      </div>
+      {signer ? (
+        <>
+          <p className="sig-name text-sm font-bold text-gray-900 uppercase mt-1">{signer.name}</p>
+          {signer?.rank?.short_name && <p className="sig-rank text-xs font-semibold text-orange-500">{signer.rank.short_name}</p>}
+          {signer?.designation && <p className="sig-designation text-xs text-gray-700">{signer.designation}</p>}
+          {dateStr && <p className="sig-date text-xs text-gray-500 pt-0.5 border-t border-gray-800 mt-1">{dateStr}</p>}
+        </>
+      ) : (
+        roleName && (
+          <>
+            <p className="text-sm text-gray-700 mt-1">{roleName}</p>
+            <p className="text-xs text-gray-400 pt-0.5 border-t border-gray-800 mt-1 w-full">Date: ___________</p>
+          </>
+        )
+      )}
+    </div>
+  );
+}
+
 export default function PfAssessmentCourseSemesterResultPage() {
   const router = useRouter();
   const params = useParams();
@@ -77,7 +120,11 @@ export default function PfAssessmentCourseSemesterResultPage() {
         if (data.grouped_results && data.grouped_results.length > 0) {
           const resultGroup = data.grouped_results[0];
           setExamType(resultGroup.exam_type);
-          setSubmissions(resultGroup.submissions || []);
+          setSubmissions((resultGroup.submissions || []).slice().sort((a: any, b: any) => {
+            const dateA = new Date(a.result_date || a.created_at).getTime();
+            const dateB = new Date(b.result_date || b.created_at).getTime();
+            return dateA - dateB;
+          }));
         } else {
           setError("No results found for this course and semester");
         }
@@ -94,7 +141,6 @@ export default function PfAssessmentCourseSemesterResultPage() {
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  // ── Approval logic (same architecture as hurdles) ──────────────────────────
   const primaryRoleIds = (user as any)?.roles?.filter((r: any) => r.pivot?.is_primary).map((r: any) => r.id) ?? [];
   const allRoleIds = (user as any)?.roles?.map((r: any) => r.id) ?? [];
   const userRoleIds = primaryRoleIds.length > 0 ? primaryRoleIds : allRoleIds;
@@ -124,10 +170,11 @@ export default function PfAssessmentCourseSemesterResultPage() {
     moduleApprovals.some((ma: any) => Number(ma.ctw_result_id) === Number(sub?.id))
   );
 
-  // ── Aggregated marks ───────────────────────────────────────────────────────
   const aggregatedMarks = useMemo(() => {
     const cadetMap = new Map<number, any>();
     const maxTotal = criteriaDetails.reduce((sum: number, d: any) => sum + parseFloat(String(d.male_marks || 0)), 0);
+    const estMarkPerInstr = parseFloat(String((estimatedMark as any)?.estimated_mark_per_instructor || 0));
+    const effectiveMax = maxTotal > 0 ? maxTotal : estMarkPerInstr;
     const convLimit = parseFloat(String((estimatedMark as any)?.conversation_mark || 0));
 
     cadets.forEach(cadet => {
@@ -137,11 +184,12 @@ export default function PfAssessmentCourseSemesterResultPage() {
         instructorDetailData: {},
         totalFinal: 0,
         submissionCount: 0,
+        comments: [] as string[],
       });
     });
 
     submissions.forEach(sub => {
-      const instructorId = sub.instructor_details?.id;
+      const subId = sub.id;
       const marks = sub.instructor_details?.marks || [];
       marks.forEach((markItem: any) => {
         const cadetId = markItem.cadet_id;
@@ -159,12 +207,13 @@ export default function PfAssessmentCourseSemesterResultPage() {
         } else {
           totalMks = parseFloat(String(markItem.achieved_mark ?? markItem.mark ?? 0));
         }
-        const conv = maxTotal > 0 && convLimit > 0 ? (totalMks / maxTotal) * convLimit : totalMks;
+        const conv = effectiveMax > 0 && convLimit > 0 ? (totalMks / effectiveMax) * convLimit : totalMks;
         const cadetData = cadetMap.get(cadetId);
-        cadetData.instructorMarks[instructorId] = conv;
-        cadetData.instructorDetailData[instructorId] = { detailData, totalMks, conv };
-        cadetData.totalFinal += conv;
+        cadetData.instructorMarks[subId] = totalMks;
+        cadetData.instructorDetailData[subId] = { detailData, totalMks, conv };
+        cadetData.totalFinal += totalMks;
         cadetData.submissionCount += 1;
+        if (markItem.remark) cadetData.comments.push(markItem.remark);
       });
     });
 
@@ -173,16 +222,24 @@ export default function PfAssessmentCourseSemesterResultPage() {
 
   const rankedData = useMemo(() => {
     const convLimit = parseFloat(String((estimatedMark as any)?.conversation_mark || 0));
-    const expectedCount = moduleDetails?.instructor_count || 0;
-    const isComplete = expectedCount > 0 && submissions.length >= expectedCount;
+    const estMarkPerInstr = parseFloat(String((estimatedMark as any)?.estimated_mark_per_instructor || 0));
+    const criteriaMax = criteriaDetails.reduce((sum: number, d: any) => sum + parseFloat(String(d.male_marks || 0)), 0);
+    const effectiveMax = criteriaMax > 0 ? criteriaMax : estMarkPerInstr;
+    const isComplete = submissions.length > 0;
     const passThreshold = convLimit * 0.5;
 
-    const withConv = aggregatedMarks.map(item => ({
-      ...item,
-      convertedMark: isComplete && item.submissionCount > 0 ? item.totalFinal / item.submissionCount : 0,
-      position: 0,
-      remark: "-",
-    }));
+    const withConv = aggregatedMarks.map(item => {
+      const avgRaw = item.submissionCount > 0 ? item.totalFinal / item.submissionCount : 0;
+      const convertedMark = isComplete && effectiveMax > 0 && convLimit > 0
+        ? (avgRaw / effectiveMax) * convLimit
+        : avgRaw;
+      return {
+        ...item,
+        convertedMark: isComplete ? convertedMark : 0,
+        position: 0,
+        remark: "-",
+      };
+    });
 
     if (isComplete) {
       withConv.sort((a, b) => b.convertedMark - a.convertedMark);
@@ -201,7 +258,7 @@ export default function PfAssessmentCourseSemesterResultPage() {
     });
 
     return withConv;
-  }, [aggregatedMarks, estimatedMark, submissions, moduleDetails]);
+  }, [aggregatedMarks, estimatedMark, submissions, criteriaDetails]);
 
   const allResultsApprovedByPreviousLevel = useMemo(() => {
     if (submissions.length === 0 || rankedData.length === 0) return false;
@@ -289,7 +346,6 @@ export default function PfAssessmentCourseSemesterResultPage() {
     setSelectedCadetIds(allPendingSelected ? [] : pendingCadetIds);
   };
 
-  // ── Actions ────────────────────────────────────────────────────────────────
   const confirmApproval = async () => {
     if (!moduleDetails) return;
     if (approvalModal.status === "rejected" && !approvalModal.rejectedReason.trim()) {
@@ -363,9 +419,12 @@ export default function PfAssessmentCourseSemesterResultPage() {
   const conversationMarkLimit = (estimatedMark as any)?.conversation_mark || 0;
   const estimatedMarkPerInstructor = (estimatedMark as any)?.estimated_mark_per_instructor || 0;
   const instructorCount = moduleDetails?.instructor_count || 0;
-  const isComplete = instructorCount > 0 && submissions.length >= instructorCount;
-  const totalWeightage = estimatedMarkPerInstructor * instructorCount;
-  const instructorSlots = Array.from({ length: instructorCount }, (_, i) => i);
+  const isComplete = submissions.length > 0;
+
+  const formatDateCol = (dateStr: string) => {
+    if (!dateStr) return "N/A";
+    return new Date(dateStr).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "2-digit" });
+  };
 
   if (loading) {
     return (
@@ -396,10 +455,65 @@ export default function PfAssessmentCourseSemesterResultPage() {
       <style jsx global>{`
         @media print {
           @page { size: A3 landscape; margin: 15mm 15mm 20mm 15mm; }
-          .cv-content { wipfh: 100% !important; max-wipfh: none !important; }
-          table { font-size: 12px !important; border-collapse: collapse !important; wipfh: 100% !important; }
+          .cv-content { width: 100% !important; max-width: none !important; }
+          table { font-size: 12px !important; border-collapse: collapse !important; width: 100% !important; }
           th, td { border: 1px solid black !important; padding: 4px !important; }
+          .print-div { max-width: none !important; margin: 20px 0 !important; }
           .no-print { display: none !important; }
+          .signature-section {
+            margin-top: 40px !important;
+            padding-top: 20px !important;
+            display: flex !important;
+            justify-content: space-between !important;
+            gap: 40px !important;
+            padding-left: 8px !important;
+            padding-right: 8px !important;
+            page-break-inside: avoid !important;
+          }
+          .signature-box {
+            min-width: 180px !important;
+            display: flex !important;
+            flex-direction: column !important;
+            align-items: flex-start !important;
+          }
+          .signature-box .sig-label {
+            font-size: 10px !important;
+            font-weight: 700 !important;
+            color: #111827 !important;
+            text-transform: uppercase !important;
+            letter-spacing: 0.05em !important;
+            margin-bottom: 4px !important;
+          }
+          .signature-box .sig-area {
+            height: 60px !important;
+            display: flex !important;
+            align-items: flex-end !important;
+            padding-bottom: 4px !important;
+            margin-bottom: 4px !important;
+          }
+          .signature-box .sig-name {
+            font-size: 11px !important;
+            font-weight: 700 !important;
+            text-transform: uppercase !important;
+            color: #111827 !important;
+            margin-top: 2px !important;
+          }
+          .signature-box .sig-rank {
+            font-size: 11px !important;
+            font-weight: 600 !important;
+            color: #f97316 !important;
+          }
+          .signature-box .sig-designation {
+            font-size: 10px !important;
+            color: #374151 !important;
+          }
+          .signature-box .sig-date {
+            font-size: 10px !important;
+            color: #6b7280 !important;
+            padding-top: 3px !important;
+            border-top: 1px solid #1f2937 !important;
+            margin-top: 4px !important;
+          }
         }
       `}</style>
 
@@ -454,9 +568,16 @@ export default function PfAssessmentCourseSemesterResultPage() {
         {/* Header */}
         <div className="mb-8 text-center">
           <div className="flex justify-center mb-4"><FullLogo /></div>
-          <h1 className="text-xl font-bold text-gray-900 uppercase tracking-wider underline">Bangladesh Air Force Academy</h1>
-          <p className="font-medium text-gray-900 uppercase tracking-wider underline">GST {moduleDetails?.full_name || "PF Assessment"} Course Result Sheet</p>
-          <p className="font-medium text-gray-900 uppercase tracking-wider pb-2 underline">{courseDetails?.name || "N/A"}: {semesterDetails?.name || "N/A"} {examType || "N/A"}</p>
+          <h1 className="text-xl font-bold text-gray-900 uppercase tracking-wider">Bangladesh Air Force Academy</h1>
+          <div className="mb-2">
+            <p className="text-center font-medium text-gray-900 uppercase underline tracking-wider">Cadet Training Wing</p>
+            <p className="text-center font-medium text-gray-900 uppercase underline tracking-wider">
+              {courseDetails?.name} ({moduleDetails?.full_name || "PF Assessment"})
+            </p>
+            <p className="text-center font-medium text-gray-900 uppercase underline tracking-wider">
+              {semesterDetails?.name}{examType ? ` | ${examType}` : ""}
+            </p>
+          </div>
         </div>
 
         {/* Marks Table */}
@@ -477,35 +598,37 @@ export default function PfAssessmentCourseSemesterResultPage() {
                   <th rowSpan={2} className="border border-black px-2 py-2 text-left align-middle">Branch</th>
 
                   {hasCriteriaDetails ? (
-                    // Show criterion names directly — no instructor grouping row
                     criteriaDetails.map((d: any) => (
-                      <th key={d.id} className="border border-black px-1 py-1 text-center font-semibold">{d.name}</th>
+                      <th key={d.id} className="border border-black px-1 py-1 text-center font-semibold text-[9px] max-w-[50px]">{d.name}</th>
                     ))
                   ) : (
-                    <th colSpan={instructorCount || 1} className="border border-black px-2 py-1 text-center font-bold">Instructors</th>
+                    <th colSpan={submissions.length || 1} className="border border-black px-2 py-1 text-center font-bold">Dates</th>
                   )}
 
                   <th rowSpan={2} className="border border-black px-2 py-2 text-center font-bold">
-                    {hasCriteriaDetails ? <>Total<br /><span className="font-normal text-gray-500">{maxCriteriaTotal}</span></> : `Total - ${totalWeightage}`}
+                    {hasCriteriaDetails ? <>Total<br /><span className="font-normal text-gray-500">/{maxCriteriaTotal}</span></> : "Total"}
                   </th>
+                  <th rowSpan={2} className="border border-black px-2 py-2 text-center font-bold">Conv - {conversationMarkLimit}</th>
+                  <th rowSpan={2} className="border border-black px-2 py-2 text-center font-bold">Position</th>
                   <th rowSpan={2} className="border border-black px-2 py-2 text-center font-bold">Remarks</th>
+                  <th rowSpan={2} className="border border-black px-2 py-2 text-center font-bold min-w-[120px]">Comment</th>
                   <th rowSpan={2} className="border border-black px-2 py-2 text-center no-print">Status</th>
                   {canApproveAction && !isForwarded && (
                     <th rowSpan={2} className="border border-black px-2 py-2 text-center no-print">Action</th>
                   )}
                 </tr>
-
-                {/* Row 2: max marks per criterion OR instructor slots */}
                 <tr>
                   {hasCriteriaDetails ? (
                     criteriaDetails.map((d: any) => (
-                      <th key={d.id} className="border border-black px-1 py-1 text-center text-gray-500">
+                      <th key={d.id} className="border border-black px-1 py-1 text-center text-gray-500 text-[9px]">
                         {parseFloat(d.male_marks || d.female_marks || 0)}
                       </th>
                     ))
                   ) : (
-                    instructorSlots.map(i => (
-                      <th key={i} className="border border-black px-1 py-1 text-center font-bold">{`Instr ${i + 1}`}</th>
+                    submissions.map((sub: any) => (
+                      <th key={sub.id} className="border border-black px-1 py-1 text-center font-bold text-[9px]">
+                        {formatDateCol(sub.result_date || sub.created_at)}
+                      </th>
                     ))
                   )}
                 </tr>
@@ -528,21 +651,19 @@ export default function PfAssessmentCourseSemesterResultPage() {
                       <td className="border border-black px-2 py-2 text-center">
                         {item.cadet?.assigned_ranks?.find((ar: any) => ar.rank)?.rank?.short_name || "-"}
                       </td>
-                      <td className="border border-black px-2 py-2 font-bold uppercase text-blue-600">
-                          <button onClick={() => router.push(`/ctw/results/assessment_observation/pf/course/${courseId}/semester/${semesterId}/cadet/${item.cadet.id}`)} className="hover:underline text-blue-600 hover:text-blue-800 text-left">
-                            {item.cadet?.name || "N/A"}
-                          </button>
-                        </td>
+                      <td className="border border-black px-2 py-2 font-bold uppercase">
+                        <button onClick={() => router.push(`/ctw/results/assessment_observation/pf/course/${courseId}/semester/${semesterId}/cadet/${item.cadet.id}`)} className="hover:underline text-blue-600 hover:text-blue-800 text-left">
+                          {item.cadet?.name || "N/A"}
+                        </button>
+                      </td>
                       <td className="border border-black px-2 py-2">
                         {item.cadet?.assigned_branchs?.filter((b: any) => b.is_current)?.[0]?.branch?.name || item.cadet?.assigned_branchs?.[0]?.branch?.name || "-"}
                       </td>
 
                       {hasCriteriaDetails ? (
-                        // Criteria columns from first submission's instructor
                         (() => {
                           const sub = submissions[0];
-                          const instructorId = sub?.instructor_details?.id;
-                          const instData = instructorId !== undefined ? item.instructorDetailData[instructorId] : null;
+                          const instData = sub ? item.instructorDetailData[sub.id] : null;
                           return criteriaDetails.map((d: any) => (
                             <td key={d.id} className="border border-black px-1 py-1 text-center">
                               {instData ? (instData.detailData[d.id] ?? 0).toFixed(2) : "-"}
@@ -550,13 +671,10 @@ export default function PfAssessmentCourseSemesterResultPage() {
                           ));
                         })()
                       ) : (
-                        // Simple per-instructor mark
-                        instructorSlots.map(i => {
-                          const sub = submissions[i];
-                          const instructorId = sub?.instructor_details?.id;
-                          const mark = instructorId !== undefined ? item.instructorMarks[instructorId] : undefined;
+                        submissions.map((sub: any) => {
+                          const mark = item.instructorMarks[sub.id];
                           return (
-                            <td key={i} className="border border-black px-2 py-2 text-center">
+                            <td key={sub.id} className="border border-black px-2 py-2 text-center">
                               {mark !== undefined ? parseFloat(String(mark)).toFixed(1) : "-"}
                             </td>
                           );
@@ -565,15 +683,23 @@ export default function PfAssessmentCourseSemesterResultPage() {
 
                       <td className="border border-black px-2 py-2 text-center font-bold">
                         {isComplete ? (hasCriteriaDetails
-                          ? (() => { const sub = submissions[0]; const instructorId = sub?.instructor_details?.id; const instData = instructorId !== undefined ? item.instructorDetailData[instructorId] : null; return instData ? instData.totalMks.toFixed(2) : "-"; })()
+                          ? (() => { const sub = submissions[0]; const instData = sub ? item.instructorDetailData[sub.id] : null; return instData ? instData.totalMks.toFixed(2) : "-"; })()
                           : item.totalFinal.toFixed(2)
                         ) : "-"}
+                      </td>
+                      <td className="border border-black px-2 py-2 text-center font-black text-emerald-700 bg-emerald-50/20">
+                        {isComplete ? item.convertedMark.toFixed(2) : "-"}
+                      </td>
+                      <td className="border border-black px-2 py-2 text-center font-bold text-blue-700 bg-blue-50/20">
+                        {isComplete ? getOrdinal(item.position) : "-"}
                       </td>
                       <td className={`border border-black px-2 py-2 text-center font-medium ${item.remark === "Failed" ? "text-red-600 bg-red-50/20" : "text-gray-400"}`}>
                         {item.remark}
                       </td>
+                      <td className="border border-black px-2 py-2 text-xs text-gray-700">
+                        {item.comments?.length > 0 ? item.comments.join(" | ") : "—"}
+                      </td>
 
-                      {/* Status column */}
                       <td className="border border-black px-2 py-2 no-print">
                         <div className="flex flex-col gap-1.5 min-w-[100px]">
                           {(() => {
@@ -617,7 +743,6 @@ export default function PfAssessmentCourseSemesterResultPage() {
                         </div>
                       </td>
 
-                      {/* Action column */}
                       {canApproveAction && !isForwarded && (
                         <td className="border border-black px-2 py-2 text-center no-print">
                           {isPending ? (
@@ -637,18 +762,50 @@ export default function PfAssessmentCourseSemesterResultPage() {
           </div>
         </div>
 
-        <div className="mt-12 grid grid-cols-3 gap-8 text-center no-print">
-          <div className="border-t-2 border-black pt-2"><p className="font-bold text-sm uppercase tracking-widest">Instructor</p></div>
-          <div className="border-t-2 border-black pt-2"><p className="font-bold text-sm uppercase tracking-widest">Chief Instructor</p></div>
-          <div className="border-t-2 border-black pt-2"><p className="font-bold text-sm uppercase tracking-widest">Commandant</p></div>
-        </div>
+        {/* Signature Section */}
+        {(() => {
+          const signatureAuthorities = [...approvalAuthorities]
+            .filter((a: any) => a.is_signature)
+            .sort((a: any, b: any) => (a.sort ?? 0) - (b.sort ?? 0));
+          if (signatureAuthorities.length === 0) return null;
+          const allAuthsSorted = [...approvalAuthorities].sort((a: any, b: any) => (a.sort ?? 0) - (b.sort ?? 0));
+          return (
+            <div className="signature-section max-w-5xl mx-auto mt-10 flex justify-between gap-10 pr-2">
+              {signatureAuthorities.map((auth: any, sigIdx: number) => {
+                const sigPosition: 'first' | 'middle' | 'last' =
+                  sigIdx === 0 ? 'first' : sigIdx === signatureAuthorities.length - 1 ? 'last' : 'middle';
+                const authIdx = allAuthsSorted.findIndex((a: any) => a.id === auth.id);
+                const nextAuth = authIdx >= 0 && authIdx < allAuthsSorted.length - 1 ? allAuthsSorted[authIdx + 1] : null;
+                let rawSigner: any = null;
+                if (nextAuth) {
+                  const nextApproval = moduleApprovals.find((ma: any) => ma.authority_id === nextAuth.id && ma.forwarded_by != null);
+                  rawSigner = nextApproval?.forwarder ?? null;
+                }
+                if (!rawSigner) {
+                  const ownApproval = moduleApprovals.find((ma: any) => ma.authority_id === auth.id && ma.approved_by != null);
+                  rawSigner = ownApproval?.approver ?? null;
+                }
+                const ownRecord = moduleApprovals.find((ma: any) => ma.authority_id === auth.id);
+                const nextRecord = nextAuth ? moduleApprovals.find((ma: any) => ma.authority_id === nextAuth.id) : null;
+                const approvedAt: string | null = ownRecord?.approved_at ?? ownRecord?.updated_at ?? ownRecord?.created_at ?? nextRecord?.created_at ?? null;
+                let designation: string | null = null;
+                if (rawSigner?.roles) {
+                  const primary = rawSigner.roles.find((r: any) => r.pivot?.is_primary);
+                  designation = primary?.name ?? rawSigner.roles[0]?.name ?? null;
+                }
+                const signer = rawSigner ? { ...rawSigner, designation } : null;
+                return <SignatureBox key={auth.id} auth={auth} signer={signer} approvedAt={approvedAt} position={sigPosition} />;
+              })}
+            </div>
+          );
+        })()}
 
         <div className="mt-12 text-center text-[10px] text-gray-500 font-medium italic">
           <p>Generated on: {new Date().toLocaleString("en-GB", { day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" })}</p>
         </div>
       </div>
 
-      {/* ── Approval Modal ── */}
+      {/* Approval Modal */}
       <Modal isOpen={approvalModal.open} onClose={() => setApprovalModal(prev => ({ ...prev, open: false }))} showCloseButton className="max-w-lg">
         <div className="p-6">
           <div className="text-center mb-4">
@@ -693,7 +850,7 @@ export default function PfAssessmentCourseSemesterResultPage() {
         </div>
       </Modal>
 
-      {/* ── Forward Modal ── */}
+      {/* Forward Modal */}
       <Modal isOpen={forwardModal.open} onClose={() => setForwardModal(prev => ({ ...prev, open: false }))} showCloseButton className="max-w-lg">
         <div className="p-6">
           <div className="flex items-center gap-1 mb-4">
@@ -744,7 +901,7 @@ export default function PfAssessmentCourseSemesterResultPage() {
         </div>
       </Modal>
 
-      {/* ── Module Approval Modal ── */}
+      {/* Module Approval Modal */}
       <Modal isOpen={moduleApprovalModal.open} onClose={() => setModuleApprovalModal(prev => ({ ...prev, open: false }))} showCloseButton className="max-w-lg">
         <div className="p-6">
           <div className="flex items-center gap-1 mb-4">

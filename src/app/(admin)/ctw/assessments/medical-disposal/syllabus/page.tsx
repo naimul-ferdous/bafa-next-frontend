@@ -96,11 +96,11 @@ export default function CtwMedicalDisposalSyllabusPage() {
       key: "actions", header: "Actions", headerAlign: "center", className: "text-center",
       render: (row) => (
         <div className="flex items-center justify-center gap-1" onClick={(e) => e.stopPropagation()}>
-          {can("view") && (
+          {/* {can("view") && ( */}
             <button onClick={() => router.push(`/ctw/assessments/medical-disposal/syllabus/${row.id}`)} className="p-1 text-blue-600 hover:bg-blue-50 rounded" title="View">
               <Icon icon="hugeicons:view" className="w-4 h-4" />
             </button>
-          )}
+           {/* )} */}
           {can("edit") && (
             <button onClick={() => router.push(`/ctw/assessments/medical-disposal/syllabus/${row.id}/edit`)} className="p-1 text-yellow-600 hover:bg-yellow-50 rounded" title="Edit">
               <Icon icon="hugeicons:pencil-edit-01" className="w-4 h-4" />
@@ -138,11 +138,11 @@ export default function CtwMedicalDisposalSyllabusPage() {
             className="pl-10 pr-4 py-2 border border-gray-200 rounded-lg bg-gray-50 text-gray-900 w-full focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all"
           />
         </div>
-        {can("add") && (
+        {/* {can("add") && ( */}
           <button onClick={() => router.push("/ctw/assessments/medical-disposal/syllabus/create")} className="px-4 py-2 rounded-lg text-white flex items-center gap-2 bg-blue-600 hover:bg-blue-700 transition-all shadow-md active:scale-95 font-medium">
             <Icon icon="hugeicons:add-circle" className="w-4 h-4" />New Syllabus
           </button>
-        )}
+        {/* )} */}
       </div>
 
       {loading ? (
@@ -153,7 +153,7 @@ export default function CtwMedicalDisposalSyllabusPage() {
         <DataTable
           columns={columns} data={syllabuses} keyExtractor={(row) => row.id.toString()}
           emptyMessage="No syllabus found"
-          onRowClick={can("view") ? (row) => router.push(`/ctw/assessments/medical-disposal/syllabus/${row.id}`) : undefined}
+          onRowClick={(row) => router.push(`/ctw/assessments/medical-disposal/syllabus/${row.id}`)}
         />
       )}
 

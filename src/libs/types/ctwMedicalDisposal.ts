@@ -46,6 +46,7 @@ export interface CtwMedicalDisposalResult {
   cadet_id: number;
   ctw_medical_disposal_id: number;
   is_active: boolean;
+  date?: string;
   created_by?: number;
   course?: { id: number; name: string; code?: string };
   semester?: { id: number; name: string; code?: string };
@@ -67,5 +68,6 @@ export interface CtwMedicalDisposalResultPayload {
   cadet_id: number;
   ctw_medical_disposal_id: number;
   is_active?: boolean;
+  date?: string;
   schemas?: { ctw_medical_disposal_syllabus_schema_id: number; result_content?: string }[];
 }

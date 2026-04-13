@@ -31,6 +31,7 @@ interface CadetRow {
   branch: string;
   mark: number | "";
   detail_marks: { [detailId: number]: number | "" };
+  remark: string;
   is_active: boolean;
 }
 
@@ -221,6 +222,7 @@ export default function PfAssessmentResultForm({ initialData, onSubmit, onCancel
             branch: cadet.assigned_branchs?.find((ab: any) => ab.is_current)?.branch?.name || cadet.assigned_branchs?.[0]?.branch?.name || "N/A",
             mark: "",
             detail_marks: {},
+            remark: "",
             is_active: true,
           };
         });
@@ -276,6 +278,7 @@ export default function PfAssessmentResultForm({ initialData, onSubmit, onCancel
             branch: initialData.branch?.name || "N/A",
             mark: parseFloat(markRecord?.achieved_mark || 0),
             detail_marks,
+            remark: markRecord?.remark || "",
             is_active: markRecord?.is_active ?? true,
           };
         });
@@ -336,9 +339,9 @@ export default function PfAssessmentResultForm({ initialData, onSubmit, onCancel
             marks: c.detail_marks[d.id] || 0,
           }));
           const achievedMark = details.reduce((sum, d) => sum + d.marks, 0);
-          marks.push({ cadet_id: c.cadet_id, achieved_mark: achievedMark, details });
+          marks.push({ cadet_id: c.cadet_id, achieved_mark: achievedMark, details, remark: c.remark || undefined });
         } else {
-          marks.push({ cadet_id: c.cadet_id, achieved_mark: Number(c.mark) || 0 });
+          marks.push({ cadet_id: c.cadet_id, achieved_mark: Number(c.mark) || 0, remark: c.remark || undefined });
         }
       });
 
@@ -467,7 +470,7 @@ export default function PfAssessmentResultForm({ initialData, onSubmit, onCancel
                   mode="single"
                   defaultDate={formData.result_date}
                   placeholder="Select result date"
-                  onChange={(_dates, dateStr) => handleChange("result_date", dateStr)}
+                  onChange={(_dates, dateStr) => { if (dateStr) handleChange("result_date", dateStr); }}
                 />
               </div>
 
@@ -533,6 +536,7 @@ export default function PfAssessmentResultForm({ initialData, onSubmit, onCancel
                           <th className="border border-black px-2 py-2 text-center align-middle font-bold" rowSpan={2}>Total</th>
                         </>
                       )}
+                      <th className="border border-black px-2 py-2 text-center align-middle" rowSpan={2}>Remark</th>
                     </tr>
                     <tr>
                       {assessmentDetails.length > 0 ? (
@@ -591,7 +595,7 @@ export default function PfAssessmentResultForm({ initialData, onSubmit, onCancel
                                     const v = e.target.value;
                                     handleCadetChange(index, "mark", v === "" ? "" : Math.min(parseFloat(v), maxMark > 0 ? maxMark : Infinity));
                                   }}
-                                  className="w-20 px-2 py-1 border border-gray-300 rounded text-center text-xs focus:ring-1 focus:ring-blue-500 bg-white text-gray-900"
+                                  className="w-full px-1 py-0.5 border border-gray-300 rounded text-center text-xs focus:ring-1 focus:ring-blue-500 bg-white text-gray-900"
                                 />
                               </td>
                               <td className="border border-black px-2 py-1 text-center font-bold">
@@ -599,6 +603,15 @@ export default function PfAssessmentResultForm({ initialData, onSubmit, onCancel
                               </td>
                             </>
                           )}
+                          <td className="border border-black p-1">
+                            <input
+                              type="text"
+                              value={cadet.remark}
+                              onChange={(e) => handleCadetChange(index, "remark", e.target.value)}
+                              placeholder="Optional"
+                               className="w-full px-1 py-0.5 border border-gray-300 rounded text-center text-xs focus:ring-1 focus:ring-blue-500 bg-white text-gray-900"
+                            />
+                          </td>
                         </tr>
                       );
                     })}

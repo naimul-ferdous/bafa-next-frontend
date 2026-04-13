@@ -13,7 +13,7 @@ import { ctwInstructorAssignModuleService } from "@/libs/services/ctwInstructorA
 import { ctwDtAssessmentResultService } from "@/libs/services/ctwDtAssessmentResultService";
 import { useAuth } from "@/libs/hooks/useAuth";
 import { Icon } from "@iconify/react";
-import type { SystemCourse, SystemSemester, SystemProgram, SystemBranch, SystemGroup, SystemExam } from "@/libs/types/system";
+import type { SystemCourse, SystemSemester, SystemExam } from "@/libs/types/system";
 
 interface ResultFormProps {
   initialData?: any | null;
@@ -42,9 +42,6 @@ export default function GstoAssessmentResultForm({ initialData, onSubmit, onCanc
   const [formData, setFormData] = useState({
     course_id: 0,
     semester_id: 0,
-    program_id: 0,
-    branch_id: 0,
-    group_id: 0,
     exam_type_id: 0,
     result_date: new Date().toISOString().split("T")[0],
     remarks: "",
@@ -57,9 +54,6 @@ export default function GstoAssessmentResultForm({ initialData, onSubmit, onCanc
 
   const [courses, setCourses] = useState<SystemCourse[]>([]);
   const [semesters, setSemesters] = useState<SystemSemester[]>([]);
-  const [programs, setPrograms] = useState<SystemProgram[]>([]);
-  const [branches, setBranches] = useState<SystemBranch[]>([]);
-  const [groups, setGroups] = useState<SystemGroup[]>([]);
   const [exams, setExams] = useState<SystemExam[]>([]);
   const [estimatedMarks, setEstimatedMarks] = useState<any[]>([]);
   const [moduleId, setModuleId] = useState<number>(0);
@@ -83,9 +77,6 @@ export default function GstoAssessmentResultForm({ initialData, onSubmit, onCanc
 
         if (options) {
           setCourses(options.courses.filter(c => c.is_active));
-          setPrograms(options.programs.filter(p => p.is_active));
-          setBranches(options.branches.filter(b => b.is_active));
-          setGroups(options.groups.filter(g => g.is_active));
           setExams(options.exams.filter(e => e.is_active));
 
           if (options.module) {
@@ -205,10 +196,6 @@ export default function GstoAssessmentResultForm({ initialData, onSubmit, onCanc
           semester_id: formData.semester_id,
           is_current: 1,
         };
-        if (formData.program_id) cadetParams.program_id = formData.program_id;
-        if (formData.branch_id) cadetParams.branch_id = formData.branch_id;
-        if (formData.group_id) cadetParams.group_id = formData.group_id;
-
         const cadetsRes = await cadetService.getAllCadets(cadetParams);
 
         const rows: CadetRow[] = cadetsRes.data.map((cadet: any) => {
@@ -236,7 +223,7 @@ export default function GstoAssessmentResultForm({ initialData, onSubmit, onCanc
     if (!initialData) {
       loadCadets();
     }
-  }, [user?.id, moduleId, formData.course_id, formData.semester_id, formData.program_id, formData.branch_id, formData.group_id, formData.exam_type_id, initialData]);
+  }, [user?.id, moduleId, formData.course_id, formData.semester_id, formData.exam_type_id, initialData]);
 
   // Handle edit mode
   useEffect(() => {
@@ -245,9 +232,6 @@ export default function GstoAssessmentResultForm({ initialData, onSubmit, onCanc
       setFormData({
         course_id: initialData.course_id,
         semester_id: initialData.semester_id,
-        program_id: initialData.program_id || 0,
-        branch_id: initialData.branch_id || 0,
-        group_id: initialData.group_id || 0,
         exam_type_id: initialData.exam_type_id,
         result_date: initialData.result_date || new Date().toISOString().split("T")[0],
         remarks: initialData.remarks || "",
@@ -479,9 +463,6 @@ export default function GstoAssessmentResultForm({ initialData, onSubmit, onCanc
       const submitData = {
         course_id: formData.course_id,
         semester_id: formData.semester_id,
-        program_id: formData.program_id || undefined,
-        branch_id: formData.branch_id || undefined,
-        group_id: formData.group_id || undefined,
         exam_type_id: formData.exam_type_id,
         instructor_id: user.id,
         ctw_results_module_id: moduleId,
@@ -567,30 +548,6 @@ export default function GstoAssessmentResultForm({ initialData, onSubmit, onCanc
             </div>
 
             <div>
-              <Label>Program</Label>
-              <select value={formData.program_id} onChange={(e) => handleChange("program_id", parseInt(e.target.value))} className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500">
-                <option value={0}>Select Program (Optional)</option>
-                {programs.map(program => (<option key={program.id} value={program.id}>{program.name} ({program.code})</option>))}
-              </select>
-            </div>
-
-            <div>
-              <Label>Branch</Label>
-              <select value={formData.branch_id} onChange={(e) => handleChange("branch_id", parseInt(e.target.value))} className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500">
-                <option value={0}>Select Branch (Optional)</option>
-                {branches.map(branch => (<option key={branch.id} value={branch.id}>{branch.name} ({branch.code})</option>))}
-              </select>
-            </div>
-
-            <div>
-              <Label>Group</Label>
-              <select value={formData.group_id} onChange={(e) => handleChange("group_id", parseInt(e.target.value))} className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500">
-                <option value={0}>Select Group (Optional)</option>
-                {groups.map(group => (<option key={group.id} value={group.id}>{group.name} ({group.code})</option>))}
-              </select>
-            </div>
-
-            <div>
               <Label>Exam Type <span className="text-red-500">*</span></Label>
               <select
                 value={formData.exam_type_id}
@@ -615,7 +572,7 @@ export default function GstoAssessmentResultForm({ initialData, onSubmit, onCanc
                   );
                 })}
               </select>
-              {formData.course_id && formData.semester_id && !loadingEstimatedMarks && (
+              {!!formData.course_id && !!formData.semester_id && !loadingEstimatedMarks && (
                 <p className="mt-1 text-xs text-gray-500">Only exam types with estimated marks for the selected course & semester are enabled</p>
               )}
             </div>
@@ -673,10 +630,10 @@ export default function GstoAssessmentResultForm({ initialData, onSubmit, onCanc
                           </th>
                         ))}
                         <th className="border border-black px-2 py-2 text-center align-middle font-bold" rowSpan={2}>
-                          Total<br /><span className="font-normal text-gray-500">/{maxDetailTotal}</span>
+                          Total - {maxDetailTotal}
                         </th>
                         <th className="border border-black px-2 py-2 text-center align-middle font-bold" rowSpan={2}>
-                          NCO<br /><span className="font-normal text-gray-500">/{Number(generatedConfig.dt_conversation_mark || 0) + Number(generatedConfig.pf_conversation_mark || 0)}</span>
+                          NCO - {Number(generatedConfig.dt_conversation_mark || 0) + Number(generatedConfig.pf_conversation_mark || 0)}
                         </th>
                       </>
                     ) : (
@@ -727,7 +684,11 @@ export default function GstoAssessmentResultForm({ initialData, onSubmit, onCanc
                                     value={cadet.detail_marks[d.id] ?? ""}
                                     onChange={(e) => {
                                       const v = e.target.value;
-                                      handleDetailMarkChange(index, d.id, v === "" ? "" : parseFloat(v));
+                                      if (v === "") { handleDetailMarkChange(index, d.id, ""); return; }
+                                      const parsed = parseFloat(v);
+                                      const maxMark = getDetailMaxMark(d);
+                                      const clamped = maxMark > 0 && !isNaN(parsed) && parsed > maxMark ? maxMark : parsed;
+                                      handleDetailMarkChange(index, d.id, isNaN(clamped) ? "" : clamped);
                                     }}
                                     className="w-14 px-1 py-0.5 border border-gray-300 rounded text-center text-xs focus:ring-1 focus:ring-blue-500 bg-white text-gray-900"
                                   />

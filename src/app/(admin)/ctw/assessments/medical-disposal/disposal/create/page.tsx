@@ -29,11 +29,13 @@ export default function CreateCtwMedicalDisposalResultPage() {
         <h2 className="text-md font-semibold text-gray-700 mt-1 uppercase">Add Medical Disposal Result</h2>
       </div>
 
-      <ResultForm
-        onSubmit={handleSubmit}
-        onCancel={() => router.push("/ctw/assessments/medical-disposal/disposal")}
-        loading={loading}
-      />
+      <div className="max-w-[1500px]">
+        <ResultForm
+          onSubmit={handleSubmit}
+          onCancel={() => router.push("/ctw/assessments/medical-disposal/disposal")}
+          loading={loading}
+        />
+      </div>
     </div>
   );
 }

@@ -192,15 +192,15 @@ export default function ViewCtwMedicalDisposalResultPage() {
 
         {/* Schema results — column-wise, read-only */}
         {schemas.length > 0 ? (
-          <div className="overflow-x-auto border border-black">
+          <div className="max-w-[1500px] overflow-x-auto border border-black">
             <table className="w-full border-collapse text-sm">
               <thead>
                 <tr>
                   <th className="px-4 py-2 text-center font-semibold text-gray-700 border-b border-r border-black uppercase tracking-wide w-12">
                     SL.
                   </th>
-                  <th className="px-4 py-2 text-center font-semibold text-gray-700 border-b border-r border-black uppercase tracking-wide w-40">
-                    Date
+                  <th className="px-4 py-2 text-center font-semibold text-gray-700 border-b border-r border-black uppercase tracking-wide">
+                    Date of S/R
                   </th>
                   {schemas.map((schema) => (
                     <th
@@ -210,8 +210,11 @@ export default function ViewCtwMedicalDisposalResultPage() {
                       {schema.name}
                     </th>
                   ))}
-                  <th className="px-4 py-2 text-center font-semibold text-gray-700 border-b border-black uppercase tracking-wide w-28">
+                  <th className="px-4 py-2 text-center font-semibold text-gray-700 border-b border-r border-black uppercase tracking-wide w-28">
                     Total
+                  </th>
+                  <th className="px-4 py-2 text-center font-semibold text-gray-700 border-b border-black uppercase tracking-wide w-28">
+                    Grand Total
                   </th>
                 </tr>
               </thead>
@@ -220,7 +223,7 @@ export default function ViewCtwMedicalDisposalResultPage() {
                   <td className="px-4 py-3 text-center text-gray-500 font-bold border-r border-black align-middle">
                     1
                   </td>
-                  <td className="px-3 py-3 align-middle border-r border-black text-center">
+                  <td className="px-3 py-3 align-middle border-r border-black text-center whitespace-nowrap">
                     <span className="text-sm font-medium text-gray-700">{createdAt}</span>
                   </td>
                   {schemas.map((schema) => (
@@ -230,6 +233,9 @@ export default function ViewCtwMedicalDisposalResultPage() {
                       </p>
                     </td>
                   ))}
+                  <td className="px-3 py-3 align-middle text-center border-r border-black">
+                    <span className="font-black text-gray-900">{filledCount}</span>
+                  </td>
                   <td className="px-3 py-3 align-middle text-center">
                     <span className="font-black text-gray-900">{filledCount}</span>
                   </td>

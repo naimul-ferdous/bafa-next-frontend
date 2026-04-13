@@ -54,10 +54,13 @@ const secondsToTime = (seconds: number): string => {
 };
 
 const calculateMark = (detail: any, value: string, gender: string): number => {
-  const scores = detail.scores || [];
+  const scores = detail?.scores || [];
   const isFemale = gender.toLowerCase() === 'female';
 
-  if (scores.length === 0) return 0;
+  if (!scores || scores.length === 0) {
+    const directValue = parseFloat(value);
+    return isNaN(directValue) ? 0 : directValue;
+  }
 
   const firstScore = scores[0];
   const hasTime = isFemale ? !!firstScore?.female_time : !!firstScore?.male_time;
@@ -72,29 +75,51 @@ const calculateMark = (detail: any, value: string, gender: string): number => {
     const cadetSeconds = timeToSeconds(value);
     if (cadetSeconds === 0) return 0;
 
-    let bestMark = 0;
-    scores.forEach((s: any) => {
-      const scoreTime = timeToSeconds(isFemale ? s.female_time : s.male_time);
-      const scoreMark = parseFloat(isFemale ? s.female_mark : s.male_mark);
-      if (cadetSeconds <= scoreTime) {
-        if (scoreMark > bestMark) bestMark = scoreMark;
-      }
+    // Sort scores by time (DESCENDING - slowest first)
+    const sortedScores = [...scores].sort((a: any, b: any) => {
+      const timeA = timeToSeconds(isFemale ? a.female_time : a.male_time);
+      const timeB = timeToSeconds(isFemale ? b.female_time : b.male_time);
+      return timeB - timeA;
     });
+
+    // For time-based (lower time = better):
+    // Sorted descending: 0:57=17, 0:54=18, 0:51=19, 0:50=20
+    // Cadet 0:55 (330s): check if 330 >= scoreTime (cadet is slower than threshold)
+    // 330 >= 342 (0:57)? NO
+    // 330 >= 324 (0:54)? YES -> 18 marks (STOP!)
+    let bestMark = 0;
+    for (const s of sortedScores) {
+      const scoreTime = timeToSeconds(isFemale ? s.female_time : s.male_time);
+      if (cadetSeconds >= scoreTime) {
+        bestMark = parseFloat(isFemale ? s.female_mark : s.male_mark);
+        break;
+      }
+    }
     return bestMark;
-  } else {
+  } else if (hasQty) {
     const cadetQty = parseFloat(value) || 0;
     if (cadetQty === 0) return 0;
 
-    let bestMark = 0;
-    scores.forEach((s: any) => {
-      const scoreQty = parseFloat(isFemale ? s.female_quantity : s.male_quantity) || 0;
-      const scoreMark = parseFloat(isFemale ? s.female_mark : s.male_mark);
-      if (cadetQty >= scoreQty) {
-        if (scoreMark > bestMark) bestMark = scoreMark;
-      }
+    // Sort scores by quantity (descending)
+    const sortedScores = [...scores].sort((a: any, b: any) => {
+      const qtyA = parseFloat(isFemale ? a.female_quantity : a.male_quantity) || 0;
+      const qtyB = parseFloat(isFemale ? b.female_quantity : b.male_quantity) || 0;
+      return qtyB - qtyA;
     });
+
+    // For quantity-based: higher qty = better marks
+    let bestMark = 0;
+    for (const s of sortedScores) {
+      const scoreQty = parseFloat(isFemale ? s.female_quantity : s.male_quantity) || 0;
+      if (cadetQty >= scoreQty) {
+        bestMark = parseFloat(isFemale ? s.female_mark : s.male_mark);
+        break;
+      }
+    }
     return bestMark;
   }
+
+  return parseFloat(value) || 0;
 };
 
 const HURDLES_MODULE_CODE = "hurdle_test";
@@ -270,14 +295,14 @@ export default function HurdlesResultForm({ initialData, onSubmit, onCancel, loa
         const rows: CadetRow[] = cadetsRes.data.map((cadet: any) => {
           const currentRank = cadet.assigned_ranks?.find((ar: any) => ar.rank)?.rank;
           const isFemale = (cadet.gender || "Male").toLowerCase() === "female";
-          
+
           const cadetTotalMaxRaw = hurdleDetails.reduce((sum: number, d: any) => {
             return sum + parseFloat(isFemale ? d.female_marks : d.male_marks);
           }, 0);
-          
+
           const detailMarks: { [key: number]: number } = {};
           const detailInputs: { [key: number]: string } = {};
-          
+
           return {
             cadet_id: cadet.id,
             cadet_number: cadet.cadet_number || "",
@@ -384,12 +409,15 @@ export default function HurdlesResultForm({ initialData, onSubmit, onCancel, loa
     if (!detail) return;
 
     const firstScore = detail.scores?.[0];
-    const hasTime = !!firstScore?.male_time || !!firstScore?.female_time;
+    const isFemale = gender.toLowerCase() === 'female';
+    const hasTime = isFemale ? !!firstScore?.female_time : !!firstScore?.male_time;
+    const hasQty = isFemale ? !!firstScore?.female_quantity : !!firstScore?.male_quantity;
     let mark = calculateMark(detail, value, gender);
 
-    if (!hasTime) {
-      const maxMark = gender.toLowerCase() === 'female' 
-        ? parseFloat(detail.female_marks) || 0 
+    // For non-time and non-qty details, apply max mark logic
+    if (!hasTime && !hasQty) {
+      const maxMark = isFemale
+        ? parseFloat(detail.female_marks) || 0
         : parseFloat(detail.male_marks) || 0;
       const inputVal = parseFloat(value);
       if (!value || value === "" || isNaN(inputVal)) {
@@ -404,11 +432,60 @@ export default function HurdlesResultForm({ initialData, onSubmit, onCancel, loa
     setCadetRows(prev => {
       const updated = [...prev];
       const cadet = updated[cadetIndex];
+
+      // Check if this detail is time/qty-based
+      const dFirstScore = hurdleDetails.find(d => d.id === detailId)?.scores?.[0];
+      const dIsFemale = cadet.cadet_gender.toLowerCase() === 'female';
+      const isTimeDetail = dIsFemale
+        ? (!!dFirstScore?.female_time || !!dFirstScore?.female_quantity)
+        : (!!dFirstScore?.male_time || !!dFirstScore?.male_quantity);
+
+      // Check if ANY non-time detail has 0 marks - if so, Time should be 0 too
+      let hasZeroNonTime = false;
+      for (const d of hurdleDetails) {
+        const dFirstScore = d.scores?.[0];
+        const dHasTime = isFemale
+          ? (!!dFirstScore?.female_time || !!dFirstScore?.female_quantity)
+          : (!!dFirstScore?.male_time || !!dFirstScore?.male_quantity);
+
+        if (!dHasTime) {
+          // Check existing marks OR new mark being entered
+          const existingMark = cadet.detail_marks[d.id];
+          const newMark = (d.id === detailId) ? mark : 0;
+          const checkMark = (d.id === detailId) ? newMark : existingMark;
+
+          if (!checkMark || checkMark === 0) {
+            hasZeroNonTime = true;
+            break;
+          }
+        }
+      }
+
+      // If current is Time detail and any non-time is 0, only set Time to 0 if Time mark is POSITIVE
+      // Negative Time marks should always calculate
+      if (isTimeDetail && hasZeroNonTime && mark > 0) {
+        mark = 0;
+      }
+
       const updatedDetailInputs = { ...cadet.detail_inputs, [detailId]: value };
-      const updatedDetailMarks = { ...cadet.detail_marks, [detailId]: mark };
+      let updatedDetailMarks = { ...cadet.detail_marks, [detailId]: mark };
+
+      // If any non-time is 0, only zero out POSITIVE time-based marks (keep negative marks)
+      if (hasZeroNonTime) {
+        for (const d of hurdleDetails) {
+          const dFirstScore = d.scores?.[0];
+          const dHasTime = isFemale
+            ? (!!dFirstScore?.female_time || !!dFirstScore?.female_quantity)
+            : (!!dFirstScore?.male_time || !!dFirstScore?.male_quantity);
+
+          if (dHasTime && updatedDetailMarks[d.id] > 0) {
+            updatedDetailMarks[d.id] = 0;
+          }
+        }
+      }
 
       const totalRawMark = Object.values(updatedDetailMarks).reduce((sum: number, m: any) => sum + m, 0);
-      const isFemale = gender.toLowerCase() === 'female';
+
       const cadetTotalMaxRaw = hurdleDetails.reduce((sum: number, d: any) => {
         return sum + parseFloat(isFemale ? d.female_marks : d.male_marks);
       }, 0);
@@ -421,14 +498,12 @@ export default function HurdlesResultForm({ initialData, onSubmit, onCancel, loa
         calculatedConvMark = totalRawMark;
       }
 
-      const finalConvMark = calculatedConvMark;
-
       updated[cadetIndex] = {
         ...cadet,
         detail_inputs: updatedDetailInputs,
         detail_marks: updatedDetailMarks,
         mark: totalRawMark,
-        conversation_mark: parseFloat(finalConvMark.toFixed(2))
+        conversation_mark: parseFloat(calculatedConvMark.toFixed(2))
       };
       return updated;
     });
@@ -462,16 +537,16 @@ export default function HurdlesResultForm({ initialData, onSubmit, onCancel, loa
         Object.entries(c.detail_marks).forEach(([detailId, val]) => {
           const detail = hurdleDetails.find((d: any) => d.id === parseInt(detailId));
           if (!detail) return;
-          
+
           const isFemale = c.cadet_gender.toLowerCase() === 'female';
           const firstScore = detail.scores?.[0];
           const hasTime = isFemale ? !!firstScore?.female_time : !!firstScore?.male_time;
           const hasQty = isFemale ? !!firstScore?.female_quantity : !!firstScore?.male_quantity;
-          
+
           const detailInput = c.detail_inputs[parseInt(detailId)];
           const isAutoMark = !hasTime && !hasQty;
           const inputVal = detailInput ? parseFloat(detailInput) : 0;
-          
+
           if (isAutoMark) {
             details.push({
               ctw_results_module_estimated_marks_details_id: parseInt(detailId),
@@ -630,74 +705,90 @@ export default function HurdlesResultForm({ initialData, onSubmit, onCancel, loa
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full border-collapse border border-black text-xs">
+              <table className="w-full border-collapse border border-black text-sm">
                 <thead>
                   <tr>
-                    <th className="border border-black px-2 py-2 text-center whitespace-nowrap" rowSpan={2}>SL</th>
-                    <th className="border border-black px-2 py-2 text-center whitespace-nowrap" rowSpan={2}>BD</th>
-                    <th className="border border-black px-2 py-2 text-center whitespace-nowrap" rowSpan={2}>Rk</th>
-                    <th className="border border-black px-2 py-2 text-left whitespace-nowrap" rowSpan={2}>Name</th>
-                    <th className="border border-black px-2 py-2 text-left whitespace-nowrap" rowSpan={2}>Br</th>
+                    <th className="border border-black px-2 py-2 text-center align-middle" rowSpan={2}>SL</th>
+                    <th className="border border-black px-2 py-2 text-center align-middle" rowSpan={2}>BD/No</th>
+                    <th className="border border-black px-2 py-2 text-center align-middle" rowSpan={2}>Rank</th>
+                    <th className="border border-black px-2 py-2 text-left align-middle" rowSpan={2}>Name</th>
+                    <th className="border border-black px-2 py-2 text-left align-middle" rowSpan={2}>Branch</th>
                     {hurdleDetails.map((detail: any) => {
                       const firstScore = detail.scores?.[0];
+                      const isFemale = false;
                       const hasTime = !!firstScore?.male_time || !!firstScore?.female_time;
                       const maleMark = parseFloat(detail.male_marks) || 0;
                       const femaleMark = parseFloat(detail.female_marks) || 0;
+                      const hasQty = !!firstScore?.male_quantity || !!firstScore?.female_quantity;
+                      const colSpan = hasTime || hasQty ? 2 : 1;
                       return (
-                        <th key={detail.id} className={`border border-black px-1 py-2 text-center`} colSpan={hasTime ? 2 : 1} rowSpan={hasTime ? 1 : 2}>
+                        <th key={detail.id} className="border border-black px-1 py-2 text-center align-middle" colSpan={colSpan} rowSpan={2}>
                           <div className="h-32 flex flex-col items-center justify-center w-12 mx-auto">
-                            <span className="font-semibold [writing-mode:vertical-rl] rotate-180">{detail.name} - {maleMark}/{femaleMark}</span>
+                            <span className="font-semibold" style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>{detail.name} - {maleMark}/{femaleMark}</span>
                           </div>
                         </th>
                       );
                     })}
-                    <th className="border border-black px-2 py-2 text-center whitespace-nowrap" rowSpan={2}>
-                      Total {getTotalRawMax(cadetRows[0]?.cadet_gender || 'male')}
+                    <th className="border border-black px-2 py-2 text-center align-middle bg-yellow-50" rowSpan={2}>
+                      <div className="h-32 flex flex-col items-center justify-center w-12 mx-auto">
+                        <span className="font-semibold" style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>HD Mk</span>
+                      </div>
                     </th>
-                    <th className="border border-black px-2 py-2 text-center whitespace-nowrap" rowSpan={2}>
-                      Out of {getMaxConvMark()}
+                    <th className="border border-black px-2 py-2 text-center align-middle" rowSpan={2}>
+                      <div className="h-32 flex flex-col items-center justify-center w-12 mx-auto">
+                        <span className="font-semibold" style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>Ttl Mk</span>
+                      </div>
                     </th>
-                  </tr>
-                  <tr>
-                    {hurdleDetails.map((detail: any) => {
-                      const firstScore = detail.scores?.[0];
-                      const hasTime = !!firstScore?.male_time || !!firstScore?.female_time;
-                      if (!hasTime) return null;
-                      return (
-                        <React.Fragment key={detail.id}>
-                          <th className="border border-black px-1 py-1 text-center font-normal">
-                            Time
-                          </th>
-                          <th className="border border-black px-1 py-1 text-center font-normal">
-                            Mark
-                          </th>
-                        </React.Fragment>
-                      );
-                    })}
+                    <th className="border border-black px-2 py-2 text-center align-middle" rowSpan={2}>
+                      <div className="h-32 flex flex-col items-center justify-center w-12 mx-auto">
+                        <span className="font-semibold" style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>Conv ({getMaxConvMark()})</span>
+                      </div>
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
-                  {cadetRows.map((cadet, index) => (
-                    <tr key={cadet.cadet_id}>
-                      <td className="border border-black px-2 py-1 text-center">{index + 1}</td>
-                      <td className="border border-black px-2 py-1 text-center">{cadet.cadet_number}</td>
-                      <td className="border border-black px-2 py-1 text-center">{cadet.cadet_rank}</td>
-                      <td className="border border-black px-2 py-1 font-medium">
-                        {cadet.cadet_name}
-                        {cadet.cadet_gender?.toLowerCase() === "female" && (
-                          <span className="ml-1 text-pink-600 font-semibold text-xs">(F)</span>
-                        )}
-                      </td>
-                      <td className="border border-black px-2 py-1">{cadet.branch}</td>
+                  {cadetRows.map((cadet, index) => {
+                    const isFemale = cadet.cadet_gender.toLowerCase() === 'female';
+                    return (
+                      <tr key={cadet.cadet_id}>
+                        <td className="border border-black px-2 py-1 text-center">{index + 1}</td>
+                        <td className="border border-black px-2 py-1 text-center">{cadet.cadet_number}</td>
+                        <td className="border border-black px-2 py-1 text-center">{cadet.cadet_rank}</td>
+                        <td className="border border-black px-2 py-1 font-medium">
+                          {cadet.cadet_name}
+                          {cadet.cadet_gender?.toLowerCase() === "female" && (
+                            <span className="ml-1 text-pink-600 font-semibold text-xs">(F)</span>
+                          )}
+                        </td>
+                        <td className="border border-black px-2 py-1">{cadet.branch}</td>
 
-                      {hurdleDetails.map((detail: any) => {
-                        const firstScore = detail.scores?.[0];
-                        const hasTime = !!firstScore?.male_time || !!firstScore?.female_time;
+                        {hurdleDetails.map((detail: any) => {
+                          const firstScore = detail.scores?.[0];
+                          const hasTime = !!firstScore?.male_time || !!firstScore?.female_time;
+                          const hasQty = !!firstScore?.male_quantity || !!firstScore?.female_quantity;
+                          const maxMark = isFemale ? parseFloat(detail.female_marks) || 0 : parseFloat(detail.male_marks) || 0;
 
-                        if (!hasTime) {
-                          const maxMark = cadet.cadet_gender.toLowerCase() === 'female' 
-                            ? parseFloat(detail.female_marks) || 0 
-                            : parseFloat(detail.male_marks) || 0;
+                          if (hasTime || hasQty) {
+                            return (
+                              <React.Fragment key={detail.id}>
+                                <td className="border border-black px-1 py-1 text-center">
+                                  <input
+                                    type={hasTime ? "text" : "number"}
+                                    min="0"
+                                    max={maxMark}
+                                    value={cadet.detail_inputs[detail.id] || ""}
+                                    onChange={(e) => handleCadetInputChange(index, detail.id, e.target.value, cadet.cadet_gender)}
+                                    className="w-12 px-1 py-1 border border-gray-300 rounded text-center text-xs focus:ring-2 focus:ring-blue-500 bg-white"
+                                    placeholder={hasTime ? "0:00" : "0"}
+                                  />
+                                </td>
+                                <td className="border border-black px-1 py-1 text-center">
+                                  {cadet.detail_marks[detail.id]?.toFixed(2) || "0.00"}
+                                </td>
+                              </React.Fragment>
+                            );
+                          }
+
                           return (
                             <td key={detail.id} className="border border-black px-1 py-1 text-center">
                               <input
@@ -711,33 +802,32 @@ export default function HurdlesResultForm({ initialData, onSubmit, onCancel, loa
                               />
                             </td>
                           );
-                        }
-                        return (
-                          <React.Fragment key={detail.id}>
-                            <td className="border border-black px-1 py-1 text-center">
-                              <input
-                                type="text"
-                                value={cadet.detail_inputs[detail.id] || ""}
-                                onChange={(e) => handleCadetInputChange(index, detail.id, e.target.value, cadet.cadet_gender)}
-                                className="w-12 px-1 py-1 border border-gray-300 rounded text-center text-xs focus:ring-2 focus:ring-blue-500 bg-white"
-                                placeholder="0:00"
-                              />
-                            </td>
-                            <td className="border border-black px-1 py-1 text-center">
-                              {cadet.detail_marks[detail.id] || 0}
-                            </td>
-                          </React.Fragment>
-                        );
-                      })}
+                        })}
 
-                      <td className="border border-black px-1 py-1 text-center font-bold">
-                        {cadet.mark || 0}
-                      </td>
-                      <td className="border border-black px-1 py-1 text-center font-bold">
-                        {cadet.conversation_mark || 0}
-                      </td>
-                    </tr>
-                  ))}
+                        <td className="border border-black px-1 py-1 text-center bg-yellow-50 font-bold">
+                          {(() => {
+                            let hdSum = 0;
+                            for (const d of hurdleDetails) {
+                              const dFirstScore = d.scores?.[0];
+                              const dHasTime = !!dFirstScore?.male_time || !!dFirstScore?.female_time;
+                              const dHasQty = !!dFirstScore?.male_quantity || !!dFirstScore?.female_quantity;
+                              if (!dHasTime && !dHasQty) {
+                                hdSum += cadet.detail_marks[d.id] || 0;
+                              }
+                            }
+                            return hdSum;
+                          })()}
+                        </td>
+
+                        <td className="border border-black px-1 py-1 text-center font-bold">
+                          {cadet.mark?.toFixed(2) || "0.00"}
+                        </td>
+                        <td className="border border-black px-1 py-1 text-center font-bold">
+                          {cadet.conversation_mark?.toFixed(2) || "0.00"}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

@@ -114,14 +114,14 @@ export default function CtwMedicalDisposalDisposalPage() {
             className="pl-10 pr-4 py-2 border border-gray-200 rounded-lg bg-gray-50 text-gray-900 w-full focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
           />
         </div>
-        {can("add") && (
+        {/* {can("add") && ( */}
           <button
             onClick={() => router.push("/ctw/assessments/medical-disposal/disposal/create")}
             className="px-4 py-2 rounded-lg text-white flex items-center gap-2 bg-blue-600 hover:bg-blue-700 transition-all shadow-md active:scale-95 font-medium"
           >
             <Icon icon="hugeicons:add-circle" className="w-4 h-4" />Add Result
           </button>
-        )}
+        {/* )} */}
       </div>
 
       {loading ? (
@@ -135,7 +135,7 @@ export default function CtwMedicalDisposalDisposalPage() {
             data={results}
             keyExtractor={(_, index) => index.toString()}
             emptyMessage="No results found"
-            onRowClick={can("view") ? (row) => router.push(`/ctw/assessments/medical-disposal/disposal/course/${row.course_id}/semester/${row.semester_id}`) : undefined}
+            onRowClick={(row) => router.push(`/ctw/assessments/medical-disposal/disposal/course/${row.course_id}/semester/${row.semester_id}`)}
           />
 
           <div className="flex items-center justify-between mt-6 pt-6 border-t border-gray-100">

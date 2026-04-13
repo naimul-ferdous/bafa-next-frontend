@@ -213,4 +213,40 @@ export const ctwAttendenceResultService = {
     );
     return result.data ?? [];
   },
+
+  async getAttendanceTypesByCourseSemester(
+    courseId: number,
+    semesterId: number
+  ): Promise<{ id: number; name: string; short_name: string; total_sessions: number; present_count: number; absent_count: number; late_count: number; excused_count: number }[]> {
+    const query = new URLSearchParams();
+    query.set('course_id', String(courseId));
+    query.set('semester_id', String(semesterId));
+    const token = getToken();
+    const result = await apiClient.get<{ success: boolean; data: { id: number; name: string; short_name: string; total_sessions: number; present_count: number; absent_count: number; late_count: number; excused_count: number }[] }>(
+      `/ctw-attendence-results-types?${query.toString()}`,
+      token
+    );
+    return result.data ?? [];
+  },
+
+  async getAttendanceByTypeForMonth(
+    courseId: number,
+    semesterId: number,
+    attendenceTypeId: number,
+    year: number,
+    month: number
+  ): Promise<CtwAttendenceResult[]> {
+    const query = new URLSearchParams();
+    query.set('course_id', String(courseId));
+    query.set('semester_id', String(semesterId));
+    query.set('attendence_type_id', String(attendenceTypeId));
+    query.set('year', String(year));
+    query.set('month', String(month));
+    const token = getToken();
+    const result = await apiClient.get<{ success: boolean; data: CtwAttendenceResult[] }>(
+      `/ctw-attendence-results-by-type?${query.toString()}`,
+      token
+    );
+    return result.data ?? [];
+  },
 };
