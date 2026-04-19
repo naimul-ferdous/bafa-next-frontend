@@ -16,6 +16,7 @@ import { useAuth } from "@/libs/hooks/useAuth";
 import { useCan } from "@/context/PagePermissionsContext";
 import ConfirmationModal from "@/components/ui/modal/ConfirmationModal";
 import UserAssignRoleModal from "@/components/users/UserAssignRoleModal";
+import UserAssignExtensionModal from "@/components/users/UserAssignExtensionModal";
 import UserAssignRankModal from "@/components/users/UserAssignRankModal";
 import UserSignatureModal from "@/components/users/UserSignatureModal";
 import InstructorAssignWingModal from "@/components/instructors/InstructorAssignWingModal";
@@ -61,6 +62,10 @@ export default function UsersPage() {
   // Cadet Wing assignment modal state
   const [assignCadetWingModalOpen, setAssignCadetWingModalOpen] = useState(false);
   const [assigningCadetWingUser, setAssigningCadetWingUser] = useState<User | null>(null);
+
+  // Extension assignment modal state
+  const [assignExtensionModalOpen, setAssignExtensionModalOpen] = useState(false);
+  const [assignExtensionUser, setAssignExtensionUser] = useState<User | null>(null);
 
   // Assessment assignment modal state
   const [assignAssessmentModalOpen, setAssignAssessmentModalOpen] = useState(false);
@@ -146,6 +151,8 @@ export default function UsersPage() {
   const handleAssignRank = (user: User) => { setRankingUser(user); setAssignRankModalOpen(true); };
   const handleUpdateSignature = (user: User) => { setSigningUser(user); setSignatureModalOpen(true); };
   
+  const handleAssignExtension = (user: User) => { setAssignExtensionUser(user); setAssignExtensionModalOpen(true); };
+
   const handleAssignWing = (user: User) => {
     // Check if user is a cadet (by role)
     const hasCadetRole = user.roles?.some(role => 
@@ -335,6 +342,7 @@ export default function UsersPage() {
           {can('asign-role') && (
             <button onClick={() => handleAssignRole(user)} className="p-1 text-purple-600 hover:bg-purple-50 rounded" title="Assign Role"><Icon icon="hugeicons:plus-sign-circle" className="w-4 h-4" /></button>
           )}
+          <button onClick={() => handleAssignExtension(user)} className="p-1 text-teal-600 hover:bg-teal-50 rounded" title="Assign Extension"><Icon icon="hugeicons:puzzle" className="w-4 h-4" /></button>
           {can('delete') && (
             (!user.is_active) ? (
               <button onClick={() => handleUnblockUser(user)} className="p-1 text-orange-600 hover:bg-orange-50 rounded" title="Unblock / Activate"><Icon icon="hugeicons:checkmark-circle-02" className="w-4 h-4" /></button>
@@ -443,6 +451,8 @@ export default function UsersPage() {
       />
 
       <UserAssignRoleModal isOpen={assignRoleModalOpen} onClose={() => { setAssignRoleModalOpen(false); setAssigningUser(null); }} user={assigningUser} onSuccess={() => refreshData()} />
+
+      <UserAssignExtensionModal isOpen={assignExtensionModalOpen} onClose={() => { setAssignExtensionModalOpen(false); setAssignExtensionUser(null); }} user={assignExtensionUser} onSuccess={() => refreshData()} />
       
       <UserAssignRankModal 
         isOpen={assignRankModalOpen} 

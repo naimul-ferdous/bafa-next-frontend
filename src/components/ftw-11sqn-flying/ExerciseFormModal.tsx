@@ -26,6 +26,7 @@ export default function ExerciseFormModal() {
     take_time_hours: 0 as number,
     remarks: "",
     exercise_sort: 0,
+    is_non_grade: false,
     is_active: true,
   });
   const [loading, setLoading] = useState(false);
@@ -78,6 +79,7 @@ export default function ExerciseFormModal() {
         take_time_hours: decimalHours,
         remarks: editingExercise.remarks || "",
         exercise_sort: editingExercise.exercise_sort,
+        is_non_grade: !!(editingExercise as any).is_non_grade,
         is_active: editingExercise.is_active !== false,
       });
       setTimeInput(minutesToTimeString(decimalHoursToMinutes(decimalHours)));
@@ -90,6 +92,7 @@ export default function ExerciseFormModal() {
         take_time_hours: 0,
         remarks: "",
         exercise_sort: 0,
+        is_non_grade: false,
         is_active: true,
       });
       setTimeInput("0:00");
@@ -149,6 +152,7 @@ export default function ExerciseFormModal() {
         take_time_hours: formData.take_time_hours,
         remarks: formData.remarks || null,
         exercise_sort: formData.exercise_sort,
+        is_non_grade: formData.is_non_grade,
         is_active: formData.is_active,
       };
 
@@ -167,6 +171,7 @@ export default function ExerciseFormModal() {
           take_time_hours: parseFloat(String(ex.take_time_hours || 0)),
           remarks: ex.remarks ?? null,
           exercise_sort: ex.exercise_sort,
+          is_non_grade: !!(ex as any).is_non_grade,
           is_active: ex.is_active,
         })),
       }));
@@ -401,6 +406,19 @@ export default function ExerciseFormModal() {
               rows={3}
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
+          </div>
+
+          <div>
+            <Label className="mb-3">Non Grade</Label>
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={!!formData.is_non_grade}
+                onChange={(e) => handleChange("is_non_grade", e.target.checked)}
+                className="w-4 h-4 accent-blue-600"
+              />
+              <span className="text-sm text-gray-700">Mark this exercise as non-grade</span>
+            </label>
           </div>
 
           <div>

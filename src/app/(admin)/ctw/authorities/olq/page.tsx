@@ -166,13 +166,13 @@ export default function CtwOlqApprovalAuthoritiesPage() {
       className: "text-center no-print",
       render: (auth) => (
         <div className="flex items-center justify-center gap-1" onClick={(e) => e.stopPropagation()}>
-          {can('edit') && (
+          {/* {can('edit') && ( */}
             <button onClick={() => handleEditAuthority(auth)} className="p-1 text-yellow-600 hover:bg-yellow-50 rounded" title="Edit">
               <Icon icon="hugeicons:pencil-edit-01" className="w-4 h-4" />
             </button>
-          )}
-          {can('delete') && (
-            auth.is_active ? (
+          {/* )}
+          {can('delete') && ( */}
+            {auth.is_active ? (
               <button onClick={() => handleToggleStatus(auth)} className="p-1 text-red-600 hover:bg-red-50 rounded" title="Deactivate">
                 <Icon icon="hugeicons:unavailable" className="w-4 h-4" />
               </button>
@@ -180,8 +180,8 @@ export default function CtwOlqApprovalAuthoritiesPage() {
               <button onClick={() => handleToggleStatus(auth)} className="p-1 text-green-600 hover:bg-green-50 rounded" title="Activate">
                 <Icon icon="hugeicons:checkmark-circle-02" className="w-4 h-4" />
               </button>
-            )
-          )}
+            )}
+          {/* )} */}
         </div>
       ),
     },

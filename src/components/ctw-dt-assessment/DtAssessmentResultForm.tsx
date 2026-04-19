@@ -32,6 +32,7 @@ interface CadetRow {
   mark: number | "";
   detail_marks: { [detailId: number]: number | "" };
   remark: string;
+  is_calculateable: boolean;
   is_active: boolean;
 }
 
@@ -231,6 +232,7 @@ export default function DtAssessmentResultForm({ initialData, onSubmit, onCancel
             mark: "",
             detail_marks: {},
             remark: "",
+            is_calculateable: true,
             is_active: true,
           };
         });
@@ -288,6 +290,7 @@ export default function DtAssessmentResultForm({ initialData, onSubmit, onCancel
             mark: parseFloat(markRecord?.achieved_mark || 0),
             detail_marks,
             remark: markRecord?.remark || "",
+            is_calculateable: !!markRecord?.is_calculateable,
             is_active: markRecord?.is_active ?? true,
           };
         });
@@ -349,9 +352,9 @@ export default function DtAssessmentResultForm({ initialData, onSubmit, onCancel
             marks: c.detail_marks[d.id] || 0,
           }));
           const achievedMark = details.reduce((sum, d) => sum + d.marks, 0);
-          marks.push({ cadet_id: c.cadet_id, achieved_mark: achievedMark, details, remark: c.remark || undefined });
+          marks.push({ cadet_id: c.cadet_id, achieved_mark: achievedMark, details, remark: c.remark || undefined, is_calculateable: c.is_calculateable });
         } else {
-          marks.push({ cadet_id: c.cadet_id, achieved_mark: Number(c.mark) || 0, remark: c.remark || undefined });
+          marks.push({ cadet_id: c.cadet_id, achieved_mark: Number(c.mark) || 0, remark: c.remark || undefined, is_calculateable: c.is_calculateable });
         }
       });
 
@@ -427,7 +430,7 @@ export default function DtAssessmentResultForm({ initialData, onSubmit, onCancel
               <Label>Course <span className="text-red-500">*</span></Label>
               <select value={formData.course_id} onChange={(e) => handleChange("course_id", parseInt(e.target.value))} className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500" required>
                 <option value={0}>Select Course</option>
-                {courses.map(course => (<option key={course.id} value={course.id}>{course.name} ({course.code})</option>))}
+                {courses.map(course => (<option key={course.id} value={course.id}>{course.name}</option>))}
               </select>
             </div>
 
@@ -443,7 +446,7 @@ export default function DtAssessmentResultForm({ initialData, onSubmit, onCancel
                 <option value={0}>
                   {loadingSemesters ? "Loading..." : !formData.course_id ? "Select course first" : "Select Semester"}
                 </option>
-                {semesters.map(semester => (<option key={semester.id} value={semester.id}>{semester.name} ({semester.code})</option>))}
+                {semesters.map(semester => (<option key={semester.id} value={semester.id}>{semester.name}</option>))}
               </select>
             </div>
 
@@ -468,9 +471,6 @@ export default function DtAssessmentResultForm({ initialData, onSubmit, onCancel
                   );
                 })}
               </select>
-              {!!formData.course_id && !!formData.semester_id && !loadingEstimatedMarks && (
-                <p className="mt-1 text-xs text-gray-500">Only exam types with estimated marks for the selected course & semester are enabled</p>
-              )}
             </div>
 
             <div>
@@ -484,10 +484,10 @@ export default function DtAssessmentResultForm({ initialData, onSubmit, onCancel
               />
             </div>
 
-            <div className="md:col-span-2">
+            {/* <div className="md:col-span-2">
               <Label>Remarks</Label>
               <textarea value={formData.remarks} onChange={(e) => handleChange("remarks", e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500" rows={3} placeholder="Enter any remarks (optional)"></textarea>
-            </div>
+            </div> */}
           </div>
         </div>
 
@@ -537,7 +537,7 @@ export default function DtAssessmentResultForm({ initialData, onSubmit, onCancel
                           </th>
                         ))}
                         <th className="border border-black px-2 py-2 text-center align-middle font-bold" rowSpan={2}>
-                          Total<br /><span className="font-normal text-gray-500">/{maxDetailTotal}</span>
+                          Total - {maxDetailTotal}
                         </th>
                       </>
                     ) : (
@@ -547,6 +547,7 @@ export default function DtAssessmentResultForm({ initialData, onSubmit, onCancel
                       </>
                     )}
                     <th className="border border-black px-2 py-2 text-center align-middle" rowSpan={2}>Remark</th>
+                    <th className="border border-black px-2 py-2 text-center align-middle" rowSpan={2}>Calc?</th>
                   </tr>
                   <tr>
                     {assessmentDetails.length > 0 ? (
@@ -620,6 +621,14 @@ export default function DtAssessmentResultForm({ initialData, onSubmit, onCancel
                             onChange={(e) => handleCadetChange(index, "remark", e.target.value)}
                             placeholder="Optional"
                              className="w-full px-1 py-0.5 border border-gray-300 rounded text-center text-xs focus:ring-1 focus:ring-blue-500 bg-white text-gray-900"
+                          />
+                        </td>
+                        <td className="border border-black px-2 py-1 text-center">
+                          <input
+                            type="checkbox"
+                            checked={!!cadet.is_calculateable}
+                            onChange={(e) => handleCadetChange(index, "is_calculateable", e.target.checked)}
+                            className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
                           />
                         </td>
                       </tr>

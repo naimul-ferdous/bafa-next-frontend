@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Icon } from "@iconify/react";
 import { useRouter } from "next/navigation";
 import { Ftw11sqnFlyingExaminationMark } from "@/libs/types/ftw11sqnExamination";
@@ -10,6 +10,10 @@ import {
   isAlreadyApprovedByMe,
   getCadetApprovalStatusList,
 } from "@/libs/utils/approvalHelpers";
+import {
+  ftw11sqnResultsBupAdjustMarkGradingService,
+  Ftw11sqnResultsBupAdjustMarkGrading,
+} from "@/libs/services/ftw11sqnResultsBupAdjustMarkGradingService";
 
 interface SemesterData {
   semester_details: {
@@ -86,10 +90,59 @@ const BupReportTab: React.FC<BupReportTabProps> = ({
   const flyingExamPhases = reportData?.flying_exam_phases || [];
   const is6thSemester = reportData?.is_6th_semester || false;
 
-  // Calculate total max marks for BUP
-  const groundTotalWeight = groundPhases.reduce((sum: number, phase: any) => sum + (phase.max_mark || 0), 0);
-  const flyingExamTotalWeight = flyingExamPhases.reduce((sum: number, phase: any) => sum + (phase.max_mark || 0), 0);
-  const bupTotalWeight = groundTotalWeight + flyingExamTotalWeight + 130; // 140 for daily avg
+  // BUP denominator: 700 for 6th semester, 600 otherwise
+  const bupDenominator = is6thSemester ? 700 : 600;
+
+  // Helper function to calculate percentage from total marks: (total / 600 or 700) * 100
+  const calculatePercentage = (totalMarks: number) => {
+    if (!totalMarks) return 0;
+    return (totalMarks / bupDenominator) * 100;
+  };
+
+  // Fetch adjusted mark grading lookup table
+  const [adjustGradings, setAdjustGradings] = useState<Ftw11sqnResultsBupAdjustMarkGrading[]>([]);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const response = await ftw11sqnResultsBupAdjustMarkGradingService.getAll({ per_page: 1000 });
+        if (mounted) setAdjustGradings(response.data || []);
+      } catch (error) {
+        console.error("Failed to load adjust mark grading:", error);
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  // Look up adjusted mark row for a given percentage.
+  // Finds the row with the highest obtain_mark that is <= percentage.
+  const getAdjustedRow = (
+    percentage: number
+  ): { obtain: number; adjusted: number; grade: string | null } | null => {
+    if (!percentage || adjustGradings.length === 0) return null;
+    const sorted = [...adjustGradings]
+      .map((r) => ({
+        obtain: Number(r.obtain_mark ?? 0),
+        adjusted: Number(r.adjusted_mark ?? 0),
+        grade: r.grade ?? null,
+      }))
+      .filter((r) => !isNaN(r.obtain) && !isNaN(r.adjusted))
+      .sort((a, b) => b.obtain - a.obtain);
+    return sorted.find((r) => r.obtain <= percentage) || null;
+  };
+
+  const getAdjustedPercentage = (percentage: number): number | null => {
+    const row = getAdjustedRow(percentage);
+    return row ? row.adjusted : null;
+  };
+
+  const getAdjustedGrade = (percentage: number): string | null => {
+    const row = getAdjustedRow(percentage);
+    return row ? row.grade : null;
+  };
 
   // Check if a cadet is selected
   const isCadetSelected = (cadetId: number) => selectedCadets.includes(cadetId);
@@ -186,6 +239,25 @@ const BupReportTab: React.FC<BupReportTabProps> = ({
   const initialTab = is6thSemester ? 'bup600' : 'bup5th';
   const [activeSubTab, setActiveSubTab] = useState<'bup5th' | 'bup600'>(initialTab);
 
+  // Helper: compute adjusted mark for a cadet
+  const getAdjustedMark = (cadet: any): number => {
+    const pct = calculatePercentage(cadet.total || 0);
+    const adj = getAdjustedPercentage(pct);
+    return adj !== null ? (adj * bupDenominator) / 100 : 0;
+  };
+
+  // Build position map sorted by adjusted mark desc, tie-break by BD number asc
+  const buildPositionMap = (data: any[]): { [key: number]: number } => {
+    const sorted = [...data].sort((a, b) => {
+      const markDiff = getAdjustedMark(b) - getAdjustedMark(a);
+      if (markDiff !== 0) return markDiff;
+      return parseInt(a.bd_no || '0') - parseInt(b.bd_no || '0');
+    });
+    const map: { [key: number]: number } = {};
+    sorted.forEach((item, pos) => { map[item.cadet_id] = pos + 1; });
+    return map;
+  };
+
   // BUP 5th/6th - Detailed View with all exam columns
   const renderBup5thTable = () => {
     if (bupData.length === 0) {
@@ -196,12 +268,8 @@ const BupReportTab: React.FC<BupReportTabProps> = ({
       );
     }
 
-    // Create position map
-    const sorted = [...bupData].sort((a, b) => b.total - a.total);
-    const positionMap: { [key: number]: number } = {};
-    sorted.forEach((item, pos) => {
-      positionMap[item.cadet_id] = pos + 1;
-    });
+    // Create position map based on adjusted marks
+    const positionMap = buildPositionMap(bupData);
 
     return (
       <div className="bg-white overflow-hidden">
@@ -239,17 +307,23 @@ const BupReportTab: React.FC<BupReportTabProps> = ({
                 {/* Dynamic Flying Exam Phase Headers */}
                 {flyingExamPhases.map((phase: any) => (
                   <th key={`flying-${phase.key}`} className="px-4 py-3 text-center text-xs font-medium text-black uppercase tracking-wider border border-black">
-                    {phase.phase_fullname || phase.key}
+                    {phase.phase_shortname || phase.key}
                   </th>
                 ))}
                 <th className="px-4 py-3 text-center text-xs font-medium text-black uppercase tracking-wider border border-black">
                   Daily Avg
                 </th>
-                <th rowSpan={2} className="px-4 py-3 text-center text-xs font-medium text-black uppercase tracking-wider border border-black">
+                <th className="px-4 py-3 text-center text-xs font-medium text-black uppercase tracking-wider border border-black">
                   Total
                 </th>
                 <th rowSpan={2} className="px-4 py-3 text-center text-xs font-medium text-black uppercase tracking-wider border border-black">
                   %
+                </th>
+                <th rowSpan={2} className="px-4 py-3 text-center text-xs font-medium text-black uppercase tracking-wider border border-black">
+                  Adjusted % As Per Trg Guide
+                </th>
+                <th rowSpan={2} className="px-4 py-3 text-center text-xs font-medium text-black uppercase tracking-wider border border-black">
+                  Adjusted Mks out of {bupDenominator}
                 </th>
                 <th rowSpan={2} className="px-4 py-3 text-center text-xs font-medium text-black uppercase tracking-wider border border-black">
                   Grade
@@ -272,14 +346,17 @@ const BupReportTab: React.FC<BupReportTabProps> = ({
                   </th>
                 ))}
                 <th className="px-4 py-2 text-center text-xs font-medium text-black uppercase tracking-wider border border-black">
-                  130
+                  140
+                </th>
+                <th className="px-4 py-2 text-center text-xs font-medium text-black uppercase tracking-wider border border-black">
+                  {(reportData?.is_6th_semester || is6thSemester) ? 700 : 600}
                 </th>
               </tr>
             </thead>
             <tbody className="bg-white">
               {bupData.map((cadet: any, index: number) => {
                 const position = positionMap[cadet.cadet_id] || index + 1;
-                const gradeInfo = getGrade(cadet.in_percentage || 0);
+                const gradeInfo = getGrade(calculatePercentage(cadet.total || 0));
 
                 return (
                   <tr
@@ -333,10 +410,32 @@ const BupReportTab: React.FC<BupReportTabProps> = ({
                       </span>
                     </td>
                     <td className="px-4 py-3 text-center text-black border border-black text-sm">
-                      {(cadet.in_percentage || 0).toFixed(1)}%
+                      {calculatePercentage(cadet.total || 0).toFixed(4)}%
+                    </td>
+                    <td className="px-4 py-3 text-center text-black border border-black text-sm">
+                      {(() => {
+                        const pct = calculatePercentage(cadet.total || 0);
+                        const adj = getAdjustedPercentage(pct);
+                        return adj !== null ? `${adj.toFixed(2)}%` : "—";
+                      })()}
+                    </td>
+                    <td className="px-4 py-3 text-center text-black border border-black text-sm font-bold">
+                      {(() => {
+                        const pct = calculatePercentage(cadet.total || 0);
+                        const adj = getAdjustedPercentage(pct);
+                        return adj !== null ? ((adj * bupDenominator) / 100).toFixed(2) : "—";
+                      })()}
                     </td>
                     <td className="px-4 py-3 text-center border border-black text-sm">
-                      <span className={`font-bold ${gradeInfo.color}`}>{gradeInfo.grade}</span>
+                      {(() => {
+                        const pct = calculatePercentage(cadet.total || 0);
+                        const adjGrade = getAdjustedGrade(pct);
+                        return (
+                          <span className={`font-bold ${gradeInfo.color}`}>
+                            {adjGrade !== null ? adjGrade : "—"}
+                          </span>
+                        );
+                      })()}
                     </td>
                     <td className="px-4 py-3 text-center text-black border border-black text-sm font-bold">
                       {position}
@@ -361,12 +460,8 @@ const BupReportTab: React.FC<BupReportTabProps> = ({
       );
     }
 
-    // Create position map
-    const sorted = [...bupData].sort((a, b) => b.total - a.total);
-    const positionMap: { [key: number]: number } = {};
-    sorted.forEach((item, pos) => {
-      positionMap[item.cadet_id] = pos + 1;
-    });
+    // Create position map based on adjusted marks
+    const positionMap = buildPositionMap(bupData);
 
     return (
       <div className="bg-white overflow-hidden">
@@ -402,6 +497,12 @@ const BupReportTab: React.FC<BupReportTabProps> = ({
                   %
                 </th>
                 <th rowSpan={2} className="px-4 py-3 text-center text-xs font-medium text-black uppercase tracking-wider border border-black">
+                  Adjusted % As Per Trg Guide
+                </th>
+                <th rowSpan={2} className="px-4 py-3 text-center text-xs font-medium text-black uppercase tracking-wider border border-black">
+                  Adjusted Total
+                </th>
+                <th rowSpan={2} className="px-4 py-3 text-center text-xs font-medium text-black uppercase tracking-wider border border-black">
                   Grade
                 </th>
                 <th rowSpan={2} className="px-4 py-3 text-center text-xs font-medium text-black uppercase tracking-wider border border-black">
@@ -412,7 +513,7 @@ const BupReportTab: React.FC<BupReportTabProps> = ({
             <tbody className="bg-white">
               {bupData.map((cadet: any, index: number) => {
                 const position = positionMap[cadet.cadet_id] || index + 1;
-                const gradeInfo = getGrade(cadet.in_percentage || 0);
+                const gradeInfo = getGrade(calculatePercentage(cadet.total || 0));
 
                 return (
                   <tr
@@ -451,10 +552,32 @@ const BupReportTab: React.FC<BupReportTabProps> = ({
                       </span>
                     </td>
                     <td className="px-4 py-3 text-center text-black border border-black text-sm">
-                      {(cadet.in_percentage || 0).toFixed(1)}%
+                      {calculatePercentage(cadet.total || 0).toFixed(1)}%
+                    </td>
+                    <td className="px-4 py-3 text-center text-black border border-black text-sm">
+                      {(() => {
+                        const pct = calculatePercentage(cadet.total || 0);
+                        const adj = getAdjustedPercentage(pct);
+                        return adj !== null ? `${adj.toFixed(1)}%` : "—";
+                      })()}
+                    </td>
+                    <td className="px-4 py-3 text-center text-black border border-black text-sm font-bold">
+                      {(() => {
+                        const pct = calculatePercentage(cadet.total || 0);
+                        const adj = getAdjustedPercentage(pct);
+                        return adj !== null ? ((adj * bupDenominator) / 100).toFixed(2) : "—";
+                      })()}
                     </td>
                     <td className="px-4 py-3 text-center border border-black text-sm">
-                      <span className={`font-bold ${gradeInfo.color}`}>{gradeInfo.grade}</span>
+                      {(() => {
+                        const pct = calculatePercentage(cadet.total || 0);
+                        const adjGrade = getAdjustedGrade(pct);
+                        return (
+                          <span className={`font-bold ${gradeInfo.color}`}>
+                            {adjGrade !== null ? adjGrade : "—"}
+                          </span>
+                        );
+                      })()}
                     </td>
                     <td className="px-4 py-3 text-center text-black border border-black text-sm font-bold">
                       {position}

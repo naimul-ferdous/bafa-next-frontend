@@ -156,12 +156,29 @@ export default function GstoAssessmentCourseSemesterResultPage() {
         setError("No results found for this course and semester");
       }
 
+      // Recompute dt_converted, pf_converted and combined_converted at full precision
+      // from dt_achieved/pf_achieved (backend values are pre-rounded to 2 decimals).
+      const dtEstPer = parseFloat(String(dtPfRes.dt_estimated_per_instructor || 100));
+      const pfEstPer = parseFloat(String(dtPfRes.pf_estimated_per_instructor || 100));
+      const dtConvLimit = parseFloat(String(dtPfRes.dt_conversation_mark || 0));
+      const pfConvLimit = parseFloat(String(dtPfRes.pf_conversation_mark || 0));
       const dtPfMap = new Map<number, any>();
-      (dtPfRes.data || []).forEach((row: any) => dtPfMap.set(row.cadet_id, row));
+      (dtPfRes.data || []).forEach((row: any) => {
+        const dtAchieved = parseFloat(String(row.dt_achieved || 0));
+        const pfAchieved = parseFloat(String(row.pf_achieved || 0));
+        const dtConv = dtEstPer > 0 ? (dtAchieved / dtEstPer) * dtConvLimit : 0;
+        const pfConv = pfEstPer > 0 ? (pfAchieved / pfEstPer) * pfConvLimit : 0;
+        dtPfMap.set(row.cadet_id, {
+          ...row,
+          dt_converted: dtConv,
+          pf_converted: pfConv,
+          combined_converted: dtConv + pfConv,
+        });
+      });
       setGeneratedCadetMarks(dtPfMap);
       setGeneratedConfig({
-        dt_conversation_mark: dtPfRes.dt_conversation_mark || 0,
-        pf_conversation_mark: dtPfRes.pf_conversation_mark || 0,
+        dt_conversation_mark: dtConvLimit,
+        pf_conversation_mark: pfConvLimit,
       });
     } catch (err) {
       console.error("Failed to load data:", err);
@@ -531,7 +548,7 @@ export default function GstoAssessmentCourseSemesterResultPage() {
               {courseDetails?.name} ({moduleDetails?.full_name || "GSTO Assessment"})
             </p>
             <p className="text-center font-medium text-gray-900 uppercase underline tracking-wider">
-              {semesterDetails?.name}{examType ? ` | ${examType}` : ""}
+              {examType ? examType.replace(/term/gi, "").trim() : ""} {semesterDetails?.name}
             </p>
           </div>
         </div>
@@ -585,7 +602,19 @@ export default function GstoAssessmentCourseSemesterResultPage() {
                 {cadetRows.map((cadet: any, index: number) => {
                   const entry = cadetMarksMap.get(cadet.id);
                   const genData = generatedCadetMarks.get(cadet.id);
-                  const achievedMark = parseFloat(String(entry?.achieved_mark || 0));
+                  // Per-detail display values — convert the "Assessment & Impression of GSTO"
+                  // detail from DT/PF avg_achieved: (avg/100) * male_marks.
+                  const displayValues: number[] = allDetails.map((d: any) => {
+                    const nameNorm = String(d.name || "").toLowerCase();
+                    const isAssessmentImpression = nameNorm.includes("impression") || (nameNorm.includes("assessment") && nameNorm.includes("gsto"));
+                    const maxMark = parseFloat(String(d.male_marks || 0));
+                    if (isAssessmentImpression && genData?.avg_achieved != null) {
+                      const avg = parseFloat(String(genData.avg_achieved || 0));
+                      return (avg / 100) * maxMark;
+                    }
+                    return parseFloat(String(entry?.details?.[d.id] || 0));
+                  });
+                  const achievedMark = displayValues.reduce((s, v) => s + v, 0);
                   const combinedConverted = genData?.combined_converted || 0;
                   const totalOA = achievedMark + combinedConverted;
                   const remark = totalOA < passThreshold ? "Failed" : "-";
@@ -613,22 +642,22 @@ export default function GstoAssessmentCourseSemesterResultPage() {
                       <td className="border border-black px-2 py-2 text-center">{rank}</td>
                       <td className="border border-black px-2 py-2 font-bold uppercase">{cadet.name || "N/A"}</td>
                       <td className="border border-black px-2 py-2 text-center">{branch}</td>
-                      {allDetails.map((d: any) => {
-                        const v = entry?.details?.[d.id] || 0;
+                      {allDetails.map((d: any, i: number) => {
+                        const v = displayValues[i];
                         return (
                           <td key={d.id} className="border border-black px-2 py-1 text-center">
-                            {v > 0 ? v.toFixed(2) : "—"}
+                            {v > 0 ? v.toFixed(3) : "—"}
                           </td>
                         );
                       })}
                       <td className="border border-black px-2 py-1 text-center font-bold text-blue-800">
-                        {achievedMark > 0 ? achievedMark.toFixed(2) : "—"}
+                        {achievedMark > 0 ? achievedMark.toFixed(3) : "—"}
                       </td>
                       <td className="border border-black px-2 py-1 text-center font-bold text-orange-700">
-                        {combinedConverted > 0 ? combinedConverted.toFixed(2) : "—"}
+                        {combinedConverted > 0 ? combinedConverted.toFixed(3) : "—"}
                       </td>
                       <td className="border border-black px-2 py-1 text-center font-bold text-green-800">
-                        {totalOA > 0 ? totalOA.toFixed(2) : "—"}
+                        {totalOA > 0 ? totalOA.toFixed(3) : "—"}
                       </td>
                       <td className={`border border-black px-2 py-1 text-center font-medium ${remark === "Failed" ? "text-red-600" : "text-gray-400"}`}>
                         {remark}
@@ -692,23 +721,40 @@ export default function GstoAssessmentCourseSemesterResultPage() {
                   );
                 })}
                 {/* Totals row */}
-                <tr className="font-black text-xs">
-                  <td colSpan={5 + allDetails.length + (canApproveAction && pendingCadetIds.length > 0 && allInstructorsSubmitted ? 1 : 0)} className="border border-black px-2 py-2 text-right uppercase">Total</td>
-                  <td className="border border-black px-2 py-2 text-center text-blue-800">
-                    {Array.from(cadetMarksMap.values()).reduce((sum, e) => sum + parseFloat(String(e.achieved_mark || 0)), 0).toFixed(2)}
-                  </td>
-                  <td className="border border-black px-2 py-2 text-center text-orange-700">
-                    {Array.from(cadetMarksMap.keys()).reduce((sum, cid) => sum + (generatedCadetMarks.get(cid)?.combined_converted || 0), 0).toFixed(2)}
-                  </td>
-                  <td className="border border-black px-2 py-2 text-center text-green-800">
-                    {Array.from(cadetMarksMap.keys()).reduce((sum, cid) => {
-                      const e = cadetMarksMap.get(cid);
-                      const gd = generatedCadetMarks.get(cid);
-                      return sum + parseFloat(String(e?.achieved_mark || 0)) + (gd?.combined_converted || 0);
-                    }, 0).toFixed(2)}
-                  </td>
-                  <td colSpan={100} className="border border-black px-2 py-2"></td>
-                </tr>
+                {(() => {
+                  const computeRowAchieved = (cadetId: number): number => {
+                    const e = cadetMarksMap.get(cadetId);
+                    const gd = generatedCadetMarks.get(cadetId);
+                    return allDetails.reduce((sum: number, d: any) => {
+                      const nameNorm = String(d.name || "").toLowerCase();
+                      const isAssessmentImpression = nameNorm.includes("impression") || (nameNorm.includes("assessment") && nameNorm.includes("gsto"));
+                      const maxMark = parseFloat(String(d.male_marks || 0));
+                      if (isAssessmentImpression && gd?.avg_achieved != null) {
+                        const avg = parseFloat(String(gd.avg_achieved || 0));
+                        return sum + (avg / 100) * maxMark;
+                      }
+                      return sum + parseFloat(String(e?.details?.[d.id] || 0));
+                    }, 0);
+                  };
+                  const totalAchieved = cadetRows.reduce((sum: number, c: any) => sum + computeRowAchieved(c.id), 0);
+                  const totalConverted = cadetRows.reduce((sum: number, c: any) => sum + (generatedCadetMarks.get(c.id)?.combined_converted || 0), 0);
+                  const totalOAAll = totalAchieved + totalConverted;
+                  return (
+                    <tr className="font-black text-xs">
+                      <td colSpan={5 + allDetails.length + (canApproveAction && pendingCadetIds.length > 0 && allInstructorsSubmitted ? 1 : 0)} className="border border-black px-2 py-2 text-right uppercase">Total</td>
+                      <td className="border border-black px-2 py-2 text-center text-blue-800">
+                        {totalAchieved.toFixed(3)}
+                      </td>
+                      <td className="border border-black px-2 py-2 text-center text-orange-700">
+                        {totalConverted.toFixed(3)}
+                      </td>
+                      <td className="border border-black px-2 py-2 text-center text-green-800">
+                        {totalOAAll.toFixed(3)}
+                      </td>
+                      <td colSpan={100} className="border border-black px-2 py-2"></td>
+                    </tr>
+                  );
+                })()}
               </tbody>
             </table>
           </div>

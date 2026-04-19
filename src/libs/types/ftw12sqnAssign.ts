@@ -53,3 +53,16 @@ export interface Ftw12SqnWarningAssign extends AssignRelations {
   created_at?: string;
   updated_at?: string;
 }
+
+export interface Ftw12SqnCommandAssign extends AssignRelations {
+  id: number;
+  course_id: number;
+  ftw_12sqn_assessment_command_type_id: number;
+  semester_id: number | null;
+  program_id: number | null;
+  branch_id: number | null;
+  user_id: number | null;
+  is_active: boolean;
+  created_at?: string;
+  updated_at?: string;
+}

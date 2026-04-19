@@ -330,10 +330,10 @@ const FinalReportTab: React.FC<FinalReportTabProps> = ({
                 </th>
               )}
               <th className="px-4 py-2 text-center text-xs font-medium text-black uppercase tracking-wider border border-black">
-                400
+                {is6thSemester ? 400 : 200}
               </th>
               <th className="px-4 py-2 text-center text-xs font-medium text-black uppercase tracking-wider border border-black">
-                {isBackendData ? 1200 : (is6thSemester ? 1200 : 650)}
+                {isBackendData ? (is6thSemester ? 1200 : 500) : (is6thSemester ? 1200 : 500)}
               </th>
             </tr>
           </thead>
@@ -421,11 +421,11 @@ const FinalReportTab: React.FC<FinalReportTabProps> = ({
                                 : "text-red-600"
                         }`}
                     >
-                      {isBackendData ? (cadet.total || 0).toFixed(2) : totalValue.toFixed(2)}
+                      {isBackendData ? (cadet.total || 0).toFixed(4) : totalValue.toFixed(4)}
                     </span>
                   </td>
                   <td className="px-4 py-3 text-center text-black border border-black text-sm">
-                    {isBackendData ? `${(cadet.in_percentage || 0).toFixed(1)}%` : `${inPercentage.toFixed(1)}%`}
+                    {isBackendData ? `${(cadet.in_percentage || 0).toFixed(4)}%` : `${inPercentage.toFixed(4)}%`}
                   </td>
                   <td className="px-4 py-3 text-center text-black border border-black text-sm font-bold">
                     {isBackendData ? cadet.position : position}

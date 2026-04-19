@@ -82,6 +82,12 @@ export default function UserDropdown() {
   const userRole = user?.role?.name || user?.roles?.find((r: any) => r.pivot?.is_primary)?.name || user?.roles?.[0]?.name || "";
   const userPhone = user?.phone || "";
 
+  // Get extension matching primary role
+  const primaryRoleId = user?.roles?.find((r: any) => r.pivot?.is_primary)?.id ?? (user?.role as any)?.id;
+  const userExtension = (user as any)?.assigned_extensions?.find(
+    (ae: any) => ae.extension?.role_id === primaryRoleId
+  )?.extension?.name || null;
+
   // Get user initials for avatar
   const userInitials = userName
     .split(" ")
@@ -131,7 +137,7 @@ export default function UserDropdown() {
             {userName}
           </span>
           <span className="hidden sm:block mr-1 text-xs">
-            {userRole}
+            {userRole}{userExtension ? ` · ${userExtension}` : ""}
           </span>
         </div>
 
@@ -198,6 +204,12 @@ export default function UserDropdown() {
                   {userRole}
                 </span>
               ) : null}
+              {userExtension && (
+                <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded bg-purple-50 text-purple-700 border border-purple-200 dark:bg-purple-500/10 dark:text-purple-400 dark:border-purple-700/50">
+                  <Icon icon="hugeicons:puzzle" className="w-3 h-3 mr-1" />
+                  {userExtension}
+                </span>
+              )}
             </div>
           </div>
         </div>

@@ -99,6 +99,7 @@ function WarningTypesPageContent() {
     { key: "id", header: "SL.", headerAlign: "center", className: "text-center text-gray-900", render: (warningType, index) => (pagination.from || 0) + (index + 1) },
     { key: "name", header: "Warning Type Name", className: "font-medium text-gray-900" },
     { key: "code", header: "Code", className: "text-gray-700 font-mono text-sm" },
+    { key: "form_number", header: "Form No.", className: "text-gray-700 whitespace-nowrap", render: (warningType) => warningType.form_number || "—" },
     { key: "reduced_mark", header: "Reduced Mark", headerAlign: "center", className: "text-center", render: (warningType) => (
       <span className={`inline-flex items-center px-2.5 py-1 text-xs font-semibold rounded-full ${getReducedMarkColor(Number(warningType.reduced_mark))}`}>
         -{Number(warningType.reduced_mark).toFixed(1)}

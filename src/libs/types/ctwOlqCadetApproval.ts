@@ -18,5 +18,10 @@ export interface CtwOlqCadetApproval {
   cadet?: { id: number; name: string; bd_no?: string } | null;
   authority?: { id: number; sort: number; role?: { name: string }; user?: { name: string } } | null;
   authority_user?: { id: number; name: string } | null;
-  approver?: { id: number; name: string } | null;
+  approver?: {
+    id: number;
+    name: string;
+    signature?: string | null;
+    rank?: { id: number; name: string; short_name: string } | null;
+  } | null;
 }

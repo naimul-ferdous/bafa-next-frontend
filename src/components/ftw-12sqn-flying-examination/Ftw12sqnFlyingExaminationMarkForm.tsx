@@ -3,6 +3,7 @@
 
 import React, { useState, useEffect, useMemo } from "react";
 import { Icon } from "@iconify/react";
+import { Modal } from "@/components/ui/modal";
 import { useAuth } from "@/libs/hooks/useAuth";
 import { ftw12sqnFlyingExaminationMarkService } from "@/libs/services/ftw12sqnFlyingExaminationMarkService";
 import type { SystemCourse, SystemSemester, SystemExam } from "@/libs/types/system";
@@ -13,6 +14,7 @@ import type {
   Ftw12sqnFlyingSyllabusExercise,
 } from "@/libs/types/ftw12sqnFlying";
 import DatePicker from "@/components/form/input/DatePicker";
+import FullLogo from "@/components/ui/fulllogo";
 import EditMarkModal from "./EditMarkModal";
 import AddAdditionalMarkModal from "./AddAdditionalMarkModal";
 
@@ -34,6 +36,7 @@ interface MissionRow {
   phase_sort?: number;
   exercise_sort?: number;
   take_time_hours?: string;
+  is_non_grade?: boolean;
   is_active: boolean;
   date: string;
   instructor_id: number;
@@ -418,13 +421,13 @@ export default function Ftw12sqnFlyingExaminationMarkForm({
           });
         });
 
-        // Sort by phase_sort first, then by syllabus_id for consistent ordering, then by exercise_sort
+        // Sort by phase_sort, then syllabus_id, then natural sort on shortname (GF-1, GF-2 … GF-10)
         allExercises.sort((a, b) => {
           const aSort = a.phase_sort || 0;
           const bSort = b.phase_sort || 0;
           if (aSort !== bSort) return aSort - bSort;
           if (a.syllabus_id !== b.syllabus_id) return a.syllabus_id - b.syllabus_id;
-          return (a.exercise_sort || 0) - (b.exercise_sort || 0);
+          return a.exercise_shortname.localeCompare(b.exercise_shortname, undefined, { numeric: true, sensitivity: 'base' });
         });
 
         setExercises(allExercises);
@@ -483,12 +486,13 @@ export default function Ftw12sqnFlyingExaminationMarkForm({
       phase_sort: ex.phase_sort,
       exercise_sort: ex.exercise_sort,
       take_time_hours: ex.take_time_hours ? String(ex.take_time_hours) : undefined,
+      is_non_grade: !!ex.is_non_grade,
       is_active: false,
       date: todayStr,
       instructor_id: defaultInstructorId,
       hrs_solo: "0:00",
       hrs_dual: "0:00",
-      mark: "",
+      mark: ex.is_non_grade ? 'N/G' : "",
       time: "0:00",
       remark: "",
       existing_mark_info: undefined,
@@ -593,15 +597,6 @@ export default function Ftw12sqnFlyingExaminationMarkForm({
         })
         .map((s) => s.id);
       setSelectedPhaseIds(availablePhaseIds);
-    } else {
-      setSelectedPhaseIds([]);
-    }
-  };
-
-  const handleSelectAllTableExercises = (checked: boolean) => {
-    if (checked) {
-      const allSyllabusIds = missionRows.map((r) => r.syllabus_id);
-      setSelectedPhaseIds(allSyllabusIds);
     } else {
       setSelectedPhaseIds([]);
     }
@@ -802,7 +797,7 @@ export default function Ftw12sqnFlyingExaminationMarkForm({
             instructor_id: r.instructor_id,
             exam_type_id: formData.exam_type_id || null,
             phase_type_id: r.phase_type_id,
-            achieved_mark: r.mark,
+            achieved_mark: r.is_non_grade ? 'N/G' : r.mark,
             achieved_time:
               r.hrs_solo && r.hrs_solo !== "0:00" ? r.hrs_solo : r.hrs_dual,
             participate_date: r.date,
@@ -1348,15 +1343,7 @@ export default function Ftw12sqnFlyingExaminationMarkForm({
                             className="border border-black px-3 py-2 text-center"
                             rowSpan={2}
                           >
-                            <input
-                              type="checkbox"
-                              checked={
-                                selectedPhaseIds.length > 0 &&
-                                selectedPhaseIds.length >= missionRows.length
-                              }
-                              onChange={(e) => handleSelectAllTableExercises(e.target.checked)}
-                              className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                            />
+                            SEL
                           </th>
                           <th
                             className="border border-black px-3 py-2 text-left"
@@ -1436,14 +1423,16 @@ export default function Ftw12sqnFlyingExaminationMarkForm({
                             >
                               {/* Checkbox */}
                               <td className="border border-black px-3 py-2 text-center">
-                                <input
-                                  type="checkbox"
-                                  checked={selectedPhaseIds.includes(row.syllabus_id)}
-                                  onChange={() =>
-                                    handlePhaseCheckboxChange(row.syllabus_id, !selectedPhaseIds.includes(row.syllabus_id))
-                                  }
-                                  className="w-4 h-4 text-blue-600 border-black rounded focus:ring-blue-500 cursor-pointer mx-auto block"
-                                />
+                                {!row.existing_mark_info?.exists && (
+                                  <input
+                                    type="checkbox"
+                                    checked={row.is_active}
+                                    onChange={() =>
+                                      toggleMissionActive(row.exercise_id)
+                                    }
+                                    className="w-4 h-4 text-blue-600 border-black rounded focus:ring-blue-500 cursor-pointer mx-auto block"
+                                  />
+                                )}
                               </td>
 
                               {/* Mission name */}
@@ -1527,32 +1516,8 @@ export default function Ftw12sqnFlyingExaminationMarkForm({
                                   </td>
 
                                   {/* Instructor */}
-                                  <td className="border border-black px-2 py-1">
-                                    <select
-                                      value={row.instructor_id}
-                                      onChange={(e) =>
-                                        handleMissionRowChange(
-                                          row.exercise_id,
-                                          "instructor_id",
-                                          parseInt(e.target.value)
-                                        )
-                                      }
-                                      disabled={isDisabled}
-                                      className="w-full px-2 py-1 border border-black rounded focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
-                                    >
-                                      <option value={0}>Select</option>
-                                      {instructors.map((instructor) => (
-                                        <option
-                                          key={instructor.id}
-                                          value={instructor.id}
-                                        >
-                                          {instructor.name ||
-                                            (instructor as any)
-                                              .instructor_biodata?.name ||
-                                            `Instructor #${instructor.id}`}
-                                        </option>
-                                      ))}
-                                    </select>
+                                  <td className="border border-black px-2 py-1 whitespace-nowrap text-sm text-gray-800">
+                                    {instructors.find(i => i.id === defaultInstructorId)?.name || (user as any)?.name || `Instructor #${defaultInstructorId}`}
                                   </td>
 
                                   {/* Syl Hrs */}
@@ -1626,8 +1591,8 @@ export default function Ftw12sqnFlyingExaminationMarkForm({
                                           e.target.value
                                         )
                                       }
-                                      disabled={isDisabled}
-                                      className="w-24 px-2 py-1 border border-black rounded text-center focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
+                                      disabled={isDisabled || !!row.is_non_grade}
+                                      className={`w-24 px-2 py-1 border border-black rounded text-center focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 ${row.is_non_grade ? 'font-semibold text-gray-500' : ''}`}
                                     />
                                   </td>
 

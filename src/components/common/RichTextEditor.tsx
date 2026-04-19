@@ -19,7 +19,6 @@ export default function RichTextEditor({
   const editorRef = useRef<HTMLDivElement>(null);
   const isInternalUpdate = useRef(false);
 
-  // Sync internal state with external value
   useEffect(() => {
     if (editorRef.current && !isInternalUpdate.current && editorRef.current.innerHTML !== value) {
       editorRef.current.innerHTML = value || "";
@@ -39,6 +38,36 @@ export default function RichTextEditor({
     if (editorRef.current) {
       editorRef.current.focus();
       document.execCommand(command, false, val);
+      handleInput();
+    }
+  };
+
+  const execAlphaList = () => {
+    if (!editorRef.current) return;
+    editorRef.current.focus();
+    document.execCommand("insertOrderedList", false, undefined);
+    const selection = window.getSelection();
+    if (selection && selection.rangeCount > 0) {
+      let node: Node | null = selection.getRangeAt(0).startContainer;
+      while (node && node !== editorRef.current) {
+        if (node.nodeName === "OL") {
+          (node as HTMLElement).style.listStyleType = "lower-alpha";
+          break;
+        }
+        node = node.parentNode;
+      }
+    }
+    handleInput();
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === "Tab") {
+      e.preventDefault();
+      if (e.shiftKey) {
+        document.execCommand("outdent", false, undefined);
+      } else {
+        document.execCommand("indent", false, undefined);
+      }
       handleInput();
     }
   };
@@ -84,9 +113,34 @@ export default function RichTextEditor({
           type="button"
           onMouseDown={(e) => { e.preventDefault(); execCommand("insertOrderedList"); }}
           className="p-1.5 hover:bg-gray-200 rounded transition-colors text-gray-700"
-          title="Numbered List"
+          title="Numbered List (1. 2. 3.)"
         >
           <Icon icon="hugeicons:left-to-right-list-number" className="w-4 h-4" />
+        </button>
+        <button
+          type="button"
+          onMouseDown={(e) => { e.preventDefault(); execAlphaList(); }}
+          className="p-1.5 hover:bg-gray-200 rounded transition-colors text-gray-700 text-xs font-bold"
+          title="Letter List (a. b. c.)"
+        >
+          a.
+        </button>
+        <div className="w-px h-4 bg-gray-300 mx-1" />
+        <button
+          type="button"
+          onMouseDown={(e) => { e.preventDefault(); execCommand("outdent"); }}
+          className="p-1.5 hover:bg-gray-200 rounded transition-colors text-gray-700"
+          title="Outdent (Shift+Tab)"
+        >
+          <Icon icon="hugeicons:indent-decrease" className="w-4 h-4" />
+        </button>
+        <button
+          type="button"
+          onMouseDown={(e) => { e.preventDefault(); execCommand("indent"); }}
+          className="p-1.5 hover:bg-gray-200 rounded transition-colors text-gray-700"
+          title="Indent (Tab)"
+        >
+          <Icon icon="hugeicons:indent-increase" className="w-4 h-4" />
         </button>
         <div className="w-px h-4 bg-gray-300 mx-1" />
         <button
@@ -113,11 +167,9 @@ export default function RichTextEditor({
           ref={editorRef}
           contentEditable
           onInput={handleInput}
+          onKeyDown={handleKeyDown}
           className="p-4 min-h-[150px] outline-none prose prose-sm max-w-none text-gray-900 overflow-y-auto"
-          style={{
-            lineHeight: "1.6",
-            fontSize: "14px",
-          }}
+          style={{ lineHeight: "1.6", fontSize: "14px" }}
         />
         {!value && (
           <div className="absolute top-4 left-4 pointer-events-none text-gray-400 text-sm">
@@ -125,11 +177,13 @@ export default function RichTextEditor({
           </div>
         )}
       </div>
-      
-      {/* Simple styling for rich text lists */}
+
       <style jsx global>{`
         [contenteditable] ul { list-style-type: disc; padding-left: 1.5rem; margin: 0.5rem 0; }
         [contenteditable] ol { list-style-type: decimal; padding-left: 1.5rem; margin: 0.5rem 0; }
+        [contenteditable] ol[style*="lower-alpha"] { list-style-type: lower-alpha; }
+        [contenteditable] li > ol,
+        [contenteditable] li > ul { margin: 0.25rem 0; }
         [contenteditable] p { margin: 0.5rem 0; }
       `}</style>
     </div>

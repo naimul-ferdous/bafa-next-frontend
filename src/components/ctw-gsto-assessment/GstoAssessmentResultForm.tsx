@@ -32,6 +32,7 @@ interface CadetRow {
   branch: string;
   mark: number | "";
   detail_marks: { [detailId: number]: number | "" };
+  is_calculateable: boolean;
   is_active: boolean;
 }
 
@@ -208,6 +209,7 @@ export default function GstoAssessmentResultForm({ initialData, onSubmit, onCanc
             branch: cadet.assigned_branchs?.find((ab: any) => ab.is_current)?.branch?.name || cadet.assigned_branchs?.[0]?.branch?.name || "N/A",
             mark: "",
             detail_marks: {},
+            is_calculateable: true,
             is_active: true,
           };
         });
@@ -262,6 +264,7 @@ export default function GstoAssessmentResultForm({ initialData, onSubmit, onCanc
             branch: markRecord?.cadet?.assigned_branchs?.find((ab: any) => ab.is_current)?.branch?.name || markRecord?.cadet?.assigned_branchs?.[0]?.branch?.name || "N/A",
             mark: markRecord?.achieved_mark || "",
             detail_marks: detail_marks,
+            is_calculateable: !!markRecord?.is_calculateable,
             is_active: markRecord?.is_active ?? true,
           };
         });
@@ -310,7 +313,6 @@ export default function GstoAssessmentResultForm({ initialData, onSubmit, onCanc
         });
 
         setGeneratedCadetMarks(marksMap);
-        console.log("Generated Cadet Marks Map:", Array.from(marksMap.entries()).slice(0, 3));
         setGeneratedConfig({
           dt_conversation_mark: response.dt_conversation_mark || 0,
           pf_conversation_mark: response.pf_conversation_mark || 0,
@@ -329,25 +331,11 @@ export default function GstoAssessmentResultForm({ initialData, onSubmit, onCanc
 
   // Apply generated marks into cadet rows whenever they load or generated marks update
   useEffect(() => {
-    console.log("=== GSTO Generated Marks Effect Triggered ===", {
-      estimatedMarksCount: estimatedMarks.length,
-      examTypeId: formData.exam_type_id,
-      generatedCadetMarksSize: generatedCadetMarks.size,
-    });
-    
     const selectedEM = estimatedMarks.find((em: any) => em.exam_type_id === formData.exam_type_id);
-    console.log("selectedEM:", selectedEM);
-    if (!selectedEM?.details) {
-      console.log("No selectedEM or details - returning");
-      return;
-    }
+    if (!selectedEM?.details) return;
 
     const generatedDetails = selectedEM.details.filter((d: any) => d.is_generated);
-    console.log("generatedDetails:", generatedDetails);
-    if (generatedDetails.length === 0 || generatedCadetMarks.size === 0) {
-      console.log("No generatedDetails or cadet marks - returning");
-      return;
-    }
+    if (generatedDetails.length === 0 || generatedCadetMarks.size === 0) return;
 
     setCadetRows(prev => {
       if (prev.length === 0) return prev;
@@ -358,31 +346,22 @@ export default function GstoAssessmentResultForm({ initialData, onSubmit, onCanc
         generatedDetails.forEach((d: any) => {
           const genData = generatedCadetMarks.get(cadet.cadet_id);
           const maleMark = parseFloat(d.male_marks) || 0;
-          
-          const dtAchieved = genData?.dt_achieved || 0;
-          const pfAchieved = genData?.pf_achieved || 0;
+
+          const dtAchieved = genData?.dt_achieved || 0;  // per-session avg out of dt_estimated_per_instructor
+          const pfAchieved = genData?.pf_achieved || 0;  // per-session avg out of pf_estimated_per_instructor
           const dtEstimated = genData?.dt_estimated_per_instructor || 100;
           const pfEstimated = genData?.pf_estimated_per_instructor || 100;
-          let dtDays = genData?.dt_days || 0;
-          let pfDays = genData?.pf_days || 0;
-          
-          // If days are 0, derive from achieved/estimated
-          if (dtDays === 0 && dtEstimated > 0 && dtAchieved > 0) {
-            dtDays = Math.round(dtAchieved / dtEstimated);
-          }
-          if (pfDays === 0 && pfEstimated > 0 && pfAchieved > 0) {
-            pfDays = Math.round(pfAchieved / pfEstimated);
-          }
-          
-          const dtMax = dtDays * dtEstimated; // days × estimated per day
-          const pfMax = pfDays * pfEstimated; // days × estimated per day
-          const conversationLimit = 70;
-          
-          const dtPercentage = dtMax > 0 ? (dtAchieved / dtMax) * 100 : 0;
-          const pfPercentage = pfMax > 0 ? (pfAchieved / pfMax) * 100 : 0;
-          const avgPercentage = (dtPercentage + pfPercentage) / 2;
-          let genMark = (avgPercentage / conversationLimit) * maleMark;
-          
+
+          // Step 1: convert each to % out of 100
+          const dtPercent = dtEstimated > 0 ? (dtAchieved / dtEstimated) * 100 : 0;
+          const pfPercent = pfEstimated > 0 ? (pfAchieved / pfEstimated) * 100 : 0;
+
+          // Step 2: average of DT% and PF%
+          const avgPercent = (dtPercent + pfPercent) / 2;
+
+          // Step 3: scale to maleMark (e.g. 18)
+          let genMark = (avgPercent / 100) * maleMark;
+
           // Cap at male_marks max value
           if (genMark > maleMark) {
             genMark = maleMark;
@@ -398,12 +377,6 @@ export default function GstoAssessmentResultForm({ initialData, onSubmit, onCanc
         if (!hasChange) return cadet;
 
         const newTotal = Object.values(updatedBreakdown).reduce((sum: number, val) => sum + (Number(val) || 0), 0);
-        
-        console.log(`Cadet ${cadet.cadet_id} - Final:`, {
-          detail_marks: updatedBreakdown,
-          mark: newTotal
-        });
-        
         return { ...cadet, detail_marks: updatedBreakdown, mark: newTotal };
       });
     });
@@ -457,6 +430,7 @@ export default function GstoAssessmentResultForm({ initialData, onSubmit, onCanc
           cadet_id: c.cadet_id,
           achieved_mark: c.mark || 0,
           details: details,
+          is_calculateable: c.is_calculateable,
         });
       });
 
@@ -527,7 +501,7 @@ export default function GstoAssessmentResultForm({ initialData, onSubmit, onCanc
               <Label>Course <span className="text-red-500">*</span></Label>
               <select value={formData.course_id} onChange={(e) => handleChange("course_id", parseInt(e.target.value))} className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500" required>
                 <option value={0}>Select Course</option>
-                {courses.map(course => (<option key={course.id} value={course.id}>{course.name} ({course.code})</option>))}
+                {courses.map(course => (<option key={course.id} value={course.id}>{course.name}</option>))}
               </select>
             </div>
 
@@ -543,7 +517,7 @@ export default function GstoAssessmentResultForm({ initialData, onSubmit, onCanc
                 <option value={0}>
                   {loadingSemesters ? "Loading..." : !formData.course_id ? "Select course first" : "Select Semester"}
                 </option>
-                {semesters.map(semester => (<option key={semester.id} value={semester.id}>{semester.name} ({semester.code})</option>))}
+                {semesters.map(semester => (<option key={semester.id} value={semester.id}>{semester.name}</option>))}
               </select>
             </div>
 
@@ -572,15 +546,12 @@ export default function GstoAssessmentResultForm({ initialData, onSubmit, onCanc
                   );
                 })}
               </select>
-              {!!formData.course_id && !!formData.semester_id && !loadingEstimatedMarks && (
-                <p className="mt-1 text-xs text-gray-500">Only exam types with estimated marks for the selected course & semester are enabled</p>
-              )}
             </div>
 
-            <div className="md:col-span-2">
+            {/* <div className="md:col-span-2">
               <Label>Remarks</Label>
               <textarea value={formData.remarks} onChange={(e) => handleChange("remarks", e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500" rows={3} placeholder="Enter any remarks (optional)"></textarea>
-            </div>
+            </div> */}
           </div>
         </div>
 
@@ -642,6 +613,7 @@ export default function GstoAssessmentResultForm({ initialData, onSubmit, onCanc
                         <th className="border border-black px-2 py-2 text-center align-middle font-bold" rowSpan={2}>Total</th>
                       </>
                     )}
+                    <th className="border border-black px-2 py-2 text-center align-middle" rowSpan={2}>Calc?</th>
                   </tr>
                   <tr>
                     {assessmentDetails.length > 0 ? (
@@ -720,6 +692,14 @@ export default function GstoAssessmentResultForm({ initialData, onSubmit, onCanc
                             </td>
                           </>
                         )}
+                        <td className="border border-black px-2 py-1 text-center">
+                          <input
+                            type="checkbox"
+                            checked={!!cadet.is_calculateable}
+                            onChange={(e) => handleCadetChange(index, "is_calculateable", e.target.checked)}
+                            className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                          />
+                        </td>
                       </tr>
                     );
                   })}

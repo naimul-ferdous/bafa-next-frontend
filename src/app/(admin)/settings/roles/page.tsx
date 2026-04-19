@@ -337,6 +337,12 @@ export default function RolesPage() {
                 ),
             },
             {
+                key: "extension",
+                header: "Extension",
+                className: "text-gray-700 whitespace-nowrap",
+                render: (role) => (role as any).extension || "—",
+            },
+            {
                 key: "permissions_list",
                 header: "Permissions",
                 className: "text-gray-700 whitespace-nowrap",

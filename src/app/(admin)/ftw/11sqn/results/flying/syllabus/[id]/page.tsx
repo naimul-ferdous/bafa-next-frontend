@@ -260,13 +260,14 @@ function ViewFlyingSyllabusContent() {
                 <th className="border border-gray-900 px-3 py-2 text-center text-gray-900 font-semibold w-20">Solo</th>
                 <th className="border border-gray-900 px-3 py-2 text-center text-gray-900 font-semibold w-24">Prog Total</th>
                 <th className="border border-gray-900 px-3 py-2 text-left text-gray-900 font-semibold">Remark</th>
+                <th className="border border-gray-900 px-3 py-2 text-center text-gray-900 font-semibold w-16">N/G</th>
                 <th className="border border-gray-900 px-3 py-2 text-center text-gray-900 font-semibold w-20 no-print">Actions</th>
               </tr>
             </thead>
             <tbody>
               {aggregated.exercises.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="border border-gray-900 px-4 py-8 text-center text-gray-500 italic">
+                  <td colSpan={10} className="border border-gray-900 px-4 py-8 text-center text-gray-500 italic">
                     No exercises found for this syllabus.
                   </td>
                 </tr>
@@ -291,6 +292,11 @@ function ViewFlyingSyllabusContent() {
                       <td className="border border-gray-900 px-3 py-2 text-center font-mono">{formatHoursToHHMM(soloHours)}</td>
                       <td className="border border-gray-900 px-3 py-2 text-center font-mono font-bold text-green-700">{formatHoursToHHMM(runningTotal)}</td>
                       <td className="border border-gray-900 px-3 py-2 text-gray-600 text-sm">{exercise.remarks || "—"}</td>
+                      <td className="border border-gray-900 px-3 py-2 text-center text-sm font-semibold">
+                        <span className={(exercise as any).is_non_grade ? "text-orange-700" : "text-gray-500"}>
+                          {(exercise as any).is_non_grade ? "N/G" : "-"}
+                        </span>
+                      </td>
                       <td className="border border-gray-900 px-3 py-2 text-center no-print" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-center gap-1">
                           <button

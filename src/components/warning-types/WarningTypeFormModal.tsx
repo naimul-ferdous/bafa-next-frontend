@@ -14,6 +14,7 @@ export default function WarningTypeFormModal() {
   const [formData, setFormData] = useState({
     name: "",
     code: "",
+    form_number: "",
     description: "",
     reduced_mark: 0,
     category: "",
@@ -28,6 +29,7 @@ export default function WarningTypeFormModal() {
       setFormData({
         name: editingWarningType.name,
         code: editingWarningType.code,
+        form_number: editingWarningType.form_number || "",
         description: editingWarningType.description || "",
         reduced_mark: editingWarningType.reduced_mark,
         category: editingWarningType.category || "",
@@ -38,6 +40,7 @@ export default function WarningTypeFormModal() {
       setFormData({
         name: "",
         code: "",
+        form_number: "",
         description: "",
         reduced_mark: 0,
         category: "",
@@ -99,13 +102,20 @@ export default function WarningTypeFormModal() {
             </div>
             <div>
               <Label>Code <span className="text-red-500">*</span></Label>
-              <Input 
-                value={formData.code} 
-                onChange={(e) => handleChange("code", e.target.value)} 
-                placeholder="e.g. SV01" 
-                required 
+              <Input
+                value={formData.code}
+                onChange={(e) => handleChange("code", e.target.value)}
+                placeholder="e.g. SV01"
+                required
                 disabled={!!editingWarningType}
               />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <Label>Form Number</Label>
+              <Input value={formData.form_number} onChange={(e) => handleChange("form_number", e.target.value)} placeholder="e.g. AF-123 (optional)" />
             </div>
           </div>
 

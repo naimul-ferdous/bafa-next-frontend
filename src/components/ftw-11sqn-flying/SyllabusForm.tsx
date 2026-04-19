@@ -33,6 +33,7 @@ interface ExerciseInput {
   take_time_hours: number;
   remarks: string;
   exercise_sort: number;
+  is_non_grade: boolean;
   is_active: boolean;
   phase_type_id: number;
 }
@@ -132,6 +133,7 @@ export default function SyllabusForm({ initialData, onSubmit, onCancel, loading,
             take_time_hours: 0,
             remarks: "",
             exercise_sort: 0,
+            is_non_grade: false,
             is_active: true,
             phase_type_id: phaseTypeId,
           });
@@ -211,6 +213,7 @@ export default function SyllabusForm({ initialData, onSubmit, onCancel, loading,
             take_time_hours: parseFloat(String(ex.take_time_hours)),
             remarks: ex.remarks || "",
             exercise_sort: ex.exercise_sort,
+            is_non_grade: !!ex.is_non_grade,
             is_active: ex.is_active,
             phase_type_id: st.ftw_11sqn_flying_phase_type_id,
           });
@@ -325,6 +328,7 @@ export default function SyllabusForm({ initialData, onSubmit, onCancel, loading,
               take_time_hours: ex.take_time_hours,
               remarks: ex.remarks || undefined,
               exercise_sort: index,
+              is_non_grade: ex.is_non_grade,
               is_active: ex.is_active,
             };
             return exercise;
@@ -518,14 +522,25 @@ export default function SyllabusForm({ initialData, onSubmit, onCancel, loading,
                         {getPhaseTypeName(exercise.phase_type_id)}
                       </span>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => removeExercise(index)}
-                      className="p-1.5 text-red-600 hover:bg-red-50 rounded"
-                      title="Remove Exercise"
-                    >
-                      <Icon icon="hugeicons:delete-02" className="w-4 h-4" />
-                    </button>
+                    <div className="flex items-center gap-3">
+                      <label className="flex items-center gap-2 cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={!!exercise.is_non_grade}
+                          onChange={(e) => updateExercise(index, "is_non_grade", e.target.checked)}
+                          className="w-4 h-4 accent-blue-600"
+                        />
+                        <span className="text-sm text-gray-700">Non Grade</span>
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => removeExercise(index)}
+                        className="p-1.5 text-red-600 hover:bg-red-50 rounded"
+                        title="Remove Exercise"
+                      >
+                        <Icon icon="hugeicons:delete-02" className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
                     <div>

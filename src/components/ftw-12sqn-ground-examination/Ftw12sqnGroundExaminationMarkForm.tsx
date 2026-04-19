@@ -247,7 +247,15 @@ export default function Ftw12sqnGroundExaminationMarkForm({
     ];
 
     // For instructors, filter to only show assigned cadets
+    // AND only show cadets when the instructor has exercises in the selected grounds
     if (isInstructor && instructorAssignedCadets.length > 0) {
+      if (selectedGroundIds.length > 0) {
+        const hasExercisesInSelectedGrounds = exercises.some((ex) =>
+          selectedGroundIds.includes(ex.syllabus_id) &&
+          (instructorAssignedExercises.length === 0 || instructorAssignedExercises.includes(ex.id))
+        );
+        if (!hasExercisesInSelectedGrounds) return [];
+      }
       const cadetIds = new Set(instructorAssignedCadets.map(c => c.id));
       return allCadets.filter(cadet => cadetIds.has(cadet.id));
     }
@@ -281,6 +289,9 @@ export default function Ftw12sqnGroundExaminationMarkForm({
     userIsSystemAdmin,
     isInstructor,
     instructorAssignedCadets,
+    selectedGroundIds,
+    exercises,
+    instructorAssignedExercises,
   ]);
 
   useEffect(() => {
@@ -336,9 +347,14 @@ export default function Ftw12sqnGroundExaminationMarkForm({
       return;
     }
 
-    const exercisesToShow = selectedGroundIds.length > 0
+    const exercisesToShow = (selectedGroundIds.length > 0
       ? exercises.filter((ex) => selectedGroundIds.includes(ex.syllabus_id))
-      : exercises;
+      : exercises
+    ).filter((ex) =>
+      !isInstructor ||
+      instructorAssignedExercises.length === 0 ||
+      instructorAssignedExercises.includes(ex.id)
+    );
 
     if (exercisesToShow.length === 0) {
       setGroundRows([]);
@@ -426,6 +442,8 @@ export default function Ftw12sqnGroundExaminationMarkForm({
     formData.exam_type_id,
     isEdit,
     defaultInstructorId,
+    isInstructor,
+    instructorAssignedExercises,
   ]);
 
   const handleChange = (field: string, value: any) => {
@@ -441,6 +459,22 @@ export default function Ftw12sqnGroundExaminationMarkForm({
       return updated;
     });
   };
+
+  // Auto-select exam type based on semester
+  useEffect(() => {
+    if (isEdit || !formData.semester_id || exams.length === 0 || semesters.length === 0) return;
+    const selectedSemester = semesters.find((s) => s.id === formData.semester_id);
+    if (!selectedSemester) return;
+    const code = (selectedSemester.code || "").toLowerCase();
+    let targetCode = "";
+    if (code.includes("5th")) targetCode = "MID";
+    else if (code.includes("6th")) targetCode = "END";
+    if (!targetCode) return;
+    const matched = exams.find((e) => e.code.toUpperCase() === targetCode);
+    if (matched) {
+      setFormData((prev) => ({ ...prev, exam_type_id: matched.id }));
+    }
+  }, [formData.semester_id, exams, semesters, isEdit]);
 
   const handleGroundCheckboxChange = (groundId: number, checked: boolean) => {
     setSelectedGroundIds((prev) => {
@@ -678,7 +712,9 @@ export default function Ftw12sqnGroundExaminationMarkForm({
               Selection Filters
             </h3>
 
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            {/* Row 1: Course | Semester | Syllabus | Cadet */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Course */}
               <div>
                 <label className="block font-medium text-gray-700 mb-2">
                   Course <span className="text-red-500">*</span>
@@ -700,6 +736,7 @@ export default function Ftw12sqnGroundExaminationMarkForm({
                 </select>
               </div>
 
+              {/* Semester */}
               <div>
                 <label className="block font-medium text-gray-700 mb-2">
                   Semester <span className="text-red-500">*</span>
@@ -720,102 +757,62 @@ export default function Ftw12sqnGroundExaminationMarkForm({
                   ))}
                 </select>
               </div>
-
-              <div>
-                <label className="block font-medium text-gray-700 mb-2">
-                  Exam Type <span className="text-red-500">*</span>
-                </label>
-                <select
-                  value={formData.exam_type_id}
-                  onChange={(e) =>
-                    handleChange("exam_type_id", parseInt(e.target.value))
-                  }
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500"
-                  required
-                >
-                  <option value={0}>Select Exam Type</option>
-                  {exams.map((exam) => (
-                    <option key={exam.id} value={exam.id}>
-                      {exam.name} ({exam.code})
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block font-medium text-gray-700 mb-2">
-                  Ground (Syllabus) <span className="text-red-500">*</span>
-                </label>
-                {loadingExercises && (
-                  <p className="mb-2 text-blue-500 flex items-center gap-1 text-sm">
-                    <Icon
-                      icon="hugeicons:fan-01"
-                      className="w-3 h-3 animate-spin"
-                    />
-                    Loading exercises...
-                  </p>
-                )}
-                <div className="border border-gray-300 rounded-lg p-3 max-h-48 overflow-y-auto bg-white">
-                  <div className="flex items-center gap-2 pb-2 mb-2 border-b border-gray-200">
-                    <input
-                      type="checkbox"
-                      checked={
-                        selectedGroundIds.length > 0 &&
-                        syllabuses.filter((s) => {
-                          if (formData.semester_id && s.semester_id !== formData.semester_id) return false;
-                          return true;
-                        }).length === selectedGroundIds.length
-                      }
-                      onChange={(e) => handleSelectAllGrounds(e.target.checked)}
-                      className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                    />
-                    <span className="font-medium text-gray-700 text-sm">Select All</span>
-                  </div>
-                  <div className="space-y-2">
-                    {syllabuses
-                      .filter((s) => {
-                        if (formData.semester_id && s.semester_id !== formData.semester_id)
-                          return false;
+            </div>
+            {/* Ground (Syllabus) */}
+            <div className="">
+              {loadingExercises && (
+                <p className="mb-2 text-blue-500 flex items-center gap-1 text-sm">
+                  <Icon icon="hugeicons:fan-01" className="w-3 h-3 animate-spin" />
+                  Loading exercises...
+                </p>
+              )}
+              <div className="grid grid-cols-4 gap-4 p-3 overflow-y-auto bg-white">
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={
+                      selectedGroundIds.length > 0 &&
+                      syllabuses.filter((s) => {
+                        if (formData.semester_id && s.semester_id !== formData.semester_id) return false;
                         return true;
-                      })
-                      .map((syllabus) => (
-                        <div key={syllabus.id} className="flex items-center gap-2">
-                          <input
-                            type="checkbox"
-                            checked={selectedGroundIds.includes(syllabus.id)}
-                            onChange={(e) =>
-                              handleGroundCheckboxChange(syllabus.id, e.target.checked)
-                            }
-                            className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                          />
-                          <span className="text-gray-700 text-sm">
-                            {syllabus.ground_full_name} ({syllabus.ground_shortname})
-                          </span>
-                        </div>
-                      ))}
-                  </div>
-                  {syllabuses.filter((s) => {
+                      }).length === selectedGroundIds.length
+                    }
+                    onChange={(e) => handleSelectAllGrounds(e.target.checked)}
+                    className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                  />
+                  <span className="font-medium text-gray-700 text-sm">Select All</span>
+                </div>
+                {syllabuses
+                  .filter((s) => {
                     if (formData.semester_id && s.semester_id !== formData.semester_id) return false;
                     return true;
-                  }).length === 0 && (
-                      <p className="text-gray-500 text-sm py-2">No grounds available</p>
-                    )}
-                </div>
-                {selectedGroundIds.length > 0 && (
-                  <p className="mt-1 text-sm text-blue-600">
-                    {selectedGroundIds.length} ground(s) selected
-                  </p>
-                )}
+                  })
+                  .map((syllabus) => (
+                    <div key={syllabus.id} className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={selectedGroundIds.includes(syllabus.id)}
+                        onChange={(e) =>
+                          handleGroundCheckboxChange(syllabus.id, e.target.checked)
+                        }
+                        className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                      />
+                      <span className="text-gray-700 text-sm">
+                        {syllabus.ground_full_name} ({syllabus.ground_shortname})
+                      </span>
+                    </div>
+                  ))}
+                {syllabuses.filter((s) => {
+                  if (formData.semester_id && s.semester_id !== formData.semester_id) return false;
+                  return true;
+                }).length === 0 && (
+                    <p className="text-gray-500 text-sm py-2">No grounds available</p>
+                  )}
               </div>
             </div>
-          </div>
 
-          {!isEdit && (
-            <div className="border border-gray-200 rounded-lg p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                <Icon icon="hugeicons:user" className="w-5 h-5 text-blue-500" />
-                Cadet Selection
-              </h3>
+            {/* Cadet */}
+            {!isEdit && (
               <div>
                 <label className="block font-medium text-gray-700 mb-2">
                   Cadet <span className="text-red-500">*</span>
@@ -829,9 +826,7 @@ export default function Ftw12sqnGroundExaminationMarkForm({
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
                 >
                   <option value={0}>
-                    {!filtersSelected
-                      ? "Select Course, Semester & Ground first"
-                      : "Select Cadet"}
+                    {!filtersSelected ? "Select Course, Semester & Ground first" : "Select Cadet"}
                   </option>
                   {filteredCadets.map((cadet) => (
                     <option key={cadet.id} value={cadet.id}>
@@ -843,8 +838,8 @@ export default function Ftw12sqnGroundExaminationMarkForm({
                   ))}
                 </select>
               </div>
-            </div>
-          )}
+            )}
+          </div>
 
           {isEdit ? (
             <div className="space-y-6">
@@ -1213,147 +1208,153 @@ export default function Ftw12sqnGroundExaminationMarkForm({
                               />
                             </td>
                             <td className="border border-black px-3 py-2 text-left">
-                            <div className="font-medium text-gray-900">
-                              {row.exercise_shortname}
-                            </div>
-                            <div className="text-xs text-gray-500">
-                              {row.exercise_name}
-                            </div>
-                          </td>
-                          <td className="border border-black px-3 py-2 text-center text-gray-700">
-                            {row.ground_type_name}
-                          </td>
-                          {row.existing_mark_info?.exists ? (
-                            <td
-                              className="border border-black px-4 py-3 text-center bg-yellow-50"
-                              colSpan={5}
-                            >
-                              <div className="text-amber-700 font-medium text-sm">
-                                <p>
-                                  Already submitted on{" "}
-                                  {row.existing_mark_info.date
-                                    ? new Date(
+                              <div className="font-medium text-gray-900">
+                                {row.exercise_shortname}
+                              </div>
+                              <div className="text-xs text-gray-500">
+                                {row.exercise_name}
+                              </div>
+                            </td>
+                            <td className="border border-black px-3 py-2 text-center text-gray-700">
+                              {row.ground_type_name}
+                            </td>
+                            {row.existing_mark_info?.exists ? (
+                              <td
+                                className="border border-black px-4 py-3 text-center bg-yellow-50"
+                                colSpan={5}
+                              >
+                                <div className="text-amber-700 font-medium text-sm">
+                                  <p>
+                                    Already submitted on{" "}
+                                    {row.existing_mark_info.date
+                                      ? new Date(
                                         row.existing_mark_info.date
                                       ).toLocaleDateString("en-GB", {
                                         day: "2-digit",
                                         month: "short",
                                         year: "numeric",
                                       })
-                                    : "N/A"}
-                                </p>
-                                {row.existing_mark_info.achieved_mark && (
-                                  <p className="mt-0.5 text-xs text-amber-600">
-                                    Mark: {row.existing_mark_info.achieved_mark}
-                                    {row.existing_mark_info.achieved_time &&
-                                      ` · Time: ${row.existing_mark_info.achieved_time}`}
+                                      : "N/A"}
                                   </p>
-                                )}
-                              </div>
-                              <div className="flex justify-center gap-2 mt-2">
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setSelectedExerciseForEdit(row);
-                                    setShowEditModal(true);
-                                  }}
-                                  className="px-3 py-1 text-xs bg-blue-500 text-white rounded hover:bg-blue-600"
-                                >
-                                  Edit
-                                </button>
-                              </div>
-                            </td>
-                          ) : (
-                            <>
-                              <td className="border border-black px-2 py-1">
-                                <DatePicker
-                                  value={row.date}
-                                  onChange={(e) =>
-                                    handleGroundRowChange(
-                                      row.exercise_id,
-                                      "date",
-                                      e.target.value
-                                    )
-                                  }
-                                  disabled={!row.is_active}
-                                  placeholder="dd/mm/yyyy"
-                                  className="w-full px-2 py-1 border border-black rounded text-center focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
-                                />
+                                  {row.existing_mark_info.achieved_mark && (
+                                    <p className="mt-0.5 text-xs text-amber-600">
+                                      Mark: {row.existing_mark_info.achieved_mark}
+                                      {row.existing_mark_info.achieved_time &&
+                                        ` · Time: ${row.existing_mark_info.achieved_time}`}
+                                    </p>
+                                  )}
+                                </div>
+                                <div className="flex justify-center gap-2 mt-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setSelectedExerciseForEdit(row);
+                                      setShowEditModal(true);
+                                    }}
+                                    className="px-3 py-1 text-xs bg-blue-500 text-white rounded hover:bg-blue-600"
+                                  >
+                                    Edit
+                                  </button>
+                                </div>
                               </td>
-                              <td className="border border-black px-2 py-1">
-                                <select
-                                  value={row.instructor_id}
-                                  onChange={(e) =>
-                                    handleGroundRowChange(
-                                      row.exercise_id,
-                                      "instructor_id",
-                                      parseInt(e.target.value)
-                                    )
-                                  }
-                                  disabled={!row.is_active}
-                                  className="w-full px-2 py-1 border border-black rounded focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
-                                >
-                                  <option value={0}>Select</option>
-                                  {instructors.map((instructor) => (
-                                    <option key={instructor.id} value={instructor.id}>
-                                      {instructor.name ||
-                                        `Instructor #${instructor.id}`}
-                                    </option>
-                                  ))}
-                                </select>
-                              </td>
-                              <td className="border border-black px-2 py-1">
-                                <input
-                                  type="text"
-                                  value={row.mark}
-                                  onChange={(e) =>
-                                    handleGroundRowChange(
-                                      row.exercise_id,
-                                      "mark",
-                                      e.target.value
-                                    )
-                                  }
-                                  disabled={!row.is_active}
-                                  placeholder="0"
-                                  className="w-20 px-2 py-1 border border-black rounded text-center focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
-                                />
-                              </td>
-                              <td className="border border-black px-2 py-1">
-                                <input
-                                  type="text"
-                                  value={getTimeInputValue(`ground-time-${row.exercise_id}`, row.time)}
-                                  onChange={(e) =>
-                                    handleTimeInputChange(`ground-time-${row.exercise_id}`, e.target.value)
-                                  }
-                                  onBlur={() =>
-                                    handleTimeInputBlur(
-                                      `ground-time-${row.exercise_id}`,
-                                      row.exercise_id,
-                                      "time"
-                                    )
-                                  }
-                                  disabled={!row.is_active}
-                                  placeholder="0:00"
-                                  className="w-20 px-2 py-1 border border-black rounded text-center focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
-                                />
-                              </td>
-                              <td className="border border-black px-2 py-1">
-                                <input
-                                  type="text"
-                                  value={row.remark}
-                                  onChange={(e) =>
-                                    handleGroundRowChange(
-                                      row.exercise_id,
-                                      "remark",
-                                      e.target.value
-                                    )
-                                  }
-                                  disabled={!row.is_active}
-                                  className="w-full px-2 py-1 border border-black rounded focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
-                                />
-                              </td>
-                            </>
-                          )}
-                        </tr>
+                            ) : (
+                              <>
+                                <td className="border border-black px-2 py-1">
+                                  <DatePicker
+                                    value={row.date}
+                                    onChange={(e) =>
+                                      handleGroundRowChange(
+                                        row.exercise_id,
+                                        "date",
+                                        e.target.value
+                                      )
+                                    }
+                                    disabled={!row.is_active}
+                                    placeholder="dd/mm/yyyy"
+                                    className="w-full px-2 py-1 border border-black rounded text-center focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
+                                  />
+                                </td>
+                                <td className="border border-black px-2 py-1">
+                                  {isInstructor ? (
+                                    <span className="text-sm text-gray-800 px-1">
+                                      {user?.name || `Instructor #${defaultInstructorId}`}
+                                    </span>
+                                  ) : (
+                                    <select
+                                      value={row.instructor_id}
+                                      onChange={(e) =>
+                                        handleGroundRowChange(
+                                          row.exercise_id,
+                                          "instructor_id",
+                                          parseInt(e.target.value)
+                                        )
+                                      }
+                                      disabled={!row.is_active}
+                                      className="w-full px-2 py-1 border border-black rounded focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
+                                    >
+                                      <option value={0}>Select</option>
+                                      {instructors.map((instructor) => (
+                                        <option key={instructor.id} value={instructor.id}>
+                                          {instructor.name ||
+                                            `Instructor #${instructor.id}`}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  )}
+                                </td>
+                                <td className="border border-black px-2 py-1">
+                                  <input
+                                    type="text"
+                                    value={row.mark}
+                                    onChange={(e) =>
+                                      handleGroundRowChange(
+                                        row.exercise_id,
+                                        "mark",
+                                        e.target.value
+                                      )
+                                    }
+                                    disabled={!row.is_active}
+                                    placeholder="0"
+                                    className="w-20 px-2 py-1 border border-black rounded text-center focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
+                                  />
+                                </td>
+                                <td className="border border-black px-2 py-1">
+                                  <input
+                                    type="text"
+                                    value={getTimeInputValue(`ground-time-${row.exercise_id}`, row.time)}
+                                    onChange={(e) =>
+                                      handleTimeInputChange(`ground-time-${row.exercise_id}`, e.target.value)
+                                    }
+                                    onBlur={() =>
+                                      handleTimeInputBlur(
+                                        `ground-time-${row.exercise_id}`,
+                                        row.exercise_id,
+                                        "time"
+                                      )
+                                    }
+                                    disabled={!row.is_active}
+                                    placeholder="0:00"
+                                    className="w-20 px-2 py-1 border border-black rounded text-center focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
+                                  />
+                                </td>
+                                <td className="border border-black px-2 py-1">
+                                  <input
+                                    type="text"
+                                    value={row.remark}
+                                    onChange={(e) =>
+                                      handleGroundRowChange(
+                                        row.exercise_id,
+                                        "remark",
+                                        e.target.value
+                                      )
+                                    }
+                                    disabled={!row.is_active}
+                                    className="w-full px-2 py-1 border border-black rounded focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
+                                  />
+                                </td>
+                              </>
+                            )}
+                          </tr>
                         ))}
                       </tbody>
                     </table>

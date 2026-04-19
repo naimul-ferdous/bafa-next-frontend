@@ -5,20 +5,14 @@ import { useRouter, useParams } from "next/navigation";
 import { Icon } from "@iconify/react";
 import FullLogo from "@/components/ui/fulllogo";
 import { ctwAttendenceResultService, type CtwAttendenceResult, type AttendanceStatus } from "@/libs/services/ctwAttendenceResultService";
+import { commonService } from "@/libs/services/commonService";
 
-const STATUS_BADGE: Record<string, string> = {
-    present: "text-green-800",
-    absent: "text-red-800",
-    late: "text-yellow-800",
-    excused: "text-blue-800",
-};
-
-const STATUS_SHORT: Record<string, string> = {
-    present: "P",
-    absent: "A",
-    late: "L",
-    excused: "E",
-};
+interface MedicalSchema {
+    id: number;
+    name: string;
+    code: string;
+    slug_value: string | null;
+}
 
 interface CadetAttendanceData {
     cadet_id: number;
@@ -50,10 +44,37 @@ export default function CtwAttendanceTypeDetailPage() {
 
     const [allResults, setAllResults] = useState<CtwAttendenceResult[]>([]);
     const [loading, setLoading] = useState(true);
+    const [medicalSchemas, setMedicalSchemas] = useState<MedicalSchema[]>([]);
     const [courseName, setCourseName] = useState("");
     const [semesterName, setSemesterName] = useState("");
     const [attendanceTypeName, setAttendanceTypeName] = useState("");
-    const [attendanceTypeShortName, setAttendanceTypeShortName] = useState("");
+
+    // Build slug→code map for fast lookup
+    const medicalSlugMap = useMemo(() => {
+        const map = new Map<string, MedicalSchema>();
+        medicalSchemas.forEach(s => {
+            const key = s.slug_value || s.code;
+            map.set(key, s);
+        });
+        return map;
+    }, [medicalSchemas]);
+
+    const getStatusShort = useCallback((status: string): string => {
+        if (status === "present") return "P";
+        if (status === "leave") return "L";
+        if (status === "off") return "Off";
+        const med = medicalSlugMap.get(status);
+        if (med) return med.code;
+        return status.slice(0, 2).toUpperCase();
+    }, [medicalSlugMap]);
+
+    const getStatusColor = useCallback((status: string): string => {
+        if (status === "present") return "text-green-800";
+        if (status === "leave") return "text-red-700";
+        if (status === "off") return "text-gray-600";
+        if (medicalSlugMap.has(status)) return "text-orange-700";
+        return "text-purple-700";
+    }, [medicalSlugMap]);
 
     const loadAttendanceData = useCallback(async () => {
         setLoading(true);
@@ -68,7 +89,7 @@ export default function CtwAttendanceTypeDetailPage() {
             }
 
             const allData: CtwAttendenceResult[] = [];
-            
+
             for (const m of monthsToFetch) {
                 try {
                     const data = await ctwAttendenceResultService.getAttendanceByTypeForMonth(
@@ -84,7 +105,6 @@ export default function CtwAttendanceTypeDetailPage() {
                             setCourseName(data[0].course?.name ?? "");
                             setSemesterName(data[0].semester?.name ?? "");
                             setAttendanceTypeName(data[0].attendence_type?.name ?? "");
-                            setAttendanceTypeShortName(data[0].attendence_type?.short_name ?? "");
                         }
                     }
                 } catch (e) {
@@ -102,6 +122,7 @@ export default function CtwAttendanceTypeDetailPage() {
 
     useEffect(() => {
         loadAttendanceData();
+        commonService.getCtwMedicalDisposalSchemas().then(setMedicalSchemas).catch(console.error);
     }, [loadAttendanceData]);
 
     const monthTables = useMemo((): MonthData[] => {
@@ -128,11 +149,11 @@ export default function CtwAttendanceTypeDetailPage() {
 
                 if (!monthCadetMap.has(cadetAttendance.cadet_id)) {
                     const cadetAny = c as any;
-                    const rank = cadetAny.assignedRanks?.[0]?.rank?.short_name 
-                        ?? cadetAny.assigned_ranks?.[0]?.rank?.short_name 
+                    const rank = cadetAny.assignedRanks?.[0]?.rank?.short_name
+                        ?? cadetAny.assigned_ranks?.[0]?.rank?.short_name
                         ?? "";
-                    const branch = cadetAny.assignedBranchs?.[0]?.branch?.name 
-                        ?? cadetAny.assigned_branchs?.[0]?.branch?.name 
+                    const branch = cadetAny.assignedBranchs?.[0]?.branch?.name
+                        ?? cadetAny.assigned_branchs?.[0]?.branch?.name
                         ?? "";
                     monthCadetMap.set(cadetAttendance.cadet_id, {
                         cadet_id: c.id,
@@ -149,18 +170,18 @@ export default function CtwAttendanceTypeDetailPage() {
         });
 
         const resultArr: MonthData[] = [];
-        
+
         for (let i = 0; i < 4; i++) {
             const date = new Date(currentYear, currentMonth - 1 - i, 1);
             const year = date.getFullYear();
             const month = date.getMonth() + 1;
             const monthKey = `${year}-${month}`;
-            
+
             if (months.has(monthKey)) {
                 const cadetMap = months.get(monthKey)!;
                 const cadets = Array.from(cadetMap.values()).sort((a, b) => a.cadet_number.localeCompare(b.cadet_number));
                 const hasData = cadets.some(c => Object.keys(c.attendances).length > 0);
-                
+
                 resultArr.push({
                     year,
                     month,
@@ -173,6 +194,19 @@ export default function CtwAttendanceTypeDetailPage() {
 
         return resultArr.filter(m => m.hasData || m.cadets.length > 0);
     }, [allResults, currentYear, currentMonth]);
+
+    // Collect all distinct medical slugs actually used in data, for the legend
+    const usedMedicalStatuses = useMemo(() => {
+        const used = new Set<string>();
+        monthTables.forEach(m => m.cadets.forEach(c =>
+            Object.values(c.attendances).forEach(s => {
+                if (s !== "present" && s !== "leave" && s !== "off") used.add(s);
+            })
+        ));
+        return Array.from(used)
+            .map(slug => medicalSlugMap.get(slug) ? { slug, schema: medicalSlugMap.get(slug)! } : null)
+            .filter(Boolean) as { slug: string; schema: MedicalSchema }[];
+    }, [monthTables, medicalSlugMap]);
 
     return (
         <div className="print-no-border bg-white rounded-lg border border-gray-200">
@@ -338,19 +372,14 @@ export default function CtwAttendanceTypeDetailPage() {
                                                 <th className="border border-black px-2 py-2 text-left font-semibold text-black w-12">Rank</th>
                                                 <th className="border border-black px-2 py-2 text-left font-semibold text-black w-24">Name</th>
                                                 <th className="border border-black px-2 py-2 text-left font-semibold text-black w-20">Branch</th>
-                                                {days.map((day) => {
-                                                    const hasData = monthData.cadets.some(c => c.attendances[`${day}`]);
-                                                    return (
-                                                        <th
-                                                            key={day}
-                                                            className={`border border-black px-0.5 py-1 text-center text-black w-6 ${
-                                                                !hasData ? 'text-black' : ''
-                                                            }`}
-                                                        >
-                                                            {day}
-                                                        </th>
-                                                    );
-                                                })}
+                                                {days.map((day) => (
+                                                    <th
+                                                        key={day}
+                                                        className="border border-black px-0.5 py-1 text-center text-black w-6"
+                                                    >
+                                                        {day}
+                                                    </th>
+                                                ))}
                                             </tr>
                                         </thead>
                                         <tbody>
@@ -376,11 +405,11 @@ export default function CtwAttendanceTypeDetailPage() {
                                                         return (
                                                             <td
                                                                 key={day}
-                                                                className={`border border-black px-0.5 py-1 text-center text-xs ${
-                                                                    status ? STATUS_BADGE[status] : "text-gray-300"
+                                                                className={`border border-black px-0.5 py-1 text-center text-xs font-semibold ${
+                                                                    status ? getStatusColor(status) : "text-gray-300"
                                                                 }`}
                                                             >
-                                                                {status ? STATUS_SHORT[status] : "—"}
+                                                                {status ? getStatusShort(status) : "—"}
                                                             </td>
                                                         );
                                                     })}
@@ -394,15 +423,21 @@ export default function CtwAttendanceTypeDetailPage() {
                     })
                 )}
 
+                {/* Legend — visible both on screen and print */}
                 {monthTables.length > 0 && (
-                    <div className="flex items-center justify-between text-xs text-gray-500 mt-2 no-print">
-                        <div className="flex items-center gap-2">
-                            <span className="inline-flex items-center px-2 py-0.5 rounded bg-green-100 text-green-800 text-xs font-semibold">P = Present</span>
-                            <span className="inline-flex items-center px-2 py-0.5 rounded bg-red-100 text-red-800 text-xs font-semibold">A = Absent</span>
-                            <span className="inline-flex items-center px-2 py-0.5 rounded bg-yellow-100 text-yellow-800 text-xs font-semibold">L = Late</span>
-                            <span className="inline-flex items-center px-2 py-0.5 rounded bg-blue-100 text-blue-800 text-xs font-semibold">E = Excused</span>
+                    <div className="mt-4 text-xs text-gray-700 space-y-1">
+                        <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+                            <span className="font-semibold text-green-800">P = Present</span>
+                            <span className="font-semibold text-gray-600">O = Off</span>
+                            {usedMedicalStatuses.map(({ slug, schema }) => (
+                                <span key={slug} className="font-semibold text-orange-700">
+                                    {schema.code} = {schema.name}
+                                </span>
+                            ))}
                         </div>
-                        <div>Generated: {new Date().toLocaleDateString("en-GB")}</div>
+                        <div className="text-gray-400 no-print">
+                            Generated: {new Date().toLocaleDateString("en-GB")}
+                        </div>
                     </div>
                 )}
             </div>

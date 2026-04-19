@@ -175,7 +175,7 @@ export default function CtwThreeKmResultsPage() {
   );
 
   const columns: Column<CtwOneMileResult>[] = [
-    { key: "id", header: "SL.", headerAlign: "center", className: "text-center text-gray-900", render: (result, index) => (pagination.from || 0) + (index + 1) },
+    { key: "id", header: "SL.", headerAlign: "center", className: "text-center text-gray-900", render: (result, index) => (pagination.from || 0) + (index) },
     {
       key: "course",
       header: "Course",
@@ -187,18 +187,6 @@ export default function CtwThreeKmResultsPage() {
       header: "Semester",
       className: "font-medium text-gray-900",
       render: (result) => result.semester?.name || "N/A",
-    },
-    {
-      key: "program",
-      header: "Program",
-      className: "text-gray-700",
-      render: (result) => result.program?.name || "N/A",
-    },
-    {
-      key: "branch",
-      header: "Branch",
-      className: "text-gray-700",
-      render: (result) => result.branch?.name || "N/A",
     },
     {
       key: "exam_type",

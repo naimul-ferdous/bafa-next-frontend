@@ -1230,7 +1230,7 @@ export default function Ftw11sqnGroundExaminationMarkForm({
                             >
                               <div className="text-amber-700 font-medium text-sm">
                                 <p>
-                                  Already submitted on{" "}
+                                  Already mark Inputed on{" "}
                                   {row.existing_mark_info.date
                                     ? new Date(
                                         row.existing_mark_info.date

@@ -8,10 +8,12 @@ import { ctwCommonService } from "@/libs/services/ctwCommonService";
 import { ctwResultsModuleService } from "@/libs/services/ctwResultsModuleService";
 import { cadetService } from "@/libs/services/cadetService";
 import { ctwInstructorAssignModuleService } from "@/libs/services/ctwInstructorAssignModuleService";
+import { ctwOneMilePracticeService } from "@/libs/services/ctwOneMilePracticeService";
 import { useAuth } from "@/libs/hooks/useAuth";
 import { Icon } from "@iconify/react";
 import type { SystemCourse, SystemSemester, SystemProgram, SystemBranch, SystemGroup, SystemExam } from "@/libs/types/system";
 import type { CtwOneMileResult } from "@/libs/types/ctwOneMile";
+import OneMilePracticeModal from "./OneMilePracticeModal";
 
 interface ResultFormProps {
   initialData?: CtwOneMileResult | null;
@@ -71,6 +73,22 @@ export default function OneMileResultForm({ initialData, onSubmit, onCancel, loa
   const [loadingEstimatedMarks, setLoadingEstimatedMarks] = useState(false);
   const [loadingSemesters, setLoadingSemesters] = useState(false);
   const [moduleAssigned, setModuleAssigned] = useState(false);
+  const [showing, setShowing] = useState<"form" | "practice">("form");
+
+  // Practice section state
+  const [practiceDate, setPracticeDate] = useState("");
+  const [practiceMarks, setPracticeMarks] = useState<{ [cadetId: number]: { achieved_mark: number; remark: string } }>({});
+  const [loadingPractices, setLoadingPractices] = useState(false);
+  const [savingPractices, setSavingPractices] = useState(false);
+  const [practiceError, setPracticeError] = useState("");
+  const [practiceSuccess, setPracticeSuccess] = useState("");
+  const [allPractices, setAllPractices] = useState<any[]>([]);
+  const [loadingAllPractices, setLoadingAllPractices] = useState(false);
+  const [practiceTab, setPracticeTab] = useState<"entry" | "history">("entry");
+  const [showPracticeModal, setShowPracticeModal] = useState(false);
+  const [modalPracticeDate, setModalPracticeDate] = useState("");
+  const [modalPracticeMarks, setModalPracticeMarks] = useState<{ [cadetId: number]: { achieved_mark: number; remark: string } }>({});
+  const [bestPracticesLoaded, setBestPracticesLoaded] = useState(false);
 
   // Load all form options in a single API call
   useEffect(() => {
@@ -154,6 +172,83 @@ export default function OneMileResultForm({ initialData, onSubmit, onCancel, loa
     loadEstimatedMarks();
   }, [oneMileModuleId, formData.course_id, formData.semester_id]);
 
+  // Load all practice records when filters are ready
+  const loadAllPractices = async () => {
+    if (!oneMileModuleId || !formData.course_id || !formData.semester_id || !formData.exam_type_id) {
+      setAllPractices([]);
+      return [];
+    }
+    try {
+      setLoadingAllPractices(true);
+      const data = await ctwOneMilePracticeService.getPractices({
+        course_id: formData.course_id,
+        semester_id: formData.semester_id,
+        ctw_results_module_id: oneMileModuleId,
+        exam_type_id: formData.exam_type_id,
+      });
+      setAllPractices(data);
+      return data;
+    } catch {
+      // ignore
+    } finally {
+      setLoadingAllPractices(false);
+    }
+    return [];
+  };
+
+  useEffect(() => {
+    loadAllPractices();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [oneMileModuleId, formData.course_id, formData.semester_id, formData.exam_type_id]);
+
+  // Compute best 3 practices for each cadet and update cadet rows
+  useEffect(() => {
+    console.log("useEffect triggered:", { cadetRowsLen: cadetRows.length, allPracticesLen: allPractices.length, loadingCadets, loadingAllPractices, practiceCount });
+    if (cadetRows.length === 0 || allPractices.length === 0 || loadingCadets || loadingAllPractices) return;
+
+    const computeBestPractices = () => {
+      console.log("Computing best practices, allPractices:", allPractices.length);
+      const updatedRows = cadetRows.map(cadet => {
+        const cadetPractices = allPractices.filter((p: any) => p.cadet_id === cadet.cadet_id);
+        if (cadetPractices.length === 0) {
+          console.log(`Cadet ${cadet.cadet_id}: no practices found`);
+          return { ...cadet, practices: {}, avg_practice: 0 };
+        }
+
+        // Sort by achieved_mark descending and take top 3
+        // FIX: Use Number() instead of parseFloat() to handle both string and number types
+        const sortedMarks = [...cadetPractices]
+          .map((p) => Number(p.achieved_mark))
+          .filter((m) => !isNaN(m))
+          .sort((a, b) => b - a)
+          .slice(0, 3);
+
+        console.log(`Cadet ${cadet.cadet_id}: sortedMarks=`, sortedMarks);
+
+        const bestPractices: { [key: number]: number } = {};
+        sortedMarks.forEach((mark, idx) => {
+          bestPractices[idx + 1] = mark;
+        });
+
+        const avgPractice = sortedMarks.length > 0
+          ? sortedMarks.reduce((a, b) => a + b, 0) / sortedMarks.length
+          : 0;
+
+        console.log(`Cadet ${cadet.cadet_id}: bestPractices=`, bestPractices, ", avgPractice=", avgPractice);
+
+        const updatedCadet = { ...cadet, practices: bestPractices, avg_practice: parseFloat(avgPractice.toFixed(2)) };
+        return updateCalculatedMarks(updatedCadet, true);
+      });
+
+      console.log("Setting cadet rows with best practices");
+      setCadetRows(JSON.parse(JSON.stringify(updatedRows)));
+      setBestPracticesLoaded(true);
+    };
+
+    computeBestPractices();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allPractices, loadingAllPractices, oneMileModuleId, formData.course_id, formData.semester_id, formData.exam_type_id]);
+
   // Check if exam type exists in the fetched estimated marks
   const hasEstimatedMark = (examTypeId: number): boolean => {
     return estimatedMarks.some((em: any) => em.exam_type_id === examTypeId);
@@ -168,9 +263,40 @@ export default function OneMileResultForm({ initialData, onSubmit, onCancel, loa
   const estimatedMarkInfo = getEstimatedMarkInfo();
   const maxTestMark = estimatedMarkInfo ? parseFloat(estimatedMarkInfo.estimated_mark_per_instructor || estimatedMarkInfo.mark || 0) : 0;
   const conversationMark = estimatedMarkInfo ? parseFloat(estimatedMarkInfo.conversation_mark || 0) : 0;
-  const practiceCount = estimatedMarkInfo ? parseInt(estimatedMarkInfo.practice_count || 0) : 0;
+  const practiceCount = estimatedMarkInfo ? parseInt(estimatedMarkInfo.practice_count || 3) : 3;
   const convPracticeWeight = estimatedMarkInfo ? parseFloat(estimatedMarkInfo.convert_of_practice || 0) : 0;
   const convExamWeight = estimatedMarkInfo ? parseFloat(estimatedMarkInfo.convert_of_exam || 0) : 0;
+
+  // Helper to calculate total mark
+  const calculateTotal = (avgPractice: number, testMark: number) => {
+    const convPractice = avgPractice * convPracticeWeight / 100;
+    const convExam = testMark * convExamWeight / 100;
+    let total = convPractice + convExam;
+    if (conversationMark > 0 && total > conversationMark) {
+      total = conversationMark;
+    }
+    return Math.round(total * 100) / 100;
+  };
+
+  // Helper function to get best 3 practices for a cadet
+  // FIX: Use Number() instead of parseFloat() to handle both string and number types
+  const getBestPractices = (cadetId: number) => {
+    if (!allPractices || allPractices.length === 0) return { practices: {}, avg: 0 };
+    const cadetPractices = allPractices.filter((p: any) => p.cadet_id === cadetId);
+    if (cadetPractices.length === 0) return { practices: {}, avg: 0 };
+
+    const sortedMarks = [...cadetPractices]
+      .map(p => Number(p.achieved_mark))
+      .filter(m => !isNaN(m))
+      .sort((a, b) => b - a)
+      .slice(0, 3);
+
+    const bestPractices: { [key: number]: number } = {};
+    sortedMarks.forEach((mark, idx) => { bestPractices[idx + 1] = mark; });
+    const avg = sortedMarks.length > 0 ? sortedMarks.reduce((a, b) => a + b, 0) / sortedMarks.length : 0;
+
+    return { practices: bestPractices, avg: parseFloat(avg.toFixed(2)) };
+  };
 
   // Auto-load cadets after exam type selected
   // First check if instructor is assigned to this module via ctw_instructor_assign_modules
@@ -270,7 +396,7 @@ export default function OneMileResultForm({ initialData, onSubmit, onCancel, loa
           const mark = initialData.achieved_marks?.find(m => m.cadet_id === cadetId);
           const currentRank = mark?.cadet?.assigned_ranks?.find((ar: any) => ar.rank)?.rank;
 
-          const test_mark = parseFloat(String(mark?.achieved_mark || 0)); // Raw exam mark is now in achieved_mark
+          const test_mark = Number(mark?.achieved_mark || 0); // FIX: Use Number() for consistency
 
           const practices: { [key: number]: number } = {};
           let pIdx = 1;
@@ -280,7 +406,7 @@ export default function OneMileResultForm({ initialData, onSubmit, onCancel, loa
           if (mark?.details) {
             mark.details.forEach(det => {
               if (det.practices_marks !== null && det.practices_marks !== undefined) {
-                const practiceVal = parseFloat(String(det.practices_marks));
+                const practiceVal = Number(det.practices_marks); // FIX: Use Number() for consistency
                 practices[pIdx] = practiceVal;
                 practicesTotalForAvg += practiceVal;
                 practicesCountForAvg++;
@@ -300,8 +426,8 @@ export default function OneMileResultForm({ initialData, onSubmit, onCancel, loa
             practices: practices,
             avg_practice: avg_practice,
             conv_practice: 0,
-            test_mark: test_mark,
             conv_exam: 0,
+            test_mark: test_mark,
             mark: 0,
             is_active: mark?.is_active || true,
           };
@@ -313,7 +439,7 @@ export default function OneMileResultForm({ initialData, onSubmit, onCancel, loa
     }
   }, [initialData, oneMileModule]);
 
-  const updateCalculatedMarks = (cadet: CadetRow): CadetRow => {
+  const updateCalculatedMarks = (cadet: CadetRow, skipAvgRecalc = false): CadetRow => {
     // 1. Calculate Average Practice Mark
     let totalPracticeMark = 0;
     let actualCount = 0;
@@ -323,7 +449,9 @@ export default function OneMileResultForm({ initialData, onSubmit, onCancel, loa
         actualCount++;
       }
     }
-    const avgPractice = actualCount > 0 ? totalPracticeMark / actualCount : cadet.avg_practice;
+    const avgPractice = skipAvgRecalc
+      ? cadet.avg_practice
+      : (actualCount > 0 ? totalPracticeMark / actualCount : cadet.avg_practice);
 
     // 2. Convert Practice: (AvgPractice * Weight / 100)
     const conv_practice = (avgPractice * convPracticeWeight) / 100;
@@ -346,6 +474,201 @@ export default function OneMileResultForm({ initialData, onSubmit, onCancel, loa
       conv_exam: parseFloat(conv_exam.toFixed(2)),
       mark: parseFloat(finalMark.toFixed(2))
     };
+  };
+
+  // Practice section handlers
+  const handlePracticeDateChange = async (date: string) => {
+    setPracticeDate(date);
+    if (!date || !formData.course_id || !formData.semester_id || !oneMileModuleId) return;
+
+    let formattedDate = date;
+    const dateParts = date.split('/');
+    if (dateParts.length === 3) {
+      const [day, month, year] = dateParts;
+      formattedDate = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+      const dateObj = new Date(formattedDate);
+      if (isNaN(dateObj.getTime())) {
+        setPracticeError("Please enter a valid date."); return;
+      }
+    }
+
+    try {
+      setLoadingPractices(true);
+      setPracticeError("");
+      const existing = await ctwOneMilePracticeService.getPractices({
+        course_id: formData.course_id,
+        semester_id: formData.semester_id,
+        ctw_results_module_id: oneMileModuleId,
+        exam_type_id: formData.exam_type_id,
+        practice_date: formattedDate,
+      });
+
+      const merged: { [cadetId: number]: { achieved_mark: number; remark: string } } = {};
+      cadetRows.forEach(c => {
+        merged[c.cadet_id] = { achieved_mark: 0, remark: "" };
+      });
+      existing.forEach(p => {
+        merged[p.cadet_id] = {
+          achieved_mark: p.achieved_mark,
+          remark: p.remark || "",
+        };
+      });
+      setPracticeMarks(merged);
+    } catch {
+      setPracticeError("Failed to load existing practices for this date.");
+    } finally {
+      setLoadingPractices(false);
+    }
+  };
+
+  const handlePracticeMarkChange = (cadetId: number, field: "achieved_mark" | "remark", value: string | number) => {
+    setPracticeMarks(prev => ({
+      ...prev,
+      [cadetId]: {
+        ...prev[cadetId],
+        [field]: value,
+      },
+    }));
+  };
+
+  const handleSavePractices = async () => {
+    setPracticeError("");
+    setPracticeSuccess("");
+
+    if (!practiceDate) { setPracticeError("Please select a practice date."); return; }
+    if (!formData.course_id || !formData.semester_id) { setPracticeError("Course and semester are required."); return; }
+    if (!formData.exam_type_id) { setPracticeError("Please select an exam type first."); return; }
+    if (!user?.id) { setPracticeError("User session error. Please re-login."); return; }
+
+    const practices = cadetRows.map(c => ({
+      cadet_id: c.cadet_id,
+      achieved_mark: practiceMarks[c.cadet_id]?.achieved_mark ?? 0,
+      remark: practiceMarks[c.cadet_id]?.remark || undefined,
+    }));
+
+    try {
+      setSavingPractices(true);
+      await ctwOneMilePracticeService.saveBulk({
+        course_id: formData.course_id,
+        semester_id: formData.semester_id,
+        ctw_results_module_id: oneMileModuleId,
+        exam_type_id: formData.exam_type_id,
+        instructor_id: user.id,
+        practice_date: practiceDate,
+        practices,
+      });
+      setPracticeSuccess("Practices saved successfully.");
+      await loadAllPractices();
+    } catch (err: any) {
+      setPracticeError(err.message || "Failed to save practices.");
+    } finally {
+      setSavingPractices(false);
+    }
+  };
+
+  const openPracticeModal = () => {
+    setModalPracticeDate("");
+    const initial: { [cadetId: number]: { achieved_mark: number; remark: string } } = {};
+    cadetRows.forEach(c => {
+      initial[c.cadet_id] = { achieved_mark: 0, remark: "" };
+    });
+    setModalPracticeMarks(initial);
+    setShowPracticeModal(true);
+  };
+
+  const handleModalPracticeMarkChange = (cadetId: number, field: "achieved_mark" | "remark", value: string | number) => {
+    setModalPracticeMarks(prev => ({
+      ...prev,
+      [cadetId]: {
+        ...prev[cadetId],
+        [field]: value,
+      },
+    }));
+  };
+
+  const handleSaveModalPractices = async () => {
+    setPracticeError("");
+    setPracticeSuccess("");
+
+    if (!modalPracticeDate) { setPracticeError("Please select a practice date."); return; }
+
+    let formattedDate = "";
+
+    if (modalPracticeDate.includes('/')) {
+      const dateParts = modalPracticeDate.split('/');
+      if (dateParts.length === 3) {
+        const [day, month, year] = dateParts;
+        formattedDate = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+      } else {
+        setPracticeError("Invalid date format. Use dd/mm/yyyy"); return;
+      }
+    } else if (modalPracticeDate.includes('-') && modalPracticeDate.length === 10) {
+      formattedDate = modalPracticeDate;
+    } else {
+      setPracticeError("Invalid date format."); return;
+    }
+
+    const finalDateObj = new Date(formattedDate);
+    if (!formattedDate || isNaN(finalDateObj.getTime())) {
+      setPracticeError("Please enter a valid date."); return;
+    }
+
+    if (!formData.course_id || !formData.semester_id) { setPracticeError("Course and semester are required."); return; }
+    if (!formData.exam_type_id) { setPracticeError("Please select an exam type first."); return; }
+    if (!user?.id) { setPracticeError("User session error. Please re-login."); return; }
+
+    const practices = cadetRows.map(c => ({
+      cadet_id: c.cadet_id,
+      achieved_mark: modalPracticeMarks[c.cadet_id]?.achieved_mark ?? 0,
+      remark: modalPracticeMarks[c.cadet_id]?.remark || undefined,
+    }));
+
+    try {
+      setSavingPractices(true);
+      await ctwOneMilePracticeService.saveBulk({
+        course_id: formData.course_id,
+        semester_id: formData.semester_id,
+        ctw_results_module_id: oneMileModuleId,
+        exam_type_id: formData.exam_type_id,
+        instructor_id: user.id,
+        practice_date: formattedDate,
+        practices,
+      });
+      setPracticeSuccess("Practices saved successfully.");
+      setShowPracticeModal(false);
+      setModalPracticeDate("");
+      setBestPracticesLoaded(false);
+
+      // Load practices and get returned data
+      const practicesData = await loadAllPractices();
+
+      // Compute best practices using the freshly loaded data
+      // FIX: Use Number() instead of parseFloat() to handle both string and number types
+      if (cadetRows.length > 0 && practicesData.length > 0) {
+        const updatedRows = cadetRows.map(cadet => {
+          const cadetPractices = practicesData.filter((p: any) => p.cadet_id === cadet.cadet_id);
+          if (cadetPractices.length === 0) return { ...cadet, practices: {}, avg_practice: 0 };
+
+          const sortedMarks = [...cadetPractices]
+            .map(p => Number(p.achieved_mark))
+            .filter(m => !isNaN(m))
+            .sort((a, b) => b - a)
+            .slice(0, 3);
+
+          const bestPractices: { [key: number]: number } = {};
+          sortedMarks.forEach((mark, idx) => { bestPractices[idx + 1] = mark; });
+          const avgPractice = sortedMarks.length > 0 ? sortedMarks.reduce((a, b) => a + b, 0) / sortedMarks.length : 0;
+
+          const updatedCadet = { ...cadet, practices: bestPractices, avg_practice: parseFloat(avgPractice.toFixed(2)) };
+          return updateCalculatedMarks(updatedCadet, true);
+        });
+        setCadetRows(updatedRows);
+      }
+    } catch (err: any) {
+      setPracticeError(err.message || "Failed to save practices.");
+    } finally {
+      setSavingPractices(false);
+    }
   };
 
   const handlePracticeChange = (cadetIndex: number, practiceIndex: number, value: number) => {
@@ -474,30 +797,6 @@ export default function OneMileResultForm({ initialData, onSubmit, onCancel, loa
             </div>
 
             <div>
-              <Label>Program</Label>
-              <select value={formData.program_id} onChange={(e) => handleChange("program_id", parseInt(e.target.value))} className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500">
-                <option value={0}>Select Program (Optional)</option>
-                {programs.map(program => (<option key={program.id} value={program.id}>{program.name} ({program.code})</option>))}
-              </select>
-            </div>
-
-            <div>
-              <Label>Branch</Label>
-              <select value={formData.branch_id} onChange={(e) => handleChange("branch_id", parseInt(e.target.value))} className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500">
-                <option value={0}>Select Branch (Optional)</option>
-                {branches.map(branch => (<option key={branch.id} value={branch.id}>{branch.name} ({branch.code})</option>))}
-              </select>
-            </div>
-
-            <div>
-              <Label>Group</Label>
-              <select value={formData.group_id} onChange={(e) => handleChange("group_id", parseInt(e.target.value))} className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500">
-                <option value={0}>Select Group (Optional)</option>
-                {groups.map(group => (<option key={group.id} value={group.id}>{group.name} ({group.code})</option>))}
-              </select>
-            </div>
-
-            <div>
               <Label>Exam Type <span className="text-red-500">*</span></Label>
               <select
                 value={formData.exam_type_id}
@@ -522,28 +821,50 @@ export default function OneMileResultForm({ initialData, onSubmit, onCancel, loa
                   );
                 })}
               </select>
-              {formData.course_id && formData.semester_id && !loadingEstimatedMarks && (
-                <p className="mt-1 text-xs text-gray-500">
-                  Only exam types with estimated marks for the selected course & semester are enabled
-                </p>
-              )}
-            </div>
-
-            <div className="md:col-span-2">
-              <Label>Remarks</Label>
-              <textarea value={formData.remarks} onChange={(e) => handleChange("remarks", e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500" rows={3} placeholder="Enter any remarks (optional)"></textarea>
             </div>
           </div>
         </div>
 
         <div className="border border-gray-200 rounded-lg p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-            <Icon icon="hugeicons:note-edit" className="w-5 h-5 text-blue-500" />
-            Cadets Marks Entry
-            {loadingCadets && (
-              <Icon icon="hugeicons:fan-01" className="w-10 h-10 animate-spin mx-auto my-10 text-blue-500" />
-            )}
-          </h3>
+          <div className="flex justify-between ">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+              <Icon icon="hugeicons:note-edit" className="w-5 h-5 text-blue-500" />
+              {showing === "form" ? "Cadets Marks Entry" : "Cadets Practice Marks"}
+              {loadingCadets && (
+                <Icon icon="hugeicons:fan-01" className="w-10 h-10 animate-spin text-blue-500" />
+              )}
+            </h3>
+            <div className="rounded-full">
+              <div className="flex items-center gap-2">
+                <div className="inline-flex gap-1 rounded-full border border-gray-300 p-1 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => setShowing("form")}
+                    className={`px-4 py-1 rounded-full border border-gray-300 ${showing === "form" ? "bg-blue-500 text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200"}`}
+                  >
+                    Form
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowing("practice")}
+                    className={`px-4 py-1 rounded-full border border-gray-300 ${showing === "practice" ? "bg-blue-500 text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200"}`}
+                  >
+                    Practices
+                  </button>
+                </div>
+                {showing === "practice" && (
+                  <button
+                    type="button"
+                    onClick={openPracticeModal}
+                    className="px-3 py-1 bg-green-500 text-white rounded-lg hover:bg-green-600 flex items-center gap-1 text-xs"
+                  >
+                    <Icon icon="hugeicons:add" className="w-3 h-3" />
+                    Add
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
 
           {!filtersSelected ? (
             <div className="text-center py-12 text-gray-500">
@@ -566,86 +887,159 @@ export default function OneMileResultForm({ initialData, onSubmit, onCancel, loa
               <p>No cadets assigned to you for the selected filters</p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full border-collapse border border-black text-xs">
-                <thead>
-                  <tr>
-                    <th className="border border-black px-3 py-2 text-center whitespace-nowrap" rowSpan={2}>SL</th>
-                    <th className="border border-black px-3 py-2 text-center whitespace-nowrap" rowSpan={2}>BD No.</th>
-                    <th className="border border-black px-3 py-2 text-center whitespace-nowrap" rowSpan={2}>Rank</th>
-                    <th className="border border-black px-3 py-2 text-left whitespace-nowrap" rowSpan={2}>Name</th>
-                    <th className="border border-black px-3 py-2 text-left whitespace-nowrap" rowSpan={2}>Branch</th>
-                    {practiceCount > 0 && (
-                      <th className="border border-black px-3 py-2 text-center" colSpan={practiceCount}>Practices</th>
-                    )}
-                    <th className="border border-black px-3 py-2 text-center whitespace-nowrap" rowSpan={2}>Avg. <br/> Practice</th>
-                    <th className="border border-black px-3 py-2 text-center whitespace-nowrap" rowSpan={2}>Exam <br/> {maxTestMark > 0 ? `${maxTestMark}` : ""}</th>
-                    <th className="border border-black px-3 py-2 text-center whitespace-nowrap" rowSpan={2}>Prac <br/> ({convPracticeWeight}%)</th>
-                    <th className="border border-black px-3 py-2 text-center whitespace-nowrap" rowSpan={2}>Exam <br/> ({convExamWeight}%)</th>
-                    <th className="border border-black px-3 py-2 text-center whitespace-nowrap" rowSpan={2}>Total</th>
-                  </tr>
-                  {practiceCount > 0 && (
-                    <tr>
-                      {Array.from({ length: practiceCount }, (_, i) => i + 1).map(p => (
-                        <th key={p} className="border border-black px-3 py-2 text-center text-xs">P{p}</th>
-                      ))}
-                    </tr>
+            <>
+              {showing === "form" ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full border-collapse border border-black text-xs">
+                    <thead>
+                      <tr>
+                        <th className="border border-black px-3 py-2 text-center whitespace-nowrap" rowSpan={2}>SL</th>
+                        <th className="border border-black px-3 py-2 text-center whitespace-nowrap" rowSpan={2}>BD No.</th>
+                        <th className="border border-black px-3 py-2 text-center whitespace-nowrap" rowSpan={2}>Rank</th>
+                        <th className="border border-black px-3 py-2 text-left whitespace-nowrap" rowSpan={2}>Name</th>
+                        <th className="border border-black px-3 py-2 text-left whitespace-nowrap" rowSpan={2}>Branch</th>
+                        {practiceCount > 0 && (
+                          <th className="border border-black px-3 py-2 text-center" colSpan={practiceCount}>Practices</th>
+                        )}
+                        <th className="border border-black px-3 py-2 text-center whitespace-nowrap" rowSpan={2}>Avg. <br /> Practice</th>
+                        <th className="border border-black px-3 py-2 text-center whitespace-nowrap" rowSpan={2}>Exam <br /> {maxTestMark > 0 ? `${maxTestMark}` : ""}</th>
+                        <th className="border border-black px-3 py-2 text-center whitespace-nowrap" rowSpan={2}>Prac <br /> ({convPracticeWeight}%)</th>
+                        <th className="border border-black px-3 py-2 text-center whitespace-nowrap" rowSpan={2}>Exam <br /> ({convExamWeight}%)</th>
+                        <th className="border border-black px-3 py-2 text-center whitespace-nowrap" rowSpan={2}>Total</th>
+                      </tr>
+                      {practiceCount > 0 && (
+                        <tr>
+                          {Array.from({ length: practiceCount }, (_, i) => i + 1).map(p => (
+                            <th key={p} className="border border-black px-3 py-2 text-center text-xs">P{p}</th>
+                          ))}
+                        </tr>
+                      )}
+                    </thead>
+                    <tbody>
+                      {cadetRows.map((cadet, index) => {
+                        const bestData = getBestPractices(cadet.cadet_id);
+                        const bestPractices = bestData.practices;
+                        const bestAvg = bestData.avg;
+                        return (
+                          <tr key={cadet.cadet_id}>
+                            <td className="border border-black px-3 py-2 text-center">{index + 1}</td>
+                            <td className="border border-black px-3 py-2 text-center">{cadet.cadet_number}</td>
+                            <td className="border border-black px-3 py-2 text-center">{cadet.cadet_rank}</td>
+                            <td className="border border-black px-3 py-2">{cadet.cadet_name}</td>
+                            <td className="border border-black px-3 py-2">{cadet.branch}</td>
+
+                            {Array.from({ length: practiceCount }, (_, i) => i + 1).map(p => (
+                              <td key={p} className="border border-black px-2 py-1 text-center">
+                                {bestPractices && bestPractices[p] !== undefined ? (
+                                  <span className="text-xs font-medium">{bestPractices[p]}</span>
+                                ) : (
+                                  <span className="text-gray-300">-</span>
+                                )}
+                              </td>
+                            ))}
+
+                            <td className="border border-black px-2 py-1 text-center">
+                              {bestAvg > 0 ? bestAvg : <span className="text-gray-300">-</span>}
+                            </td>
+                            <td className="border border-black px-2 py-1 text-center">
+                              <input
+                                type="number"
+                                min={0}
+                                max={maxTestMark > 0 ? maxTestMark : undefined}
+                                step={0.01}
+                                value={cadet.test_mark || 0}
+                                onChange={(e) => handleTestMarkChange(index, parseFloat(e.target.value) || 0)}
+                                className="w-16 px-1 py-1 border border-gray-300 rounded text-center text-xs focus:ring-2 focus:ring-blue-500 bg-white [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                placeholder="0"
+                              />
+                            </td>
+                            <td className="border border-black px-2 py-1 text-center">
+                              {bestAvg > 0 ? Math.round(bestAvg * convPracticeWeight / 100 * 100) / 100 : 0}
+                            </td>
+                            <td className="border border-black px-2 py-1 text-center">
+                              {cadet.test_mark > 0 ? Math.round(cadet.test_mark * convExamWeight / 100 * 100) / 100 : 0}
+                            </td>
+                            <td className="border border-black px-2 py-1 text-center">
+                              {calculateTotal(bestAvg, cadet.test_mark)}
+                            </td>
+                          </tr>
+                        )})}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div>
+                  {allPractices.length === 0 ? (
+                    <div className="text-center py-12 text-gray-500">
+                      <Icon icon="hugeicons:calendar" className="w-10 h-10 mx-auto mb-2" />
+                      <p>No practice records found for the selected filters</p>
+                      <button type="button" onClick={openPracticeModal} className="mt-4 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">
+                        Add Practice Marks
+                      </button>
+                    </div>
+                  ) : (
+                    (() => {
+                      const practiceDates = Array.from(new Set(allPractices.map((p: any) => {
+                        const date = p.practice_date;
+                        if (date && typeof date === 'string') {
+                          return date.split('T')[0];
+                        }
+                        return String(date);
+                      }))).sort();
+                      return (
+                        <div>
+                          <div className="overflow-x-auto">
+                            <table className="w-full border-collapse border border-black text-xs">
+                              <thead>
+                                <tr className="bg-gray-100">
+                                  <th className="border border-black px-3 py-2 text-center whitespace-nowrap">SL</th>
+                                  <th className="border border-black px-3 py-2 text-center whitespace-nowrap">BD No.</th>
+                                  <th className="border border-black px-3 py-2 text-center whitespace-nowrap">Rank</th>
+                                  <th className="border border-black px-3 py-2 text-left whitespace-nowrap">Name</th>
+                                  {practiceDates.map((d) => (
+                                    <th key={d} className="border border-black px-3 py-2 text-center whitespace-nowrap">{d}</th>
+                                  ))}
+                                  <th className="border border-black px-3 py-2 text-center whitespace-nowrap bg-yellow-50">Avg</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {cadetRows.map((cadet, index) => {
+                                  const cadetPractices = allPractices.filter((p: any) => p.cadet_id === cadet.cadet_id);
+                                  const marks = practiceDates.map(d => {
+                                    const rec = cadetPractices.find((p: any) => {
+                                      const pDate = p.practice_date;
+                                      if (pDate && typeof pDate === 'string') {
+                                        return pDate.split('T')[0] === d;
+                                      }
+                                      return String(pDate) === d;
+                                    });
+                                    return rec ? Number(rec.achieved_mark) : null; // FIX: Use Number()
+                                  });
+                                  const validMarks = marks.filter((m): m is number => m !== null);
+                                  const avg = validMarks.length > 0 ? (validMarks.reduce((a, b) => a + b, 0) / validMarks.length).toFixed(2) : "-";
+                                  return (
+                                    <tr key={cadet.cadet_id} className={index % 2 === 0 ? "bg-white" : "bg-gray-50"}>
+                                      <td className="border border-black px-3 py-2 text-center">{index + 1}</td>
+                                      <td className="border border-black px-3 py-2 text-center">{cadet.cadet_number}</td>
+                                      <td className="border border-black px-3 py-2 text-center">{cadet.cadet_rank}</td>
+                                      <td className="border border-black px-3 py-2">{cadet.cadet_name}</td>
+                                      {marks.map((m, i) => (
+                                        <td key={i} className="border border-black px-3 py-2 text-center">{m !== null ? m : <span className="text-gray-300">-</span>}</td>
+                                      ))}
+                                      <td className="border border-black px-3 py-2 text-center font-semibold bg-yellow-50">{avg}</td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      );
+                    })()
                   )}
-                </thead>
-                <tbody>
-                  {cadetRows.map((cadet, index) => (
-                    <tr key={cadet.cadet_id}>
-                      <td className="border border-black px-3 py-2 text-center">{index + 1}</td>
-                      <td className="border border-black px-3 py-2 text-center">{cadet.cadet_number}</td>
-                      <td className="border border-black px-3 py-2 text-center">{cadet.cadet_rank}</td>
-                      <td className="border border-black px-3 py-2">{cadet.cadet_name}</td>
-                      <td className="border border-black px-3 py-2">{cadet.branch}</td>
-                      
-                      {Array.from({ length: practiceCount }, (_, i) => i + 1).map(p => (
-                        <td key={p} className="border border-black px-2 py-1 text-center">
-                          <input
-                            type="number"
-                            min={0}
-                            step={0.01}
-                            value={cadet.practices[p] || 0}
-                            onChange={(e) => handlePracticeChange(index, p, parseFloat(e.target.value) || 0)}
-                            className="w-16 px-1 py-1 border border-gray-300 rounded text-center text-xs focus:ring-2 focus:ring-blue-500 bg-white [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                            placeholder="0"
-                          />
-                        </td>
-                      ))}
-
-                      {/* Avg Practice */}
-                      <td className="border border-black px-2 py-1 text-center">
-                        {cadet.avg_practice}
-                      </td>
-
-                      <td className="border border-black px-2 py-1 text-center">
-                        <input
-                          type="number"
-                          min={0}
-                          max={maxTestMark > 0 ? maxTestMark : undefined}
-                          step={0.01}
-                          value={cadet.test_mark || 0}
-                          onChange={(e) => handleTestMarkChange(index, parseFloat(e.target.value) || 0)}
-                          className="w-16 px-1 py-1 border border-gray-300 rounded text-center text-xs focus:ring-2 focus:ring-blue-500 bg-white [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                          placeholder="0"
-                        />
-                      </td>
-                      <td className="border border-black px-2 py-1 text-center">
-                        {cadet.conv_practice}
-                      </td>
-                      <td className="border border-black px-2 py-1 text-center">
-                        {cadet.conv_exam}
-                      </td>
-                      <td className="border border-black px-2 py-1 text-center">
-                        {cadet.mark}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>
@@ -659,6 +1053,26 @@ export default function OneMileResultForm({ initialData, onSubmit, onCancel, loa
           {loading ? (isEdit ? "Updating..." : "Saving...") : (isEdit ? "Update Result" : "Save Result")}
         </button>
       </div>
+
+      {/* Practice Modal */}
+      <OneMilePracticeModal
+        isOpen={showPracticeModal}
+        onClose={() => setShowPracticeModal(false)}
+        courses={courses}
+        semesters={semesters}
+        selectedCourseId={formData.course_id}
+        selectedSemesterId={formData.semester_id}
+        maxTestMark={maxTestMark}
+        cadetRows={cadetRows}
+        modalPracticeDate={modalPracticeDate}
+        setModalPracticeDate={setModalPracticeDate}
+        modalPracticeMarks={modalPracticeMarks}
+        onChangePracticeMark={handleModalPracticeMarkChange}
+        onSave={handleSaveModalPractices}
+        saving={savingPractices}
+        error={practiceError}
+        success={practiceSuccess}
+      />
     </form>
   );
 }

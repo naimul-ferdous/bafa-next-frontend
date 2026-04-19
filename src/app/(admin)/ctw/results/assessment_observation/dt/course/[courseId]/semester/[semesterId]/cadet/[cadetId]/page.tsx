@@ -228,32 +228,54 @@ export default function DtAssessmentCourseSemesterCadetPage() {
                             </tr>
                         </thead>
                         <tbody>
-                            {calculatedData.rows.map((row, index) => (
-                                <tr key={row.submission.id} className="hover:bg-gray-50 transition-colors">
-                                    <td className="border border-black px-2 py-2 text-center font-medium">{index + 1}</td>
-                                    <td className="border border-black px-2 py-2 text-center">{row.instructorName}</td>
-                                    <td className="border border-black px-2 py-2 text-center">{formatDate(row.resultDate)}</td>
-                                    <td className="border border-black px-2 py-2 text-center font-bold">{row.mark.toFixed(2)}</td>
+                            {(() => {
+                                // Group consecutive rows by instructor name so the Instructor cell
+                                // rowspans across all its date entries.
+                                const instructorRowSpans: number[] = [];
+                                for (let i = 0; i < calculatedData.rows.length; i++) {
+                                    if (i > 0 && calculatedData.rows[i].instructorName === calculatedData.rows[i - 1].instructorName) {
+                                        instructorRowSpans.push(0); // skip rendering
+                                    } else {
+                                        let span = 1;
+                                        for (let j = i + 1; j < calculatedData.rows.length; j++) {
+                                            if (calculatedData.rows[j].instructorName === calculatedData.rows[i].instructorName) span++;
+                                            else break;
+                                        }
+                                        instructorRowSpans.push(span);
+                                    }
+                                }
 
-                                    {/* Summary cells rowspan from first row */}
-                                    {index === 0 && rowCount > 0 && (
-                                        <>
-                                            <td className="border border-black px-2 py-2 text-center font-bold" rowSpan={rowCount}>
-                                                {calculatedData.grandTotal.toFixed(2)}
+                                return calculatedData.rows.map((row, index) => (
+                                    <tr key={row.submission.id} className="hover:bg-gray-50 transition-colors">
+                                        <td className="border border-black px-2 py-2 text-center font-medium">{index + 1}</td>
+                                        {instructorRowSpans[index] > 0 && (
+                                            <td className="border border-black px-2 py-2 text-center align-middle" rowSpan={instructorRowSpans[index]}>
+                                                {row.instructorName}
                                             </td>
-                                            <td className="border border-black px-2 py-2 text-center font-black text-emerald-700" rowSpan={rowCount}>
-                                                {calculatedData.conv.toFixed(2)}
-                                            </td>
-                                            <td className="border border-black px-2 py-2 text-center" rowSpan={rowCount}>
-                                                {calculatedData.inPercent.toFixed(2)}%
-                                            </td>
-                                            <td className={`border border-black px-2 py-2 text-center font-bold ${calculatedData.remark === "Fail" ? "text-red-600" : "text-green-700"}`} rowSpan={rowCount}>
-                                                {calculatedData.remark}
-                                            </td>
-                                        </>
-                                    )}
-                                </tr>
-                            ))}
+                                        )}
+                                        <td className="border border-black px-2 py-2 text-center">{formatDate(row.resultDate)}</td>
+                                        <td className="border border-black px-2 py-2 text-center font-bold">{row.mark.toFixed(2)}</td>
+
+                                        {/* Summary cells rowspan from first row */}
+                                        {index === 0 && rowCount > 0 && (
+                                            <>
+                                                <td className="border border-black px-2 py-2 text-center font-bold align-middle" rowSpan={rowCount}>
+                                                    {calculatedData.grandTotal.toFixed(2)}
+                                                </td>
+                                                <td className="border border-black px-2 py-2 text-center font-black text-emerald-700 align-middle" rowSpan={rowCount}>
+                                                    {calculatedData.conv.toFixed(2)}
+                                                </td>
+                                                <td className="border border-black px-2 py-2 text-center align-middle" rowSpan={rowCount}>
+                                                    {calculatedData.inPercent.toFixed(2)}%
+                                                </td>
+                                                <td className={`border border-black px-2 py-2 text-center font-bold align-middle ${calculatedData.remark === "Fail" ? "text-red-600" : "text-green-700"}`} rowSpan={rowCount}>
+                                                    {calculatedData.remark}
+                                                </td>
+                                            </>
+                                        )}
+                                    </tr>
+                                ));
+                            })()}
                             {rowCount === 0 && (
                                 <tr>
                                     <td colSpan={8} className="border border-black px-2 py-6 text-center text-gray-400">No mark entries found</td>

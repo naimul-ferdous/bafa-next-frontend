@@ -32,10 +32,12 @@ interface MissionRow {
   exercise_shortname: string;
   phase_type_id: number;
   phase_type_name: string;
+  original_phase_type_name: string;
   syllabus_id: number;
   phase_sort?: number;
   exercise_sort?: number;
   take_time_hours?: string;
+  is_non_grade?: boolean;
   is_active: boolean;
   date: string;
   instructor_id: number;
@@ -420,13 +422,13 @@ export default function Ftw11sqnFlyingExaminationMarkForm({
           });
         });
 
-        // Sort by phase_sort first, then by syllabus_id for consistent ordering, then by exercise_sort
+        // Sort by phase_sort, then syllabus_id, then natural sort on shortname (GF-1, GF-2 … GF-10)
         allExercises.sort((a, b) => {
           const aSort = a.phase_sort || 0;
           const bSort = b.phase_sort || 0;
           if (aSort !== bSort) return aSort - bSort;
           if (a.syllabus_id !== b.syllabus_id) return a.syllabus_id - b.syllabus_id;
-          return (a.exercise_sort || 0) - (b.exercise_sort || 0);
+          return a.exercise_shortname.localeCompare(b.exercise_shortname, undefined, { numeric: true, sensitivity: 'base' });
         });
 
         setExercises(allExercises);
@@ -481,16 +483,18 @@ export default function Ftw11sqnFlyingExaminationMarkForm({
       exercise_shortname: ex.exercise_shortname,
       phase_type_id: ex.phase_type_id,
       phase_type_name: ex.phase_type_name,
+      original_phase_type_name: ex.phase_type_name,
       syllabus_id: ex.syllabus_id,
       phase_sort: ex.phase_sort,
       exercise_sort: ex.exercise_sort,
       take_time_hours: ex.take_time_hours ? String(ex.take_time_hours) : undefined,
+      is_non_grade: !!ex.is_non_grade,
       is_active: false,
       date: todayStr,
       instructor_id: defaultInstructorId,
       hrs_solo: "0:00",
       hrs_dual: "0:00",
-      mark: "",
+      mark: ex.is_non_grade ? 'N/G' : "",
       time: "0:00",
       remark: "",
       existing_mark_info: undefined,
@@ -795,7 +799,7 @@ export default function Ftw11sqnFlyingExaminationMarkForm({
             instructor_id: r.instructor_id,
             exam_type_id: formData.exam_type_id || null,
             phase_type_id: r.phase_type_id,
-            achieved_mark: r.mark,
+            achieved_mark: r.is_non_grade ? 'N/G' : r.mark,
             achieved_time:
               r.hrs_solo && r.hrs_solo !== "0:00" ? r.hrs_solo : r.hrs_dual,
             participate_date: r.date,
@@ -887,7 +891,7 @@ export default function Ftw11sqnFlyingExaminationMarkForm({
                   <option value={0}>Select Course</option>
                   {courses.map((course) => (
                     <option key={course.id} value={course.id}>
-                      {course.name} ({course.code})
+                      {course.name}
                     </option>
                   ))}
                 </select>
@@ -909,13 +913,13 @@ export default function Ftw11sqnFlyingExaminationMarkForm({
                   <option value={0}>Select Semester</option>
                   {semesters.map((semester) => (
                     <option key={semester.id} value={semester.id}>
-                      {semester.name} ({semester.code})
+                      {semester.name}
                     </option>
                   ))}
                 </select>
               </div>
-
-
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-4">
               {loadingExercises && (
                 <p className="mb-2 text-blue-500 flex items-center gap-1 text-sm">
                   <Icon
@@ -966,7 +970,7 @@ export default function Ftw11sqnFlyingExaminationMarkForm({
                       className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
                     />
                     <span className="text-gray-700 text-sm">
-                      {syllabus.phase_full_name} ({syllabus.phase_shortname})
+                      {syllabus.phase_full_name}
                     </span>
                   </div>
                 ))}
@@ -978,6 +982,9 @@ export default function Ftw11sqnFlyingExaminationMarkForm({
                   <p className="text-gray-500 text-sm py-2">No phases available</p>
                 )}
 
+
+            </div>
+            <div className="grid grid-cols-4 mt-4 gap-4">
               {/* Cadet Selector — NEW (create mode only) */}
               {!isEdit && (
                 <div>
@@ -1277,7 +1284,7 @@ export default function Ftw11sqnFlyingExaminationMarkForm({
             /* ── Create Mode — Mission rows for selected cadet ── */
             <div>
               {!filtersSelected ? (
-                <div className="text-center py-12 text-gray-500">
+                <div className="text-center py-11 text-gray-500">
                   <Icon
                     icon="hugeicons:filter"
                     className="w-10 h-10 mx-auto mb-2"
@@ -1287,7 +1294,7 @@ export default function Ftw11sqnFlyingExaminationMarkForm({
                   </p>
                 </div>
               ) : !formData.selected_cadet_id ? (
-                <div className="text-center py-12 text-gray-500">
+                <div className="text-center py-11 text-gray-500">
                   <Icon
                     icon="hugeicons:user"
                     className="w-10 h-10 mx-auto mb-2"
@@ -1303,7 +1310,7 @@ export default function Ftw11sqnFlyingExaminationMarkForm({
                   <p className="text-sm">Checking existing marks…</p>
                 </div>
               ) : missionRows.length === 0 ? (
-                <div className="text-center py-12 text-gray-500">
+                <div className="text-center py-11 text-gray-500">
                   <Icon
                     icon="hugeicons:airplane-take-off-01"
                     className="w-10 h-10 mx-auto mb-2"
@@ -1439,8 +1446,26 @@ export default function Ftw11sqnFlyingExaminationMarkForm({
                               </td>
 
                               {/* Phase type */}
-                              <td className="border border-black px-3 py-2 text-center whitespace-nowrap text-gray-600">
-                                {row.phase_type_name}
+                              <td className="border border-black px-2 py-1 text-center whitespace-nowrap">
+                                {row.original_phase_type_name?.toLowerCase().includes('solo') ? (
+                                  <select
+                                    value={row.phase_type_id}
+                                    onChange={(e) => {
+                                      const selectedId = parseInt(e.target.value);
+                                      const selectedPt = phaseTypes.find(pt => pt.id === selectedId);
+                                      handleMissionRowChange(row.exercise_id, 'phase_type_id', selectedId);
+                                      handleMissionRowChange(row.exercise_id, 'phase_type_name', selectedPt?.type_name || '');
+                                    }}
+                                    disabled={isDisabled}
+                                    className="px-2 py-1 border border-black rounded text-sm focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
+                                  >
+                                    {phaseTypes.map(pt => (
+                                      <option key={pt.id} value={pt.id}>{pt.type_name}</option>
+                                    ))}
+                                  </select>
+                                ) : (
+                                  <span className="text-gray-600">{row.phase_type_name}</span>
+                                )}
                               </td>
 
                               {/* Existing mark spans remaining columns */}
@@ -1514,37 +1539,15 @@ export default function Ftw11sqnFlyingExaminationMarkForm({
                                   </td>
 
                                   {/* Instructor */}
-                                  <td className="border border-black px-2 py-1">
-                                    <select
-                                      value={row.instructor_id}
-                                      onChange={(e) =>
-                                        handleMissionRowChange(
-                                          row.exercise_id,
-                                          "instructor_id",
-                                          parseInt(e.target.value)
-                                        )
-                                      }
-                                      disabled={isDisabled}
-                                      className="w-full px-2 py-1 border border-black rounded focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
-                                    >
-                                      <option value={0}>Select</option>
-                                      {instructors.map((instructor) => (
-                                        <option
-                                          key={instructor.id}
-                                          value={instructor.id}
-                                        >
-                                          {instructor.name ||
-                                            (instructor as any)
-                                              .instructor_biodata?.name ||
-                                            `Instructor #${instructor.id}`}
-                                        </option>
-                                      ))}
-                                    </select>
+                                  <td className="border border-black px-2 py-1 whitespace-nowrap text-sm text-gray-800">
+                                    {instructors.find(i => i.id === defaultInstructorId)?.name || (user as any)?.name || `Instructor #${defaultInstructorId}`}
                                   </td>
 
                                   {/* Syl Hrs */}
                                   <td className="border border-black px-3 py-2 text-center">
-                                    {row.take_time_hours || "-"}
+                                    {row.take_time_hours
+                                      ? minutesToTimeString(Math.round(parseFloat(String(row.take_time_hours)) * 60))
+                                      : "-"}
                                   </td>
 
                                   {/* Solo */}
@@ -1613,8 +1616,8 @@ export default function Ftw11sqnFlyingExaminationMarkForm({
                                           e.target.value
                                         )
                                       }
-                                      disabled={isDisabled}
-                                      className="w-24 px-2 py-1 border border-black rounded text-center focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
+                                      disabled={isDisabled || !!row.is_non_grade}
+                                      className={`w-24 px-2 py-1 border border-black rounded text-center focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 ${row.is_non_grade ? 'font-semibold text-gray-500' : ''}`}
                                     />
                                   </td>
 

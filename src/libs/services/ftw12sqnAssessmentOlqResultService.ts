@@ -98,7 +98,7 @@ export const ftw12sqnAssessmentOlqResultService = {
       if (params?.group_id) query.append('group_id', params.group_id.toString());
       if (params?.olq_type_id) query.append('olq_type_id', params.olq_type_id.toString());
 
-      const endpoint = `/ftw12sqn-assessment-olq-results${query.toString() ? `?${query.toString()}` : ''}`;
+      const endpoint = `/ftw-12sqn-assessment-olq-results${query.toString() ? `?${query.toString()}` : ''}`;
       const token = getToken();
       const result = await apiClient.get<ResultApiResponse>(endpoint, token);
 
@@ -127,7 +127,7 @@ export const ftw12sqnAssessmentOlqResultService = {
   async getResult(id: number): Promise<Ftw12SqnAssessmentOlqResult | null> {
     try {
       const token = getToken();
-      const result = await apiClient.get<SingleResultApiResponse>(`/ftw12sqn-assessment-olq-results/${id}`, token);
+      const result = await apiClient.get<SingleResultApiResponse>(`/ftw-12sqn-assessment-olq-results/${id}`, token);
       return result?.data || null;
     } catch (error) {
       console.error(`Failed to fetch OLQ result ${id}:`, error);
@@ -143,7 +143,7 @@ export const ftw12sqnAssessmentOlqResultService = {
       const token = getToken();
       if (!token) throw new Error('Authentication token not found. Please login again.');
 
-      const result = await apiClient.post<ResultActionApiResponse>('/ftw12sqn-assessment-olq-results', data, token);
+      const result = await apiClient.post<ResultActionApiResponse>('/ftw-12sqn-assessment-olq-results', data, token);
       if (!result || !result.success) throw new Error(result?.message || 'Failed to create OLQ result');
 
       return result.data || null;
@@ -161,7 +161,7 @@ export const ftw12sqnAssessmentOlqResultService = {
       const token = getToken();
       if (!token) throw new Error('Authentication token not found. Please login again.');
 
-      const result = await apiClient.put<ResultActionApiResponse>(`/ftw12sqn-assessment-olq-results/${id}`, data, token);
+      const result = await apiClient.put<ResultActionApiResponse>(`/ftw-12sqn-assessment-olq-results/${id}`, data, token);
       if (!result || !result.success) throw new Error(result?.message || 'Failed to update OLQ result');
 
       return result.data || null;
@@ -177,7 +177,7 @@ export const ftw12sqnAssessmentOlqResultService = {
   async deleteResult(id: number): Promise<boolean> {
     try {
       const token = getToken();
-      const result = await apiClient.delete<ResultActionApiResponse>(`/ftw12sqn-assessment-olq-results/${id}`, token);
+      const result = await apiClient.delete<ResultActionApiResponse>(`/ftw-12sqn-assessment-olq-results/${id}`, token);
       return result?.success || false;
     } catch (error) {
       console.error(`Failed to delete OLQ result ${id}:`, error);
@@ -195,7 +195,7 @@ export const ftw12sqnAssessmentOlqResultService = {
       if (params?.per_page) query.append('per_page', params.per_page.toString());
       if (params?.search) query.append('search', params.search);
 
-      const endpoint = `/ftw12sqn-assessment-olq-results/grouped${query.toString() ? `?${query.toString()}` : ''}`;
+      const endpoint = `/ftw-12sqn-assessment-olq-results/grouped${query.toString() ? `?${query.toString()}` : ''}`;
       const token = getToken();
       const result = await apiClient.get<any>(endpoint, token);
 
@@ -222,7 +222,7 @@ export const ftw12sqnAssessmentOlqResultService = {
   async getResultCadets(resultId: number): Promise<Ftw12SqnAssessmentOlqResultCadet[]> {
     try {
       const token = getToken();
-      const result = await apiClient.get<CadetApiResponse>(`/ftw12sqn-assessment-olq-results/${resultId}/cadets`, token);
+      const result = await apiClient.get<CadetApiResponse>(`/ftw-12sqn-assessment-olq-results/${resultId}/cadets`, token);
       return result?.data || [];
     } catch (error) {
       console.error('Failed to fetch result cadets:', error);
@@ -238,7 +238,7 @@ export const ftw12sqnAssessmentOlqResultService = {
       const token = getToken();
       if (!token) throw new Error('Authentication token not found.');
 
-      const result = await apiClient.post<SingleCadetApiResponse>(`/ftw12sqn-assessment-olq-results/${resultId}/cadets`, data, token);
+      const result = await apiClient.post<SingleCadetApiResponse>(`/ftw-12sqn-assessment-olq-results/${resultId}/cadets`, data, token);
       if (!result || !result.success) throw new Error(result?.message || 'Failed to add cadet');
 
       return result.data || null;
@@ -256,7 +256,7 @@ export const ftw12sqnAssessmentOlqResultService = {
       const token = getToken();
       if (!token) throw new Error('Authentication token not found.');
 
-      const result = await apiClient.put<SingleCadetApiResponse>(`/ftw12sqn-assessment-olq-results/${resultId}/cadets/${cadetId}`, data, token);
+      const result = await apiClient.put<SingleCadetApiResponse>(`/ftw-12sqn-assessment-olq-results/${resultId}/cadets/${cadetId}`, data, token);
       if (!result || !result.success) throw new Error(result?.message || 'Failed to update cadet');
 
       return result.data || null;
@@ -272,7 +272,7 @@ export const ftw12sqnAssessmentOlqResultService = {
   async deleteResultCadet(resultId: number, cadetId: number): Promise<boolean> {
     try {
       const token = getToken();
-      const result = await apiClient.delete<{ success: boolean }>(`/ftw12sqn-assessment-olq-results/${resultId}/cadets/${cadetId}`, token);
+      const result = await apiClient.delete<{ success: boolean }>(`/ftw-12sqn-assessment-olq-results/${resultId}/cadets/${cadetId}`, token);
       return result?.success || false;
     } catch (error) {
       console.error('Failed to delete cadet:', error);
@@ -288,7 +288,7 @@ export const ftw12sqnAssessmentOlqResultService = {
   async getCadetMarks(resultId: number, cadetId: number): Promise<Ftw12SqnAssessmentOlqResultMark[]> {
     try {
       const token = getToken();
-      const result = await apiClient.get<MarkApiResponse>(`/ftw12sqn-assessment-olq-results/${resultId}/cadets/${cadetId}/marks`, token);
+      const result = await apiClient.get<MarkApiResponse>(`/ftw-12sqn-assessment-olq-results/${resultId}/cadets/${cadetId}/marks`, token);
       return result?.data || [];
     } catch (error) {
       console.error('Failed to fetch cadet marks:', error);
@@ -307,7 +307,7 @@ export const ftw12sqnAssessmentOlqResultService = {
       const token = getToken();
       if (!token) throw new Error('Authentication token not found.');
 
-      const result = await apiClient.put<SingleMarkApiResponse>(`/ftw12sqn-assessment-olq-results/${resultId}/cadets/${cadetId}/marks/${markId}`, data, token);
+      const result = await apiClient.put<SingleMarkApiResponse>(`/ftw-12sqn-assessment-olq-results/${resultId}/cadets/${cadetId}/marks/${markId}`, data, token);
       if (!result || !result.success) throw new Error(result?.message || 'Failed to update mark');
 
       return result.data || null;
@@ -325,7 +325,7 @@ export const ftw12sqnAssessmentOlqResultService = {
       const token = getToken();
       if (!token) throw new Error('Authentication token not found.');
 
-      const result = await apiClient.post<SingleCadetApiResponse>(`/ftw12sqn-assessment-olq-results/${resultId}/cadets/${cadetId}/marks`, { marks }, token);
+      const result = await apiClient.post<SingleCadetApiResponse>(`/ftw-12sqn-assessment-olq-results/${resultId}/cadets/${cadetId}/marks`, { marks }, token);
       if (!result || !result.success) throw new Error(result?.message || 'Failed to save marks');
 
       return result.data || null;
@@ -343,7 +343,7 @@ export const ftw12sqnAssessmentOlqResultService = {
       const token = getToken();
       if (!token) throw new Error('Authentication token not found.');
 
-      const result = await apiClient.post<any>('/ftw12sqn-assessment-olq-results/bulk-approve', data, token);
+      const result = await apiClient.post<any>('/ftw-12sqn-assessment-olq-results/bulk-approve', data, token);
       return result?.success || false;
     } catch (error) {
       console.error('Failed to bulk approve:', error);
@@ -359,7 +359,7 @@ export const ftw12sqnAssessmentOlqResultService = {
       const token = getToken();
       if (!token) throw new Error('Authentication token not found.');
 
-      const result = await apiClient.post<any>('/ftw12sqn-assessment-olq-results/bulk-reject', data, token);
+      const result = await apiClient.post<any>('/ftw-12sqn-assessment-olq-results/bulk-reject', data, token);
       return result?.success || false;
     } catch (error) {
       console.error('Failed to bulk reject:', error);

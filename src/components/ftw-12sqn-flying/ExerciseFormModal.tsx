@@ -11,6 +11,7 @@ import { useFtw12sqnExerciseModal } from "@/context/Ftw12sqnExerciseModalContext
 import FullLogo from "@/components/ui/fulllogo";
 import { Icon } from "@iconify/react";
 import type { Ftw12sqnFlyingPhaseType } from "@/libs/types/ftw12sqnFlying";
+import RichTextEditor from "@/components/common/RichTextEditor";
 
 export default function ExerciseFormModal() {
   const { isOpen, editingExercise, initialPhaseTypeId, syllabusId, closeModal } = useFtw12sqnExerciseModal();
@@ -26,6 +27,7 @@ export default function ExerciseFormModal() {
     take_time_hours: 0 as number,
     remarks: "",
     exercise_sort: 0,
+    is_non_grade: false,
     is_active: true,
   });
   const [loading, setLoading] = useState(false);
@@ -78,6 +80,7 @@ export default function ExerciseFormModal() {
         take_time_hours: decimalHours,
         remarks: editingExercise.remarks || "",
         exercise_sort: editingExercise.exercise_sort,
+        is_non_grade: !!editingExercise.is_non_grade,
         is_active: editingExercise.is_active !== false,
       });
       setTimeInput(minutesToTimeString(decimalHoursToMinutes(decimalHours)));
@@ -90,6 +93,7 @@ export default function ExerciseFormModal() {
         take_time_hours: 0,
         remarks: "",
         exercise_sort: 0,
+        is_non_grade: false,
         is_active: true,
       });
       setTimeInput("0:00");
@@ -149,6 +153,7 @@ export default function ExerciseFormModal() {
         take_time_hours: formData.take_time_hours,
         remarks: formData.remarks || null,
         exercise_sort: formData.exercise_sort,
+        is_non_grade: formData.is_non_grade,
         is_active: formData.is_active,
       };
 
@@ -167,6 +172,7 @@ export default function ExerciseFormModal() {
           take_time_hours: parseFloat(String(ex.take_time_hours || 0)),
           remarks: ex.remarks ?? null,
           exercise_sort: ex.exercise_sort,
+          is_non_grade: ex.is_non_grade,
           is_active: ex.is_active,
         })),
       }));
@@ -396,13 +402,24 @@ export default function ExerciseFormModal() {
 
           <div>
             <Label>Content</Label>
-            <textarea
+            <RichTextEditor
               value={formData.exercise_content}
-              onChange={(e) => handleChange("exercise_content", e.target.value)}
+              onChange={(value) => handleChange("exercise_content", value)}
               placeholder="Exercise content details..."
-              rows={3}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="border border-gray-200 shadow-none !bg-transparent min-h-[200px]"
             />
+          </div>
+
+          <div>
+            <label className="flex items-center gap-3 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={formData.is_non_grade}
+                onChange={(e) => handleChange("is_non_grade", e.target.checked)}
+                className="w-4 h-4 accent-blue-600"
+              />
+              <span className="text-sm font-medium text-gray-700">Non Grade</span>
+            </label>
           </div>
 
           <div>

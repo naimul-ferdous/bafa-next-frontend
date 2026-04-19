@@ -18,31 +18,37 @@ import PrintTypeModal from "@/components/ui/modal/PrintTypeModal";
 import { Modal } from "@/components/ui/modal";
 import { CtwOlqSemesterApproval } from "@/libs/types/ctwOlqSemesterApproval";
 
-function SignatureBox({ auth, signer, approvedAt, position }: {
-  auth: { id: number; role?: { name: string } | null; user?: { name: string } | null };
+function SignatureBox({ auth, signer, approvedAt, position, courseName }: {
+  auth: any;
   signer: { name: string; rank?: { name: string; short_name: string } | null; signature?: string | null; designation?: string | null } | null;
   approvedAt?: string | null;
   position?: 'first' | 'middle' | 'last';
+  courseName?: string | null;
 }) {
   const [imgFailed, setImgFailed] = React.useState(false);
 
   const dateStr = approvedAt
     ? (() => {
-      const d = new Date(approvedAt);
-      const day = String(d.getDate()).padStart(2, '0');
-      const month = d.toLocaleDateString('en-US', { month: 'short' }).toUpperCase();
-      return `${day}-${month}-${d.getFullYear()}`;
-    })()
+        const d = new Date(approvedAt);
+        const day   = String(d.getDate()).padStart(2, '0');
+        const month = d.toLocaleDateString('en-US', { month: 'short' }).toUpperCase();
+        const year  = d.getFullYear();
+        return `${day}-${month}-${year}`;
+      })()
     : null;
 
-  const label = position === 'first' ? 'Prepared & Checked By'
-    : position === 'last' ? 'Approved By'
+  const label = position === 'first'
+    ? 'Prepared & Checked By'
+    : position === 'last'
+      ? 'Approved By'
       : auth.role?.name ?? auth.user?.name ?? '—';
 
+  const roleName = auth.role?.name ?? auth.user?.name ?? null;
+
   return (
-    <div className="signature-box flex flex-col items-start min-w-[180px]">
-      <p className="sig-label text-sm uppercase mb-1">{label}</p>
-      <div className="sig-area w-full flex items-end justify-start pb-1" style={{ height: 60 }}>
+    <div className="signature-box flex flex-col items-start">
+      {/* <p className="sig-label text-sm font-bold uppercase text-gray-900 mb-1 tracking-wide">{label}</p> */}
+      <div className="sig-area w-full flex items-end justify-start pb-1 h-16">
         {signer?.signature && !imgFailed ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
@@ -52,20 +58,31 @@ function SignatureBox({ auth, signer, approvedAt, position }: {
             onError={() => setImgFailed(true)}
           />
         ) : (
-          <span className="text-sm italic text-gray-400">Signature not provided</span>
+          <span className="text-sm italic text-gray-400">—</span>
         )}
       </div>
-      {signer && (
-        <p className="sig-name text-sm font-bold text-gray-900 uppercase mt-1">{signer.name}</p>
-      )}
-      {signer?.rank?.short_name && (
-        <p className="sig-rank text-xs font-semibold">{signer.rank.short_name}</p>
-      )}
-      {signer?.designation && (
-        <p className="sig-designation text-xs text-gray-700">{signer.designation}</p>
-      )}
-      {dateStr && (
-        <p className="sig-date text-xs text-gray-500 pt-0.5 border-t border-gray-800 mt-1">{dateStr}</p>
+      {signer ? (
+        <>
+          <p className="sig-name text-sm font-bold text-gray-900 uppercase mt-1">{signer.name}</p>
+          {signer?.rank?.short_name && (
+            <p className="sig-rank text-xs font-semibold text-orange-500">{signer.rank.short_name}</p>
+          )}
+          {signer?.designation && (
+            <p className="sig-designation text-xs text-gray-700">{signer.designation}{position === 'first' && courseName && dateStr ? ` ${courseName}` : ""}</p>
+          )}
+          <p className="sig-designation text-xs text-gray-700">{`Cdts' Trg Wg`}</p>
+          {dateStr && (
+            <p className="sig-date text-xs text-gray-500 pt-0.5 border-t border-gray-800 mt-1">{dateStr}</p>
+          )}
+        </>
+      ) : (
+        roleName && (
+          <>
+            <p className="text-sm text-gray-700 mt-1">{roleName}</p>
+             <p className="sig-designation text-xs text-gray-700">{`Cdts' Trg Wg`}</p>
+            <p className="text-xs text-gray-400 pt-0.5 border-t border-gray-800 mt-1 w-full">Date: ___________</p>
+          </>
+        )
       )}
     </div>
   );
@@ -80,7 +97,6 @@ export default function OlqResultDetailsPage() {
   const [result, setResult] = useState<CtwAssessmentOlqResult | null>(null);
   const [approvals, setApprovals] = useState<CtwOlqCadetApproval[]>([]);
   const [semesterApprovals, setSemesterApprovals] = useState<CtwOlqSemesterApproval[]>([]);
-  const [semesterApproval, setSemesterApproval] = useState<CtwOlqSemesterApproval | null>(null);
   const [allAuthorities, setAllAuthorities] = useState<any[]>([]);
 
   const [loading, setLoading] = useState(true);
@@ -91,7 +107,6 @@ export default function OlqResultDetailsPage() {
 
   // Bulk select state
   const [selectedCadetIds, setSelectedCadetIds] = useState<number[]>([]);
-  const [activeTabIndex, setActiveTabIndex] = useState(0);
 
   // Approval modal
   const [approvalModal, setApprovalModal] = useState<{
@@ -128,10 +143,6 @@ export default function OlqResultDetailsPage() {
         if (data.cadet_approvals) setApprovals(data.cadet_approvals);
         if (data.semester_approvals) {
           setSemesterApprovals(data.semester_approvals);
-          const myApproval = user?.id
-            ? data.semester_approvals.find((a) => a.forwarded_by === user.id)
-            : null;
-          setSemesterApproval(myApproval || null);
         }
       } else {
         setError("OLQ Result not found");
@@ -167,6 +178,14 @@ export default function OlqResultDetailsPage() {
 
   const currentAuthorityId: number | null = currentAuthority?.id ?? null;
   const hasApprovalAuthority = !!currentAuthority;
+
+  // Only treat as "already forwarded" when this user forwarded under their CURRENT authority role
+  const semesterApproval = useMemo(() => {
+    if (!user?.id || !currentAuthorityId) return null;
+    return semesterApprovals.find(
+      (a) => a.forwarded_by === user.id && Number(a.current_authority_id) === Number(currentAuthorityId)
+    ) ?? null;
+  }, [semesterApprovals, user?.id, currentAuthorityId]);
 
   const higherAuthority = useMemo(() => {
     if (!currentAuthority) return null;
@@ -356,9 +375,6 @@ export default function OlqResultDetailsPage() {
     );
   }
 
-  const groupedCadets = result.grouped_cadets || [];
-  const activeGroup = groupedCadets[activeTabIndex];
-
   return (
     <div className="print-no-border bg-white rounded-lg border border-gray-200">
       <style jsx global>{`
@@ -442,7 +458,7 @@ export default function OlqResultDetailsPage() {
               text-transform: uppercase;
             }
             @top-right  {
-              content: "BAF - ${result.olq_type?.type_name}";
+              content: "BAFA - ${result.olq_type?.type_name}";
               font-size: 10pt;
               text-align: right;
             }
@@ -514,54 +530,30 @@ export default function OlqResultDetailsPage() {
         </div>
       </div>
 
-      <div className="p-4 cv-content">
-        <div className="mb-4">
+      <div className="p-4 cv-content relative">
+        <div className="mb-8">
           <div className="flex justify-center mb-4"><FullLogo /></div>
           <h1 className="text-center text-xl font-bold text-gray-900 uppercase tracking-wider">Bangladesh Air Force Academy</h1>
-          <p className="text-center font-medium text-gray-900 uppercase tracking-wider">Cadet Training Wing</p>
-          <p className="text-center font-medium text-gray-900 uppercase tracking-wider">OLQ Assessment : Offr Cdts</p>
-          <p className="text-center font-medium text-gray-900 tracking-wider">
-            <span className="uppercase">No {result.course?.name}</span>
-          </p>
-          <p className="text-center font-medium text-gray-900 tracking-wider pb-2">({result.semester?.name})</p>
-
-          {/* Active Tab Indicator for Print */}
-          <div className="hidden print:block mt-2">
-            <p className="text-center text-lg font-bold text-blue-800 uppercase underline decoration-2 underline-offset-4">
-              {activeGroup?.name}
+          <div className="mb-2">
+            {/* <p className="text-center font-medium text-gray-900 uppercase underline tracking-wider">Cadet Training Wing</p> */}
+            <p className="text-center font-medium text-gray-900 uppercase underline tracking-wider">
+              OLQ Assessment : Offr Cdts
+            </p>
+            <p className="text-center font-medium text-gray-900 uppercase underline tracking-wider">
+              No {result.course?.name} Course
+            </p>
+            <p className="text-center font-medium text-gray-900 uppercase underline tracking-wider">
+              ({result.semester?.name})
             </p>
           </div>
         </div>
 
-        {groupedCadets.length > 1 && (
-          <div className="tab-container no-print mb-2">
-            <div className="flex flex-wrap justify-end gap-2">
-              {groupedCadets.map((group, index) => (
-                <button
-                  key={`tab-${index}`}
-                  onClick={() => setActiveTabIndex(index)}
-                  className={`px-4 py-2 rounded-full text-sm font-bold transition-all duration-200 flex items-center gap-2 ${activeTabIndex === index
-                    ? "bg-blue-600 text-white border border-blue-200"
-                    : "bg-white text-gray-600 border border-gray-200 hover:bg-gray-50 hover:border-gray-300"
-                    }`}
-                >
-                  <Icon
-                    icon={group.is_flying_group ? "hugeicons:airplane-01" : "hugeicons:user-group"}
-                    className={`w-4 h-4 ${activeTabIndex === index ? "text-white" : "text-gray-400"}`}
-                  />
-                  {group.name}
-                  <span className={`ml-1 px-1.5 py-0.5 rounded-full text-[10px] ${activeTabIndex === index ? "bg-blue-500 text-white" : "bg-gray-100 text-gray-500"
-                    }`}>
-                    {group.cadets.length}
-                  </span>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
+        <div className="absolute top-0 right-3 w-full flex justify-end no-print">
+          <p className="text-sm text-gray-700 mb-1">BAFA - {result.olq_type?.type_name || "—"}</p>
+        </div>
 
         {/* Cadets & Marks Table */}
-        {activeGroup && activeGroup.cadets.length > 0 && (
+        {(result?.result_cadets ?? []).length > 0 && (
           <div className="mb-6">
             <div className="overflow-x-auto">
               <table className="w-full border-collapse border border-black text-sm">
@@ -610,8 +602,8 @@ export default function OlqResultDetailsPage() {
                     <th className="border border-black px-3 py-2 text-center font-bold" rowSpan={2}>
                       Total {result.olq_type?.is_multiplier ? `x ${result.olq_type.multiplier}` : ""}
                     </th>
-                    <th className="border border-black px-3 py-2 text-center" rowSpan={2}>Position</th>
                     <th className="border border-black px-3 py-2 text-center font-bold">Percentile</th>
+                    <th className="border border-black px-3 py-2 text-center" rowSpan={2}>Position</th>
                   </tr>
                   <tr>
                     <th className="border border-black px-3 py-2 text-center" colSpan={5}>Allotted Score</th>
@@ -624,12 +616,12 @@ export default function OlqResultDetailsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {activeGroup.cadets.map((cadet: any, cadetIndex: number) => {
+                  {(result?.result_cadets ?? []).map((cadet: any, cadetIndex: number) => {
                     const cadetName = cadet.cadet?.name || "Unknown";
                     const currentRank = cadet.cadet?.assigned_ranks?.find((r: any) => r.is_current)?.rank || cadet.cadet?.assigned_ranks?.[0]?.rank;
                     const cadetRank = currentRank?.short_name || currentRank?.name || "—";
                     const currentBranch = cadet.cadet?.assigned_branchs?.find((b: any) => b.is_current)?.branch || cadet.cadet?.assigned_branchs?.[0]?.branch;
-                    const cadetBranchCode = currentBranch?.code || "—";
+                    const cadetBranchCode = currentBranch?.short_name || currentBranch?.code || "—";
 
                     const currentApproval = getCurrentCadetApproval(cadet.cadet_id);
                     const isApproved = currentApproval?.status === "approved";
@@ -673,15 +665,15 @@ export default function OlqResultDetailsPage() {
                         })}
 
                         <td className="border border-black px-2 py-2 text-center font-medium">
-                          {cadet.is_present && isPrevAuthorityApproved(cadet.cadet_id) ? calculateTotal(cadet.marks || []).toFixed(2) : "—"}
-                        </td>
-                        <td className="border border-black px-2 py-2 text-center font-medium">
-                          {getPosition(cadet.cadet_id)}
+                          {cadet.is_present ? calculateTotal(cadet.marks || []).toFixed(2) : "—"}
                         </td>
                         <td className="border border-black px-2 py-2 text-center font-medium">
                           {cadet.is_present
                             ? ((calculateTotal(cadet.marks || []) / maxTotal) * 100).toFixed(2)
                             : "—"}
+                        </td>
+                        <td className="border border-black px-2 py-2 text-center font-medium">
+                          {getPosition(cadet.cadet_id)}
                         </td>
 
                         {/* Status Timeline column — no-print */}
@@ -764,7 +756,7 @@ export default function OlqResultDetailsPage() {
             .sort((a: any, b: any) => (a.sort ?? 0) - (b.sort ?? 0));
           if (signatureAuthorities.length === 0) return null;
           return (
-            <div className="signature-section max-w-5xl mx-auto mt-10 flex justify-between gap-10 px-2">
+            <div className="signature-section mx-auto mt-10 flex justify-between gap-10 px-2">
               {signatureAuthorities.map((auth: any, sigIdx: number) => {
                 const sigPosition: 'first' | 'middle' | 'last' =
                   sigIdx === 0 ? 'first'
@@ -772,10 +764,22 @@ export default function OlqResultDetailsPage() {
                       : 'middle';
 
                 const semApproval = semesterApprovals.find(
-                  (sa) => sa.current_authority_id === auth.id
+                  (sa) => Number(sa.current_authority_id) === Number(auth.id)
                 ) ?? null;
 
-                const rawSigner = semApproval?.forwarder ?? null;
+                // Try semester approval forwarder first, then fall back to cadet approval approver
+                let rawSigner: any = semApproval?.forwarder ?? null;
+                let approvedAt: string | null = semApproval?.forwarded_at ?? semApproval?.approved_at ?? null;
+
+                if (!rawSigner) {
+                  const cadetApproval = approvals.find(
+                    (a) => Number(a.authority_id) === Number(auth.id) && a.status === 'approved'
+                  );
+                  if (cadetApproval?.approver) {
+                    rawSigner = cadetApproval.approver;
+                    approvedAt = cadetApproval.approved_date ?? null;
+                  }
+                }
 
                 const signer = rawSigner ? {
                   name: rawSigner.name,
@@ -784,8 +788,6 @@ export default function OlqResultDetailsPage() {
                   designation: auth.role?.name ?? null,
                 } : null;
 
-                const approvedAt = semApproval?.forwarded_at ?? semApproval?.approved_at ?? null;
-
                 return (
                   <SignatureBox
                     key={auth.id}
@@ -793,12 +795,17 @@ export default function OlqResultDetailsPage() {
                     signer={signer}
                     approvedAt={approvedAt}
                     position={sigPosition}
+                    courseName={sigPosition === 'first' ? (result?.course?.name ?? null) : null}
                   />
                 );
               })}
             </div>
           );
         })()}
+
+        <div className="mt-12 text-center text-[10px] text-gray-500 font-medium italic">
+          <p>Generated on: {new Date().toLocaleString("en-GB", { day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" })}</p>
+        </div>
       </div>
 
       {/* Approval Modal — follows counseling [id] design */}

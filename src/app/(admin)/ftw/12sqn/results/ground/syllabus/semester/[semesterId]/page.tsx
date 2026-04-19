@@ -65,14 +65,23 @@ export default function Ftw12sqnDetailedGroundSyllabusPage() {
             const exercises = syllabus.exercises || [];
             const totalMaxMark = exercises.reduce((sum, ex) => sum + parseFloat(String(ex.max_mark || 0)), 0);
 
+            let noOfTest = syllabus.no_of_test;
+            let highestMark = totalMaxMark > 0 ? totalMaxMark : parseFloat(String(syllabus.highest_mark || 0));
+
+            if (syllabus.is_flying) {
+                const totalSorties = exercises.length;
+                noOfTest = totalSorties;
+                highestMark = totalSorties * 100;
+            }
+
             return {
                 id: syllabus.id,
                 ground_full_name: syllabus.ground_full_name,
                 ground_shortname: syllabus.ground_shortname,
                 ground_symbol: syllabus.ground_symbol || "",
                 ground_sort: syllabus.ground_sort,
-                no_of_test: syllabus.no_of_test,
-                highest_mark: parseFloat(String(syllabus.highest_mark || 0)),
+                no_of_test: noOfTest,
+                highest_mark: highestMark,
                 exercise_count: exercises.length,
                 total_max_mark: totalMaxMark,
                 is_active: syllabus.is_active,

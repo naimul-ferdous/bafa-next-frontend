@@ -589,6 +589,8 @@ export default function InstructorAssignMissionModal({
     setLoadingSaveAll(true);
     setError(null);
     try {
+      const is12Sqn = squadronType === "12sqn";
+
       if (assignmentType === "flying") {
         const missionPayload = selectedMissionPhases.map(phase => ({
           mission_id: phase.id,
@@ -598,7 +600,6 @@ export default function InstructorAssignMissionModal({
           cadet_ids: Array.from(cadetAssignments.get(phase.id) ?? []),
         }));
 
-        const is12Sqn = squadronType === "12sqn";
         if (is12Sqn) {
           await ftw12sqnInstructorAssignmentService.sync({
             instructor_id: instructor.user.id,

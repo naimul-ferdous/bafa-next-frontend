@@ -283,7 +283,7 @@ export default function OlqResultDetailsPage() {
     setTimeout(() => window.print(), 100);
   };
 
-  const estimatedMarks = result?.olq_type?.estimated_marks || [];
+  const estimatedMarks = [...(result?.olq_type?.estimated_marks || [])].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 
   const calculateTotal = useCallback((cadetMarks: any[]) => {
     let total = 0;
@@ -445,7 +445,7 @@ export default function OlqResultDetailsPage() {
               text-transform: uppercase;
             }
             @top-right  {
-              content: "BAF - ${result.olq_type?.type_name}";
+              content: "BAFA - ${result.olq_type?.type_name}";
               font-size: 10pt;
               text-align: right;
             }
@@ -521,12 +521,10 @@ export default function OlqResultDetailsPage() {
         <div className="mb-4">
           <div className="flex justify-center mb-4"><FullLogo /></div>
           <h1 className="text-center text-xl font-bold text-gray-900 uppercase tracking-wider">Bangladesh Air Force Academy</h1>
-          <p className="text-center font-medium text-gray-900 uppercase tracking-wider">Academy Training Wing</p>
-          <p className="text-center font-medium text-gray-900 uppercase tracking-wider">OLQ Assessment : Offr Cdts</p>
-          <p className="text-center font-medium text-gray-900 tracking-wider">
-            <span className="uppercase">No {result.course?.name}</span>
-          </p>
-          <p className="text-center font-medium text-gray-900 tracking-wider pb-2">({result.semester?.name})</p>
+          <p className="text-center font-medium text-gray-900 uppercase underline tracking-wider">OLQ Assessment : Offr Cdts</p>
+          <p className="text-center font-medium text-gray-900 uppercase underline tracking-wider">{result.semester?.name}</p>
+          <p className="text-center font-medium text-gray-900 uppercase underline tracking-wider">No {result.course?.name}</p>
+          <p className="text-center font-medium text-gray-900 uppercase underline tracking-wider">Baf Academy</p>
 
           {/* Active Tab Indicator for Print */}
           <div className="hidden print:block mt-2">
@@ -632,7 +630,7 @@ export default function OlqResultDetailsPage() {
                     const currentRank = cadet.cadet?.assigned_ranks?.find((r: any) => r.is_current)?.rank || cadet.cadet?.assigned_ranks?.[0]?.rank;
                     const cadetRank = currentRank?.short_name || currentRank?.name || "—";
                     const currentBranch = cadet.cadet?.assigned_branchs?.find((b: any) => b.is_current)?.branch || cadet.cadet?.assigned_branchs?.[0]?.branch;
-                    const cadetBranchCode = currentBranch?.code || "—";
+                    const cadetBranchCode = currentBranch?.short_name || currentBranch?.code || "—";
 
                     const currentApproval = getCurrentCadetApproval(cadet.cadet_id);
                     const isApproved = currentApproval?.status === "approved";
@@ -759,6 +757,50 @@ export default function OlqResultDetailsPage() {
             </div>
           </div>
         )}
+
+        {/* Estimated Marks Table */}
+        {/* {estimatedMarks.length > 0 && (
+          <div className="mb-6">
+            <h2 className="text-sm font-bold text-gray-700 uppercase tracking-wide mb-2">
+              Estimated Marks — {result.olq_type?.type_name}
+            </h2>
+            <div className="overflow-x-auto">
+              <table className="border-collapse border border-black text-sm">
+                <thead>
+                  <tr className="bg-gray-100">
+                    <th className="border border-black px-3 py-2 text-center">SL</th>
+                    <th className="border border-black px-3 py-2 text-center">Order</th>
+                    <th className="border border-black px-3 py-2 text-left">Event Name</th>
+                    <th className="border border-black px-3 py-2 text-left">Event Code</th>
+                    <th className="border border-black px-3 py-2 text-center">Estimated Mark</th>
+                    <th className="border border-black px-3 py-2 text-left">Remarks</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {estimatedMarks.map((mark, index) => (
+                    <tr key={mark.id} className={index % 2 === 0 ? "bg-white" : "bg-gray-50"}>
+                      <td className="border border-black px-3 py-1.5 text-center">{index + 1}</td>
+                      <td className="border border-black px-3 py-1.5 text-center">{mark.order ?? "—"}</td>
+                      <td className="border border-black px-3 py-1.5">{mark.event_name}</td>
+                      <td className="border border-black px-3 py-1.5 font-mono text-xs">{mark.event_code}</td>
+                      <td className="border border-black px-3 py-1.5 text-center font-semibold">
+                        {parseFloat(String(mark.estimated_mark)).toFixed(2)}
+                      </td>
+                      <td className="border border-black px-3 py-1.5 text-gray-500">{mark.remarks || "—"}</td>
+                    </tr>
+                  ))}
+                  <tr className="bg-gray-100 font-bold">
+                    <td colSpan={4} className="border border-black px-3 py-1.5 text-right">Total Allotted Score (× 10)</td>
+                    <td className="border border-black px-3 py-1.5 text-center">
+                      {estimatedMarks.reduce((sum, m) => sum + parseFloat(String(m.estimated_mark || 0)), 0).toFixed(2)}
+                    </td>
+                    <td className="border border-black px-3 py-1.5"></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )} */}
 
         {/* Signature Section */}
         {(() => {

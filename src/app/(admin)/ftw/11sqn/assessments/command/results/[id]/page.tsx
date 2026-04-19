@@ -513,13 +513,10 @@ export default function CommandResultDetailsPage() {
         <div className="mb-4">
           <div className="flex justify-center mb-4"><FullLogo /></div>
           <h1 className="text-center text-xl font-bold text-gray-900 uppercase tracking-wider">Bangladesh Air Force Academy</h1>
-          <p className="text-center font-medium text-gray-900 uppercase tracking-wider">Academy Training Wing</p>
-          <p className="text-center font-medium text-gray-900 uppercase tracking-wider">Command Assessment : Offr Cdts</p>
-          <p className="text-center font-medium text-gray-900 tracking-wider">
-            <span className="uppercase">No {result.course?.name}</span>
-          </p>
-          <p className="text-center font-medium text-gray-900 tracking-wider pb-2">({result.semester?.name})</p>
-
+          <p className="text-center font-medium text-gray-900 uppercase tracking-wider underline">Command  and Control Assessment : Offr Cdts</p>
+          <p className="text-center font-medium text-gray-900 tracking-wider uppercase underline">{result.semester?.name}</p>
+          <p className="text-center font-medium text-gray-900 tracking-wider uppercase underline">No {result.course?.name} Course</p>
+          <p className="text-center font-medium text-gray-900 tracking-wider uppercase underline">Baf Academy</p>
           {/* Active Tab Indicator for Print */}
           <div className="hidden print:block mt-2">
             <p className="text-center text-lg font-bold text-blue-800 uppercase underline decoration-2 underline-offset-4">

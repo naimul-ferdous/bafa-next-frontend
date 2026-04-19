@@ -127,6 +127,7 @@ export interface SystemWarningType {
   id: number;
   name: string;
   code: string;
+  form_number?: string | null;
   description?: string;
   reduced_mark: number;
   category?: string;

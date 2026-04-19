@@ -32,6 +32,7 @@ interface CadetRow {
   mark: number | "";
   detail_marks: { [detailId: number]: number | "" };
   remark: string;
+  is_calculateable: boolean;
   is_active: boolean;
 }
 
@@ -39,6 +40,7 @@ const PF_ASSESSMENT_MODULE_CODE = "pf_assessment";
 
 export default function PfAssessmentResultForm({ initialData, onSubmit, onCancel, loading, isEdit = false }: ResultFormProps) {
   const { user } = useAuth();
+  const [isDaily, setIsDaily] = useState(false);
   const [formData, setFormData] = useState({
     course_id: 0,
     semester_id: 0,
@@ -86,6 +88,7 @@ export default function PfAssessmentResultForm({ initialData, onSubmit, onCancel
 
           if (options.module) {
             setModuleId(options.module.id);
+            setIsDaily(!!options.module.is_daily);
           }
         }
       } catch (err) {
@@ -151,12 +154,17 @@ export default function PfAssessmentResultForm({ initialData, onSubmit, onCancel
     return estimatedMarks.some((em: any) => em.exam_type_id === examTypeId);
   };
 
+  // Active estimated mark config for selected exam type
   const activeEstimatedMark = estimatedMarks.find((em: any) => em.exam_type_id === formData.exam_type_id);
   const assessmentDetails: any[] = activeEstimatedMark?.details || [];
 
+  // Max mark per detail (use male_marks as default)
   const getDetailMaxMark = (detail: any): number => parseFloat(detail.male_marks || detail.female_marks || 0);
+
+  // Total max across all details
   const maxDetailTotal = assessmentDetails.reduce((sum, d) => sum + getDetailMaxMark(d), 0);
 
+  // Fallback single-mark mode (when no details configured)
   const getMaxMark = (): number => {
     if (!formData.exam_type_id) return 0;
     return activeEstimatedMark?.estimated_mark_per_instructor || activeEstimatedMark?.estimated_mark || activeEstimatedMark?.mark || 0;
@@ -170,6 +178,7 @@ export default function PfAssessmentResultForm({ initialData, onSubmit, onCancel
   const maxMark = getMaxMark();
   const convMark = getConversationMark();
 
+  // Per-cadet calculations
   const getCadetDetailTotal = (cadet: CadetRow): number =>
     assessmentDetails.reduce((sum, d) => sum + (Number(cadet.detail_marks[d.id]) || 0), 0);
 
@@ -223,6 +232,7 @@ export default function PfAssessmentResultForm({ initialData, onSubmit, onCancel
             mark: "",
             detail_marks: {},
             remark: "",
+            is_calculateable: true,
             is_active: true,
           };
         });
@@ -261,6 +271,7 @@ export default function PfAssessmentResultForm({ initialData, onSubmit, onCancel
           const markRecord = initialData.achieved_marks?.find((m: any) => m.cadet_id === cadetId);
           const currentRank = markRecord?.cadet?.assigned_ranks?.find((ar: any) => ar.rank)?.rank;
 
+          // Rebuild detail_marks from stored details
           const detail_marks: { [detailId: number]: number } = {};
           if (markRecord?.details && markRecord.details.length > 0) {
             markRecord.details.forEach((d: any) => {
@@ -279,6 +290,7 @@ export default function PfAssessmentResultForm({ initialData, onSubmit, onCancel
             mark: parseFloat(markRecord?.achieved_mark || 0),
             detail_marks,
             remark: markRecord?.remark || "",
+            is_calculateable: !!markRecord?.is_calculateable,
             is_active: markRecord?.is_active ?? true,
           };
         });
@@ -328,6 +340,7 @@ export default function PfAssessmentResultForm({ initialData, onSubmit, onCancel
     if (!formData.course_id) { setError("Please select a course"); return; }
     if (!formData.semester_id) { setError("Please select a semester"); return; }
     if (!formData.exam_type_id) { setError("Please select an exam type"); return; }
+    if (!formData.result_date) { setError("Please select a result date"); return; }
     if (!user?.id) { setError("User session error: Instructor ID not found. Please re-login."); return; }
 
     try {
@@ -339,9 +352,9 @@ export default function PfAssessmentResultForm({ initialData, onSubmit, onCancel
             marks: c.detail_marks[d.id] || 0,
           }));
           const achievedMark = details.reduce((sum, d) => sum + d.marks, 0);
-          marks.push({ cadet_id: c.cadet_id, achieved_mark: achievedMark, details, remark: c.remark || undefined });
+          marks.push({ cadet_id: c.cadet_id, achieved_mark: achievedMark, details, remark: c.remark || undefined, is_calculateable: c.is_calculateable });
         } else {
-          marks.push({ cadet_id: c.cadet_id, achieved_mark: Number(c.mark) || 0, remark: c.remark || undefined });
+          marks.push({ cadet_id: c.cadet_id, achieved_mark: Number(c.mark) || 0, remark: c.remark || undefined, is_calculateable: c.is_calculateable });
         }
       });
 
@@ -397,241 +410,247 @@ export default function PfAssessmentResultForm({ initialData, onSubmit, onCancel
         </div>
       </Modal>
 
-      <form onSubmit={handleSubmit}>
-        {error && (
-          <div className="p-4 mb-6 bg-red-50 border border-red-200 rounded-lg text-red-600 flex items-center gap-2">
-            <Icon icon="hugeicons:alert-circle" className="w-5 h-5" />
-            {error}
-          </div>
-        )}
+    <form onSubmit={handleSubmit}>
+      {error && (
+        <div className="p-4 mb-6 bg-red-50 border border-red-200 rounded-lg text-red-600 flex items-center gap-2">
+          <Icon icon="hugeicons:alert-circle" className="w-5 h-5" />
+          {error}
+        </div>
+      )}
 
-        <div className="space-y-6">
-          <div className="border border-gray-200 rounded-lg p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-              <Icon icon="hugeicons:file-01" className="w-5 h-5 text-blue-500" />
-              Basic Information
-            </h3>
+      <div className="space-y-6">
+        <div className="border border-gray-200 rounded-lg p-6">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+            <Icon icon="hugeicons:file-01" className="w-5 h-5 text-blue-500" />
+            Basic Information
+          </h3>
 
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              <div>
-                <Label>Course <span className="text-red-500">*</span></Label>
-                <select value={formData.course_id} onChange={(e) => handleChange("course_id", parseInt(e.target.value))} className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500" required>
-                  <option value={0}>Select Course</option>
-                  {courses.map(course => (<option key={course.id} value={course.id}>{course.name} ({course.code})</option>))}
-                </select>
-              </div>
-
-              <div>
-                <Label>Semester <span className="text-red-500">*</span></Label>
-                <select
-                  value={formData.semester_id}
-                  onChange={(e) => handleChange("semester_id", parseInt(e.target.value))}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500"
-                  required
-                  disabled={!formData.course_id || loadingSemesters}
-                >
-                  <option value={0}>
-                    {loadingSemesters ? "Loading..." : !formData.course_id ? "Select course first" : "Select Semester"}
-                  </option>
-                  {semesters.map(semester => (<option key={semester.id} value={semester.id}>{semester.name} ({semester.code})</option>))}
-                </select>
-              </div>
-
-              <div>
-                <Label>Exam Type <span className="text-red-500">*</span></Label>
-                <select
-                  value={formData.exam_type_id}
-                  onChange={(e) => handleChange("exam_type_id", parseInt(e.target.value))}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500"
-                  required
-                  disabled={!formData.course_id || !formData.semester_id || loadingEstimatedMarks}
-                >
-                  <option value={0}>
-                    {loadingEstimatedMarks ? "Loading..." : (!formData.course_id || !formData.semester_id) ? "Select course & semester first" : "Select Exam Type"}
-                  </option>
-                  {exams.map(exam => {
-                    const hasEM = hasEstimatedMark(exam.id);
-                    return (
-                      <option key={exam.id} value={exam.id} disabled={!hasEM}>
-                        {exam.name} ({exam.code}) {!hasEM ? "- No Estimated Mark" : ""}
-                      </option>
-                    );
-                  })}
-                </select>
-                {formData.course_id && formData.semester_id && !loadingEstimatedMarks && (
-                  <p className="mt-1 text-xs text-gray-500">Only exam types with estimated marks for the selected course & semester are enabled</p>
-                )}
-              </div>
-
-              <div>
-                <Label>Result Date</Label>
-                <DatePicker
-                  id="result_date"
-                  mode="single"
-                  defaultDate={formData.result_date}
-                  placeholder="Select result date"
-                  onChange={(_dates, dateStr) => { if (dateStr) handleChange("result_date", dateStr); }}
-                />
-              </div>
-
-              <div className="md:col-span-2">
-                <Label>Remarks</Label>
-                <textarea value={formData.remarks} onChange={(e) => handleChange("remarks", e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500" rows={3} placeholder="Enter any remarks (optional)"></textarea>
-              </div>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div>
+              <Label>Course <span className="text-red-500">*</span></Label>
+              <select value={formData.course_id} onChange={(e) => handleChange("course_id", parseInt(e.target.value))} className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500" required>
+                <option value={0}>Select Course</option>
+                {courses.map(course => (<option key={course.id} value={course.id}>{course.name}</option>))}
+              </select>
             </div>
+
+            <div>
+              <Label>Semester <span className="text-red-500">*</span></Label>
+              <select
+                value={formData.semester_id}
+                onChange={(e) => handleChange("semester_id", parseInt(e.target.value))}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500"
+                required
+                disabled={!formData.course_id || loadingSemesters}
+              >
+                <option value={0}>
+                  {loadingSemesters ? "Loading..." : !formData.course_id ? "Select course first" : "Select Semester"}
+                </option>
+                {semesters.map(semester => (<option key={semester.id} value={semester.id}>{semester.name}</option>))}
+              </select>
+            </div>
+
+            <div>
+              <Label>Exam Type <span className="text-red-500">*</span></Label>
+              <select
+                value={formData.exam_type_id}
+                onChange={(e) => handleChange("exam_type_id", parseInt(e.target.value))}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500"
+                required
+                disabled={!formData.course_id || !formData.semester_id || loadingEstimatedMarks}
+              >
+                <option value={0}>
+                  {loadingEstimatedMarks ? "Loading..." : (!formData.course_id || !formData.semester_id) ? "Select course & semester first" : "Select Exam Type"}
+                </option>
+                {exams.map(exam => {
+                  const hasEM = hasEstimatedMark(exam.id);
+                  return (
+                    <option key={exam.id} value={exam.id} disabled={!hasEM}>
+                      {exam.name} ({exam.code}) {!hasEM ? "- No Estimated Mark" : ""}
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
+
+            <div>
+              <DatePicker
+                id="result_date"
+                label="Result Date *"
+                mode="single"
+                defaultDate={formData.result_date}
+                placeholder="Select result date"
+                onChange={(_dates, dateStr) => { if (dateStr) handleChange("result_date", dateStr); }}
+              />
+            </div>
+
+            {/* <div className="md:col-span-2">
+              <Label>Remarks</Label>
+              <textarea value={formData.remarks} onChange={(e) => handleChange("remarks", e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500" rows={3} placeholder="Enter any remarks (optional)"></textarea>
+            </div> */}
           </div>
+        </div>
 
-          <div className="border border-gray-200 rounded-lg p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-              <Icon icon="hugeicons:note-edit" className="w-5 h-5 text-blue-500" />
-              Cadets Marks Entry
-              {loadingCadets && <Icon icon="hugeicons:fan-01" className="w-5 h-5 animate-spin text-blue-500" />}
-            </h3>
+        <div className="border border-gray-200 rounded-lg p-6">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+            <Icon icon="hugeicons:note-edit" className="w-5 h-5 text-blue-500" />
+            Cadets Marks Entry
+            {loadingCadets && <Icon icon="hugeicons:fan-01" className="w-5 h-5 animate-spin text-blue-500" />}
+          </h3>
 
-            {!filtersSelected ? (
-              <div className="text-center py-12 text-gray-500">
-                <Icon icon="hugeicons:filter" className="w-10 h-10 mx-auto mb-2" />
-                <p>Please select Course, Semester, and Exam Type to load cadets</p>
-              </div>
-            ) : loadingCadets ? (
-              <div className="w-full min-h-[20vh] flex items-center justify-center">
-                <Icon icon="hugeicons:fan-01" className="w-10 h-10 animate-spin text-blue-500" />
-              </div>
-            ) : !moduleAssigned ? (
-              <div className="text-center py-12 text-red-500">
-                <Icon icon="hugeicons:alert-circle" className="w-10 h-10 mx-auto mb-2" />
-                <p className="font-medium">You are not assigned to the PF Assessment Observation module for the selected course & semester.</p>
-                <p className="text-sm text-gray-500 mt-1">Please contact admin to assign you to this module.</p>
-              </div>
-            ) : cadetRows.length === 0 ? (
-              <div className="text-center py-12 text-gray-500">
-                <Icon icon="hugeicons:user-group" className="w-10 h-10 mx-auto mb-2" />
-                <p>No cadets found for the selected filters</p>
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full border-collapse border border-black text-xs">
-                  <thead>
-                    <tr>
-                      <th className="border border-black px-2 py-2 text-center align-middle" rowSpan={2}>Sl</th>
-                      <th className="border border-black px-2 py-2 text-center align-middle" rowSpan={2}>BD No.</th>
-                      <th className="border border-black px-2 py-2 text-center align-middle" rowSpan={2}>Rank</th>
-                      <th className="border border-black px-2 py-2 text-left align-middle min-w-[140px]" rowSpan={2}>Name</th>
-                      <th className="border border-black px-2 py-2 text-left align-middle" rowSpan={2}>Branch</th>
+          {!filtersSelected ? (
+            <div className="text-center py-12 text-gray-500">
+              <Icon icon="hugeicons:filter" className="w-10 h-10 mx-auto mb-2" />
+              <p>Please select Course, Semester, and Exam Type to load cadets</p>
+            </div>
+          ) : loadingCadets ? (
+            <div className="w-full min-h-[20vh] flex items-center justify-center">
+              <Icon icon="hugeicons:fan-01" className="w-10 h-10 animate-spin text-blue-500" />
+            </div>
+          ) : !moduleAssigned ? (
+            <div className="text-center py-12 text-red-500">
+              <Icon icon="hugeicons:alert-circle" className="w-10 h-10 mx-auto mb-2" />
+              <p className="font-medium">You are not assigned to the PF Assessment Observation module for the selected course & semester.</p>
+              <p className="text-sm text-gray-500 mt-1">Please contact admin to assign you to this module.</p>
+            </div>
+          ) : cadetRows.length === 0 ? (
+            <div className="text-center py-12 text-gray-500">
+              <Icon icon="hugeicons:user-group" className="w-10 h-10 mx-auto mb-2" />
+              <p>No cadets found for the selected filters</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse border border-black text-xs">
+                <thead>
+                  <tr>
+                    <th className="border border-black px-2 py-2 text-center align-middle" rowSpan={2}>Sl</th>
+                    <th className="border border-black px-2 py-2 text-center align-middle" rowSpan={2}>BD No.</th>
+                    <th className="border border-black px-2 py-2 text-center align-middle" rowSpan={2}>Rank</th>
+                    <th className="border border-black px-2 py-2 text-left align-middle min-w-[140px]" rowSpan={2}>Name</th>
+                    <th className="border border-black px-2 py-2 text-left align-middle" rowSpan={2}>Branch</th>
 
-                      {assessmentDetails.length > 0 ? (
-                        <>
-                          {assessmentDetails.map((d: any) => (
-                            <th key={d.id} className="border border-black px-1 py-1 text-center align-middle font-semibold max-w-[70px]">
-                              {d.name}
-                            </th>
-                          ))}
-                          <th className="border border-black px-2 py-2 text-center align-middle font-bold" rowSpan={2}>
-                            Total<br /><span className="font-normal text-gray-500">/{maxDetailTotal}</span>
+                    {assessmentDetails.length > 0 ? (
+                      <>
+                        {assessmentDetails.map((d: any) => (
+                          <th key={d.id} className="border border-black px-1 py-1 text-center align-middle font-semibold max-w-[70px]">
+                            {d.name}
                           </th>
-                        </>
-                      ) : (
-                        <>
-                          <th className="border border-black px-2 py-2 text-center align-middle">Mark</th>
-                          <th className="border border-black px-2 py-2 text-center align-middle font-bold" rowSpan={2}>Total</th>
-                        </>
-                      )}
-                      <th className="border border-black px-2 py-2 text-center align-middle" rowSpan={2}>Remark</th>
-                    </tr>
-                    <tr>
-                      {assessmentDetails.length > 0 ? (
-                        assessmentDetails.map((d: any) => (
-                          <th key={d.id} className="border border-black px-1 py-1 text-center text-gray-600">
-                            {getDetailMaxMark(d)}
-                          </th>
-                        ))
-                      ) : (
-                        <th className="border border-black px-2 py-1 text-center">{maxMark > 0 ? maxMark : "N/A"}</th>
-                      )}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {cadetRows.map((cadet, index) => {
-                      const cadetDetailTotal: number = getCadetDetailTotal(cadet);
-                      const cadetTotal = assessmentDetails.length > 0 ? cadetDetailTotal : cadet.mark;
-                      return (
-                        <tr key={cadet.cadet_id}>
-                          <td className="border border-black px-2 py-1 text-center font-medium">{index + 1}</td>
-                          <td className="border border-black px-2 py-1 text-center font-mono">{cadet.cadet_number}</td>
-                          <td className="border border-black px-2 py-1 text-center">{cadet.cadet_rank}</td>
-                          <td className="border border-black px-2 py-1 font-medium">{cadet.cadet_name}</td>
-                          <td className="border border-black px-2 py-1">{cadet.branch}</td>
+                        ))}
+                        <th className="border border-black px-2 py-2 text-center align-middle font-bold" rowSpan={2}>
+                          Total - {maxDetailTotal}
+                        </th>
+                      </>
+                    ) : (
+                      <>
+                        <th className="border border-black px-2 py-2 text-center align-middle">Mark</th>
+                        <th className="border border-black px-2 py-2 text-center align-middle font-bold" rowSpan={2}>Total</th>
+                      </>
+                    )}
+                    <th className="border border-black px-2 py-2 text-center align-middle" rowSpan={2}>Remark</th>
+                    <th className="border border-black px-2 py-2 text-center align-middle" rowSpan={2}>Calc?</th>
+                  </tr>
+                  <tr>
+                    {assessmentDetails.length > 0 ? (
+                      assessmentDetails.map((d: any) => (
+                        <th key={d.id} className="border border-black px-1 py-1 text-center text-gray-600">
+                          {getDetailMaxMark(d)}
+                        </th>
+                      ))
+                    ) : (
+                      <th className="border border-black px-2 py-1 text-center">{maxMark > 0 ? maxMark : "N/A"}</th>
+                    )}
+                  </tr>
+                </thead>
+                <tbody>
+                  {cadetRows.map((cadet, index) => {
+                    const cadetDetailTotal: number = getCadetDetailTotal(cadet);
+                    const cadetTotal = assessmentDetails.length > 0 ? cadetDetailTotal : cadet.mark;
+                    return (
+                      <tr key={cadet.cadet_id}>
+                        <td className="border border-black px-2 py-1 text-center font-medium">{index + 1}</td>
+                        <td className="border border-black px-2 py-1 text-center font-mono">{cadet.cadet_number}</td>
+                        <td className="border border-black px-2 py-1 text-center">{cadet.cadet_rank}</td>
+                        <td className="border border-black px-2 py-1 font-medium">{cadet.cadet_name}</td>
+                        <td className="border border-black px-2 py-1">{cadet.branch}</td>
 
-                          {assessmentDetails.length > 0 ? (
-                            <>
-                              {assessmentDetails.map((d: any) => (
-                                <td key={d.id} className="border border-black px-1 py-1 text-center">
-                                  <input
-                                    type="number"
-                                    min={0}
-                                    max={getDetailMaxMark(d) || undefined}
-                                    step={0.01}
-                                    value={cadet.detail_marks[d.id] ?? ""}
-                                    onChange={(e) => {
-                                      const v = e.target.value;
-                                      handleDetailMarkChange(index, d.id, v === "" ? "" : parseFloat(v));
-                                    }}
-                                    className="w-14 px-1 py-0.5 border border-gray-300 rounded text-center text-xs focus:ring-1 focus:ring-blue-500 bg-white text-gray-900"
-                                  />
-                                </td>
-                              ))}
-                              <td className="border border-black px-2 py-1 text-center font-bold">{cadetDetailTotal > 0 ? cadetDetailTotal.toFixed(2) : "-"}</td>
-                            </>
-                          ) : (
-                            <>
-                              <td className="border border-black px-1 py-1 text-center">
+                        {assessmentDetails.length > 0 ? (
+                          <>
+                            {assessmentDetails.map((d: any) => (
+                              <td key={d.id} className="border border-black px-1 py-1 text-center">
                                 <input
                                   type="number"
                                   min={0}
-                                  max={maxMark > 0 ? maxMark : undefined}
+                                  max={getDetailMaxMark(d) || undefined}
                                   step={0.01}
-                                  value={cadet.mark}
+                                  value={cadet.detail_marks[d.id] ?? ""}
                                   onChange={(e) => {
                                     const v = e.target.value;
-                                    handleCadetChange(index, "mark", v === "" ? "" : Math.min(parseFloat(v), maxMark > 0 ? maxMark : Infinity));
+                                    handleDetailMarkChange(index, d.id, v === "" ? "" : parseFloat(v));
                                   }}
-                                  className="w-full px-1 py-0.5 border border-gray-300 rounded text-center text-xs focus:ring-1 focus:ring-blue-500 bg-white text-gray-900"
+                                  className="w-14 px-1 py-0.5 border border-gray-300 rounded text-center text-xs focus:ring-1 focus:ring-blue-500 bg-white text-gray-900"
                                 />
                               </td>
-                              <td className="border border-black px-2 py-1 text-center font-bold">
-                                {cadet.mark !== "" && maxMark > 0 ? ((Number(cadet.mark) / maxMark) * convMark).toFixed(2) : "-"}
-                              </td>
-                            </>
-                          )}
-                          <td className="border border-black p-1">
-                            <input
-                              type="text"
-                              value={cadet.remark}
-                              onChange={(e) => handleCadetChange(index, "remark", e.target.value)}
-                              placeholder="Optional"
-                               className="w-full px-1 py-0.5 border border-gray-300 rounded text-center text-xs focus:ring-1 focus:ring-blue-500 bg-white text-gray-900"
-                            />
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
+                            ))}
+                            <td className="border border-black px-2 py-1 text-center font-bold">{cadetDetailTotal > 0 ? cadetDetailTotal.toFixed(2) : "-"}</td>
+                          </>
+                        ) : (
+                          <>
+                            <td className="border border-black px-1 py-1 text-center">
+                              <input
+                                type="number"
+                                min={0}
+                                max={maxMark > 0 ? maxMark : undefined}
+                                step={0.01}
+                                value={cadet.mark}
+                                onChange={(e) => {
+                                  const v = e.target.value;
+                                  handleCadetChange(index, "mark", v === "" ? "" : Math.min(parseFloat(v), maxMark > 0 ? maxMark : Infinity));
+                                }}
+                                className="w-full px-1 py-0.5 border border-gray-300 rounded text-center text-xs focus:ring-1 focus:ring-blue-500 bg-white text-gray-900"
+                              />
+                            </td>
+                            <td className="border border-black px-2 py-1 text-center font-bold">
+                              {cadet.mark !== "" && maxMark > 0 ? ((Number(cadet.mark) / maxMark) * convMark).toFixed(2) : "-"}
+                            </td>
+                          </>
+                        )}
+                        <td className="border border-black p-1">
+                          <input
+                            type="text"
+                            value={cadet.remark}
+                            onChange={(e) => handleCadetChange(index, "remark", e.target.value)}
+                            placeholder="Optional"
+                             className="w-full px-1 py-0.5 border border-gray-300 rounded text-center text-xs focus:ring-1 focus:ring-blue-500 bg-white text-gray-900"
+                          />
+                        </td>
+                        <td className="border border-black px-2 py-1 text-center">
+                          <input
+                            type="checkbox"
+                            checked={!!cadet.is_calculateable}
+                            onChange={(e) => handleCadetChange(index, "is_calculateable", e.target.checked)}
+                            className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                          />
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
+      </div>
 
-        <div className="flex items-center justify-end gap-3 mt-8 pt-6 border-t border-gray-200">
-          <button type="button" onClick={onCancel} className="px-6 py-2 border border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50" disabled={loading}>
-            Cancel
-          </button>
-          <button type="submit" className="px-6 py-2 bg-blue-500 text-white rounded-xl hover:bg-blue-600 flex items-center gap-2 font-bold" disabled={loading}>
-            {loading && <Icon icon="hugeicons:loading-03" className="w-4 h-4 animate-spin" />}
-            {loading ? (isEdit ? "Updating..." : "Saving...") : (isEdit ? "Update Result" : "Save Result")}
-          </button>
-        </div>
-      </form>
+      <div className="flex items-center justify-end gap-3 mt-8 pt-6 border-t border-gray-200">
+        <button type="button" onClick={onCancel} className="px-6 py-2 border border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50" disabled={loading}>
+          Cancel
+        </button>
+        <button type="submit" className="px-6 py-2 bg-blue-500 text-white rounded-xl hover:bg-blue-600 flex items-center gap-2 font-bold" disabled={loading}>
+          {loading && <Icon icon="hugeicons:loading-03" className="w-4 h-4 animate-spin" />}
+          {loading ? (isEdit ? "Updating..." : "Saving...") : (isEdit ? "Update Result" : "Save Result")}
+        </button>
+      </div>
+    </form>
     </>
   );
 }

@@ -141,6 +141,7 @@ export default function PfAssessmentCourseSemesterResultPage() {
 
   useEffect(() => { loadData(); }, [loadData]);
 
+  // ── Approval logic ─────────────────────────────────────────────────────────
   const primaryRoleIds = (user as any)?.roles?.filter((r: any) => r.pivot?.is_primary).map((r: any) => r.id) ?? [];
   const allRoleIds = (user as any)?.roles?.map((r: any) => r.id) ?? [];
   const userRoleIds = primaryRoleIds.length > 0 ? primaryRoleIds : allRoleIds;
@@ -170,6 +171,7 @@ export default function PfAssessmentCourseSemesterResultPage() {
     moduleApprovals.some((ma: any) => Number(ma.ctw_result_id) === Number(sub?.id))
   );
 
+  // ── Aggregated marks ───────────────────────────────────────────────────────
   const aggregatedMarks = useMemo(() => {
     const cadetMap = new Map<number, any>();
     const maxTotal = criteriaDetails.reduce((sum: number, d: any) => sum + parseFloat(String(d.male_marks || 0)), 0);
@@ -209,9 +211,9 @@ export default function PfAssessmentCourseSemesterResultPage() {
         }
         const conv = effectiveMax > 0 && convLimit > 0 ? (totalMks / effectiveMax) * convLimit : totalMks;
         const cadetData = cadetMap.get(cadetId);
-        cadetData.instructorMarks[subId] = totalMks;
+        cadetData.instructorMarks[subId] = totalMks;  // raw mark for display
         cadetData.instructorDetailData[subId] = { detailData, totalMks, conv };
-        cadetData.totalFinal += totalMks;
+        cadetData.totalFinal += totalMks;  // sum of raw marks
         cadetData.submissionCount += 1;
         if (markItem.remark) cadetData.comments.push(markItem.remark);
       });
@@ -259,6 +261,101 @@ export default function PfAssessmentCourseSemesterResultPage() {
 
     return withConv;
   }, [aggregatedMarks, estimatedMark, submissions, criteriaDetails]);
+
+  // ── Month-wise groups for display ──────────────────────────────────────────
+  const monthGroups = useMemo(() => {
+    if (submissions.length === 0) return [];
+    const convLimit = parseFloat(String((estimatedMark as any)?.conversation_mark || 0));
+    const maxTotal = criteriaDetails.reduce((sum: number, d: any) => sum + parseFloat(String(d.male_marks || 0)), 0);
+    const estMarkPerInstr = parseFloat(String((estimatedMark as any)?.estimated_mark_per_instructor || 0));
+    const effectiveMax = maxTotal > 0 ? maxTotal : estMarkPerInstr;
+    const passThreshold = convLimit * 0.5;
+
+    const groups = new Map<string, any[]>();
+    submissions.forEach((sub: any) => {
+      const d = new Date(sub.result_date || sub.created_at);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(sub);
+    });
+
+    return Array.from(groups.entries())
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([key, monthSubs]) => {
+        const cadetMap = new Map<number, any>();
+        cadets.forEach(cadet => {
+          cadetMap.set(cadet.id, {
+            cadet,
+            instructorMarks: {} as Record<number, number>,
+            instructorCalculateable: {} as Record<number, boolean>,
+            instructorDetailData: {} as Record<number, any>,
+            totalFinal: 0,
+            submissionCount: 0,
+            comments: [] as string[],
+          });
+        });
+
+        monthSubs.forEach((sub: any) => {
+          const subId = sub.id;
+          const marks = sub.instructor_details?.marks || [];
+          marks.forEach((markItem: any) => {
+            const cadetId = markItem.cadet_id;
+            if (!cadetMap.has(cadetId)) return;
+            const detailData: any = {};
+            let totalMks = 0;
+            if (markItem.details && markItem.details.length > 0) {
+              markItem.details.forEach((d: any) => {
+                const detailId = d.ctw_results_module_estimated_marks_details_id;
+                if (detailId) {
+                  detailData[detailId] = parseFloat(String(d.marks || 0));
+                  totalMks += parseFloat(String(d.marks || 0));
+                }
+              });
+            } else {
+              totalMks = parseFloat(String(markItem.achieved_mark ?? markItem.mark ?? 0));
+            }
+            // is_calculateable=true → always count (even if mark=0, e.g. ED penalty)
+            // is_calculateable=false AND mark>0 → count (old default value, mark exists)
+            // is_calculateable=false AND mark=0 → exclude (excused: flying, sick, etc.)
+            const isExplicitlyCalc = markItem.is_calculateable === true || markItem.is_calculateable === 1;
+            const isCalc = isExplicitlyCalc || totalMks > 0;
+            const cadetData = cadetMap.get(cadetId)!;
+            cadetData.instructorMarks[subId] = totalMks;
+            cadetData.instructorCalculateable[subId] = isCalc;
+            cadetData.instructorDetailData[subId] = { detailData, totalMks, isCalculateable: isCalc };
+            // Only include in average if calculable
+            if (isCalc) {
+              cadetData.totalFinal += totalMks;
+              cadetData.submissionCount += 1;
+            }
+            if (markItem.remark) cadetData.comments.push(markItem.remark);
+          });
+        });
+
+        const items = Array.from(cadetMap.values()).filter(item => item.submissionCount > 0);
+        const withConv = items.map(item => {
+          const avgRaw = item.submissionCount > 0 ? item.totalFinal / item.submissionCount : 0;
+          const convertedMark = effectiveMax > 0 && convLimit > 0
+            ? (avgRaw / effectiveMax) * convLimit
+            : avgRaw;
+          return { ...item, convertedMark, position: 0, remark: "-" as string };
+        });
+
+        withConv.sort((a, b) => b.convertedMark - a.convertedMark);
+        withConv.forEach((item, idx) => {
+          if (idx === 0) item.position = 1;
+          else if (item.convertedMark === withConv[idx - 1].convertedMark) item.position = withConv[idx - 1].position;
+          else item.position = idx + 1;
+          item.remark = item.convertedMark < passThreshold ? "Failed" : "-";
+        });
+        withConv.sort((a, b) =>
+          String(a.cadet?.cadet_number ?? "").localeCompare(String(b.cadet?.cadet_number ?? ""), undefined, { numeric: true })
+        );
+
+        const label = new Date(key + '-01').toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+        return { key, label, submissions: monthSubs, rankedData: withConv };
+      });
+  }, [submissions, cadets, estimatedMark, criteriaDetails]);
 
   const allResultsApprovedByPreviousLevel = useMemo(() => {
     if (submissions.length === 0 || rankedData.length === 0) return false;
@@ -346,6 +443,7 @@ export default function PfAssessmentCourseSemesterResultPage() {
     setSelectedCadetIds(allPendingSelected ? [] : pendingCadetIds);
   };
 
+  // ── Actions ────────────────────────────────────────────────────────────────
   const confirmApproval = async () => {
     if (!moduleDetails) return;
     if (approvalModal.status === "rejected" && !approvalModal.rejectedReason.trim()) {
@@ -420,6 +518,7 @@ export default function PfAssessmentCourseSemesterResultPage() {
   const estimatedMarkPerInstructor = (estimatedMark as any)?.estimated_mark_per_instructor || 0;
   const instructorCount = moduleDetails?.instructor_count || 0;
   const isComplete = submissions.length > 0;
+  const totalWeightage = estimatedMarkPerInstructor * instructorCount;
 
   const formatDateCol = (dateStr: string) => {
     if (!dateStr) return "N/A";
@@ -580,186 +679,180 @@ export default function PfAssessmentCourseSemesterResultPage() {
           </div>
         </div>
 
-        {/* Marks Table */}
-        <div className="mb-6">
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse border border-black text-xs">
-              <thead>
-                <tr>
-                  {canApproveAction && pendingCadetIds.length > 0 && allInstructorsSubmitted && (
-                    <th rowSpan={2} className="border border-black px-2 py-2 text-center align-middle no-print">
-                      <input type="checkbox" checked={allPendingSelected} onChange={toggleSelectAll} className="w-4 h-4" />
-                    </th>
-                  )}
-                  <th rowSpan={2} className="border border-black px-2 py-2 text-center align-middle">Ser</th>
-                  <th rowSpan={2} className="border border-black px-2 py-2 text-center align-middle">BD/No</th>
-                  <th rowSpan={2} className="border border-black px-2 py-2 text-center align-middle">Rank</th>
-                  <th rowSpan={2} className="border border-black px-2 py-2 text-left align-middle min-w-[150px]">Name</th>
-                  <th rowSpan={2} className="border border-black px-2 py-2 text-left align-middle">Branch</th>
-
-                  {hasCriteriaDetails ? (
-                    criteriaDetails.map((d: any) => (
-                      <th key={d.id} className="border border-black px-1 py-1 text-center font-semibold text-[9px] max-w-[50px]">{d.name}</th>
-                    ))
-                  ) : (
-                    <th colSpan={submissions.length || 1} className="border border-black px-2 py-1 text-center font-bold">Dates</th>
-                  )}
-
-                  <th rowSpan={2} className="border border-black px-2 py-2 text-center font-bold">
-                    {hasCriteriaDetails ? <>Total<br /><span className="font-normal text-gray-500">/{maxCriteriaTotal}</span></> : "Total"}
-                  </th>
-                  <th rowSpan={2} className="border border-black px-2 py-2 text-center font-bold">Conv - {conversationMarkLimit}</th>
-                  <th rowSpan={2} className="border border-black px-2 py-2 text-center font-bold">Position</th>
-                  <th rowSpan={2} className="border border-black px-2 py-2 text-center font-bold">Remarks</th>
-                  <th rowSpan={2} className="border border-black px-2 py-2 text-center font-bold min-w-[120px]">Comment</th>
-                  <th rowSpan={2} className="border border-black px-2 py-2 text-center no-print">Status</th>
-                  {canApproveAction && !isForwarded && (
-                    <th rowSpan={2} className="border border-black px-2 py-2 text-center no-print">Action</th>
-                  )}
-                </tr>
-                <tr>
-                  {hasCriteriaDetails ? (
-                    criteriaDetails.map((d: any) => (
-                      <th key={d.id} className="border border-black px-1 py-1 text-center text-gray-500 text-[9px]">
-                        {parseFloat(d.male_marks || d.female_marks || 0)}
-                      </th>
-                    ))
-                  ) : (
-                    submissions.map((sub: any) => (
-                      <th key={sub.id} className="border border-black px-1 py-1 text-center font-bold text-[9px]">
-                        {formatDateCol(sub.result_date || sub.created_at)}
-                      </th>
-                    ))
-                  )}
-                </tr>
-              </thead>
-              <tbody>
-                {rankedData.map((item: any, index: number) => {
-                  const status = getCadetApprovalStatus(item.cadet.id);
-                  const isPending = status === "pending";
-                  return (
-                    <tr key={item.cadet.id} className="hover:bg-gray-50 transition-colors">
+        {/* Marks Table — one table per month */}
+        <div className="mb-6 flex flex-col gap-10">
+          {monthGroups.map(monthGroup => (
+            <div key={monthGroup.key}>
+              {/* Month label */}
+              <div className="mb-2 px-1 flex items-center gap-3">
+                <span className="font-bold text-sm uppercase tracking-wide text-gray-800 border-b-2 border-gray-800 pb-0.5">
+                  {monthGroup.label}
+                </span>
+                <span className="text-xs text-gray-500">{monthGroup.submissions.length} date{monthGroup.submissions.length !== 1 ? "s" : ""}</span>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full border-collapse border border-black text-xs">
+                  <thead>
+                    <tr>
                       {canApproveAction && pendingCadetIds.length > 0 && allInstructorsSubmitted && (
-                        <td className="border border-black px-2 py-2 text-center no-print">
-                          {isPending ? (
-                            <input type="checkbox" checked={selectedCadetIds.includes(item.cadet.id)} onChange={() => toggleCadet(item.cadet.id)} className="w-4 h-4" />
-                          ) : <span className="text-xs text-gray-400">-</span>}
-                        </td>
+                        <th rowSpan={2} className="border border-black px-2 py-2 text-center align-middle no-print">
+                          <input type="checkbox" checked={allPendingSelected} onChange={toggleSelectAll} className="w-4 h-4" />
+                        </th>
                       )}
-                      <td className="border border-black px-2 py-2 text-center font-medium">{index + 1}</td>
-                      <td className="border border-black px-2 py-2 text-center font-mono">{item.cadet?.cadet_number || "N/A"}</td>
-                      <td className="border border-black px-2 py-2 text-center">
-                        {item.cadet?.assigned_ranks?.find((ar: any) => ar.rank)?.rank?.short_name || "-"}
-                      </td>
-                      <td className="border border-black px-2 py-2 font-bold uppercase">
-                        <button onClick={() => router.push(`/ctw/results/assessment_observation/pf/course/${courseId}/semester/${semesterId}/cadet/${item.cadet.id}`)} className="hover:underline text-blue-600 hover:text-blue-800 text-left">
-                          {item.cadet?.name || "N/A"}
-                        </button>
-                      </td>
-                      <td className="border border-black px-2 py-2">
-                        {item.cadet?.assigned_branchs?.filter((b: any) => b.is_current)?.[0]?.branch?.name || item.cadet?.assigned_branchs?.[0]?.branch?.name || "-"}
-                      </td>
-
-                      {hasCriteriaDetails ? (
-                        (() => {
-                          const sub = submissions[0];
-                          const instData = sub ? item.instructorDetailData[sub.id] : null;
-                          return criteriaDetails.map((d: any) => (
-                            <td key={d.id} className="border border-black px-1 py-1 text-center">
-                              {instData ? (instData.detailData[d.id] ?? 0).toFixed(2) : "-"}
-                            </td>
-                          ));
-                        })()
-                      ) : (
-                        submissions.map((sub: any) => {
-                          const mark = item.instructorMarks[sub.id];
-                          return (
-                            <td key={sub.id} className="border border-black px-2 py-2 text-center">
-                              {mark !== undefined ? parseFloat(String(mark)).toFixed(1) : "-"}
-                            </td>
-                          );
-                        })
-                      )}
-
-                      <td className="border border-black px-2 py-2 text-center font-bold">
-                        {isComplete ? (hasCriteriaDetails
-                          ? (() => { const sub = submissions[0]; const instData = sub ? item.instructorDetailData[sub.id] : null; return instData ? instData.totalMks.toFixed(2) : "-"; })()
-                          : item.totalFinal.toFixed(2)
-                        ) : "-"}
-                      </td>
-                      <td className="border border-black px-2 py-2 text-center font-black text-emerald-700 bg-emerald-50/20">
-                        {isComplete ? item.convertedMark.toFixed(2) : "-"}
-                      </td>
-                      <td className="border border-black px-2 py-2 text-center font-bold text-blue-700 bg-blue-50/20">
-                        {isComplete ? getOrdinal(item.position) : "-"}
-                      </td>
-                      <td className={`border border-black px-2 py-2 text-center font-medium ${item.remark === "Failed" ? "text-red-600 bg-red-50/20" : "text-gray-400"}`}>
-                        {item.remark}
-                      </td>
-                      <td className="border border-black px-2 py-2 text-xs text-gray-700">
-                        {item.comments?.length > 0 ? item.comments.join(" | ") : "—"}
-                      </td>
-
-                      <td className="border border-black px-2 py-2 no-print">
-                        <div className="flex flex-col gap-1.5 min-w-[100px]">
-                          {(() => {
-                            const sub = submissions[0];
-                            const resultId = sub?.id;
-                            if (!resultId) return <span className="text-[9px] text-gray-500">No Result</span>;
-                            return approvalAuthorities.filter((a: any) => a.is_active).sort((a: any, b: any) => (a.sort ?? 0) - (b.sort ?? 0)).map((auth: any) => {
-                              const authStatus = (() => {
-                                const approval = cadetApprovals.find((a: any) =>
-                                  Number(a.cadet_id) === Number(item.cadet.id) &&
-                                  Number(a.ctw_result_id) === Number(resultId) &&
-                                  Number(a.authority_id) === Number(auth.id) && a.is_active
-                                );
-                                if (approval?.status === "approved") return "approved";
-                                if (approval?.status === "rejected") return "rejected";
-                                return "pending";
-                              })();
-                              const isMe = auth.id === (myAuthority as any)?.id;
-                              return (
-                                <div key={auth.id} className="flex items-center gap-1">
-                                  <span className="text-[8px] text-gray-500 flex-1">
-                                    {auth.role?.name || `Auth ${auth.sort}`}{isMe && <span className="text-blue-600"> (me)</span>}
-                                  </span>
-                                  {authStatus === "approved" ? (
-                                    <span className="inline-flex items-center gap-0.5 text-green-700 text-[8px] font-bold">
-                                      <Icon icon="hugeicons:checkmark-circle-02" className="w-2.5 h-2.5" />Approved
-                                    </span>
-                                  ) : authStatus === "rejected" ? (
-                                    <span className="inline-flex items-center gap-0.5 text-red-700 text-[8px] font-bold">
-                                      <Icon icon="hugeicons:cancel-circle" className="w-2.5 h-2.5" />Rejected
-                                    </span>
-                                  ) : (
-                                    <span className="inline-flex items-center gap-0.5 text-yellow-700 text-[8px] font-bold">
-                                      <Icon icon="hugeicons:clock-01" className="w-2.5 h-2.5" />Pending
-                                    </span>
-                                  )}
-                                </div>
-                              );
-                            });
-                          })()}
-                        </div>
-                      </td>
-
+                      <th rowSpan={2} className="border border-black px-2 py-2 text-center align-middle">Ser</th>
+                      <th rowSpan={2} className="border border-black px-2 py-2 text-center align-middle">BD/No</th>
+                      <th rowSpan={2} className="border border-black px-2 py-2 text-center align-middle">Rank</th>
+                      <th rowSpan={2} className="border border-black px-2 py-2 text-left align-middle min-w-[150px]">Name</th>
+                      <th rowSpan={2} className="border border-black px-2 py-2 text-left align-middle">Branch</th>
+                      <th colSpan={monthGroup.submissions.length || 1} className="border border-black px-2 py-1 text-center font-bold">
+                        Dates
+                      </th>
+                      <th rowSpan={2} className="border border-black px-2 py-2 text-center font-bold">
+                        {hasCriteriaDetails ? <>Avg Total<br /><span className="font-normal text-gray-500">/{maxCriteriaTotal}</span></> : "Total"}
+                      </th>
+                      <th rowSpan={2} className="border border-black px-2 py-2 text-center font-bold">Conv - {conversationMarkLimit}</th>
+                      <th rowSpan={2} className="border border-black px-2 py-2 text-center font-bold">Position</th>
+                      <th rowSpan={2} className="border border-black px-2 py-2 text-center font-bold">Remarks</th>
+                      <th rowSpan={2} className="border border-black px-2 py-2 text-center font-bold min-w-[120px]">Comment</th>
+                      <th rowSpan={2} className="border border-black px-2 py-2 text-center no-print">Status</th>
                       {canApproveAction && !isForwarded && (
-                        <td className="border border-black px-2 py-2 text-center no-print">
-                          {isPending ? (
-                            <button onClick={() => setApprovalModal({ open: true, cadetIds: [item.cadet.id], status: "approved", rejectedReason: "", loading: false, error: "" })}
-                              className="px-2 py-1 text-[10px] font-semibold bg-green-600 text-white rounded hover:bg-green-700">Approve</button>
-                          ) : status === "approved" ? (
-                            <button onClick={() => setApprovalModal({ open: true, cadetIds: [item.cadet.id], status: "approved", rejectedReason: "", loading: false, error: "" })}
-                              className="px-2 py-1 text-[10px] font-semibold bg-gray-200 text-gray-700 rounded hover:bg-gray-300">Change</button>
-                          ) : null}
-                        </td>
+                        <th rowSpan={2} className="border border-black px-2 py-2 text-center no-print">Action</th>
                       )}
                     </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                    <tr>
+                      {monthGroup.submissions.map((sub: any) => (
+                        <th key={sub.id} className="border border-black px-1 py-1 text-center font-bold text-[9px]">
+                          {formatDateCol(sub.result_date || sub.created_at)}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {monthGroup.rankedData.map((item: any, index: number) => {
+                      const status = getCadetApprovalStatus(item.cadet.id);
+                      const isPending = status === "pending";
+                      const firstSub = monthGroup.submissions[0];
+                      return (
+                        <tr key={item.cadet.id} className="hover:bg-gray-50 transition-colors">
+                          {canApproveAction && pendingCadetIds.length > 0 && allInstructorsSubmitted && (
+                            <td className="border border-black px-2 py-2 text-center no-print">
+                              {isPending ? (
+                                <input type="checkbox" checked={selectedCadetIds.includes(item.cadet.id)} onChange={() => toggleCadet(item.cadet.id)} className="w-4 h-4" />
+                              ) : <span className="text-xs text-gray-400">-</span>}
+                            </td>
+                          )}
+                          <td className="border border-black px-2 py-2 text-center font-medium">{index + 1}</td>
+                          <td className="border border-black px-2 py-2 text-center font-mono">{item.cadet?.cadet_number || "N/A"}</td>
+                          <td className="border border-black px-2 py-2 text-center">
+                            {item.cadet?.assigned_ranks?.find((ar: any) => ar.rank)?.rank?.short_name || "-"}
+                          </td>
+                          <td className="border border-black px-2 py-2 font-bold uppercase">
+                            <button onClick={() => router.push(`/ctw/results/assessment_observation/pf/course/${courseId}/semester/${semesterId}/cadet/${item.cadet.id}`)} className="hover:underline text-blue-600 hover:text-blue-800 text-left">
+                              {item.cadet?.name || "N/A"}
+                            </button>
+                          </td>
+                          <td className="border border-black px-2 py-2">
+                            {item.cadet?.assigned_branchs?.filter((b: any) => b.is_current)?.[0]?.branch?.name || item.cadet?.assigned_branchs?.[0]?.branch?.name || "-"}
+                          </td>
+
+                          {/* Date-wise totals for this month */}
+                          {monthGroup.submissions.map((sub: any) => {
+                            const instData = item.instructorDetailData[sub.id];
+                            const mark = hasCriteriaDetails
+                              ? (instData ? instData.totalMks : undefined)
+                              : item.instructorMarks[sub.id];
+                            const isCalc = item.instructorCalculateable?.[sub.id] !== false;
+                            const hasEntry = mark !== undefined;
+                            return (
+                              <td key={sub.id} className={`border border-black px-2 py-2 text-center ${!isCalc && hasEntry ? "bg-gray-50" : ""}`}>
+                                {hasEntry ? (
+                                  <span className={!isCalc ? "line-through text-gray-400" : ""} title={!isCalc ? "Not calculable (excused)" : ""}>
+                                    {parseFloat(String(mark)).toFixed(2)}
+                                  </span>
+                                ) : "-"}
+                              </td>
+                            );
+                          })}
+
+                          <td className="border border-black px-2 py-2 text-center font-bold">
+                            {item.submissionCount > 0 ? (item.totalFinal / item.submissionCount).toFixed(2) : "-"}
+                          </td>
+                          <td className="border border-black px-2 py-2 text-center font-black text-emerald-700 bg-emerald-50/20">
+                            {item.convertedMark.toFixed(2)}
+                          </td>
+                          <td className="border border-black px-2 py-2 text-center font-bold text-blue-700 bg-blue-50/20">
+                            {getOrdinal(item.position)}
+                          </td>
+                          <td className={`border border-black px-2 py-2 text-center font-medium ${item.remark === "Failed" ? "text-red-600 bg-red-50/20" : "text-gray-400"}`}>
+                            {item.remark}
+                          </td>
+                          <td className="border border-black px-2 py-2 text-xs text-gray-700">
+                            {item.comments?.length > 0 ? item.comments.join(" | ") : "—"}
+                          </td>
+
+                          {/* Status column */}
+                          <td className="border border-black px-2 py-2 no-print">
+                            <div className="flex flex-col gap-1.5 min-w-[100px]">
+                              {(() => {
+                                const resultId = firstSub?.id;
+                                if (!resultId) return <span className="text-[9px] text-gray-500">No Result</span>;
+                                return approvalAuthorities.filter((a: any) => a.is_active).sort((a: any, b: any) => (a.sort ?? 0) - (b.sort ?? 0)).map((auth: any) => {
+                                  const authStatus = (() => {
+                                    const approval = cadetApprovals.find((a: any) =>
+                                      Number(a.cadet_id) === Number(item.cadet.id) &&
+                                      Number(a.ctw_result_id) === Number(resultId) &&
+                                      Number(a.authority_id) === Number(auth.id) && a.is_active
+                                    );
+                                    if (approval?.status === "approved") return "approved";
+                                    if (approval?.status === "rejected") return "rejected";
+                                    return "pending";
+                                  })();
+                                  const isMe = auth.id === (myAuthority as any)?.id;
+                                  return (
+                                    <div key={auth.id} className="flex items-center gap-1">
+                                      <span className="text-[8px] text-gray-500 flex-1">
+                                        {auth.role?.name || `Auth ${auth.sort}`}{isMe && <span className="text-blue-600"> (me)</span>}
+                                      </span>
+                                      {authStatus === "approved" ? (
+                                        <span className="inline-flex items-center gap-0.5 text-green-700 text-[8px] font-bold">
+                                          <Icon icon="hugeicons:checkmark-circle-02" className="w-2.5 h-2.5" />Approved
+                                        </span>
+                                      ) : authStatus === "rejected" ? (
+                                        <span className="inline-flex items-center gap-0.5 text-red-700 text-[8px] font-bold">
+                                          <Icon icon="hugeicons:cancel-circle" className="w-2.5 h-2.5" />Rejected
+                                        </span>
+                                      ) : (
+                                        <span className="inline-flex items-center gap-0.5 text-yellow-700 text-[8px] font-bold">
+                                          <Icon icon="hugeicons:clock-01" className="w-2.5 h-2.5" />Pending
+                                        </span>
+                                      )}
+                                    </div>
+                                  );
+                                });
+                              })()}
+                            </div>
+                          </td>
+
+                          {/* Action column */}
+                          {canApproveAction && !isForwarded && (
+                            <td className="border border-black px-2 py-2 text-center no-print">
+                              {isPending ? (
+                                <button onClick={() => setApprovalModal({ open: true, cadetIds: [item.cadet.id], status: "approved", rejectedReason: "", loading: false, error: "" })}
+                                  className="px-2 py-1 text-[10px] font-semibold bg-green-600 text-white rounded hover:bg-green-700">Approve</button>
+                              ) : status === "approved" ? (
+                                <button onClick={() => setApprovalModal({ open: true, cadetIds: [item.cadet.id], status: "approved", rejectedReason: "", loading: false, error: "" })}
+                                  className="px-2 py-1 text-[10px] font-semibold bg-gray-200 text-gray-700 rounded hover:bg-gray-300">Change</button>
+                              ) : null}
+                            </td>
+                          )}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ))}
         </div>
 
         {/* Signature Section */}
@@ -805,7 +898,7 @@ export default function PfAssessmentCourseSemesterResultPage() {
         </div>
       </div>
 
-      {/* Approval Modal */}
+      {/* ── Approval Modal ── */}
       <Modal isOpen={approvalModal.open} onClose={() => setApprovalModal(prev => ({ ...prev, open: false }))} showCloseButton className="max-w-lg">
         <div className="p-6">
           <div className="text-center mb-4">
@@ -850,7 +943,7 @@ export default function PfAssessmentCourseSemesterResultPage() {
         </div>
       </Modal>
 
-      {/* Forward Modal */}
+      {/* ── Forward Modal ── */}
       <Modal isOpen={forwardModal.open} onClose={() => setForwardModal(prev => ({ ...prev, open: false }))} showCloseButton className="max-w-lg">
         <div className="p-6">
           <div className="flex items-center gap-1 mb-4">
@@ -901,7 +994,7 @@ export default function PfAssessmentCourseSemesterResultPage() {
         </div>
       </Modal>
 
-      {/* Module Approval Modal */}
+      {/* ── Module Approval Modal ── */}
       <Modal isOpen={moduleApprovalModal.open} onClose={() => setModuleApprovalModal(prev => ({ ...prev, open: false }))} showCloseButton className="max-w-lg">
         <div className="p-6">
           <div className="flex items-center gap-1 mb-4">

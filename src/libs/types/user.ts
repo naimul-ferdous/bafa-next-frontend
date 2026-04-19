@@ -36,6 +36,17 @@ export interface User {
   atw_assigned_cadets?: AtwInstructorAssignCadet[];
   ctw_assigned_modules?: CtwInstructorAssignModule[];
   ctw_assigned_cadets?: CtwInstructorAssignCadet[];
+  assigned_extensions?: {
+    id: number;
+    user_id: number | null;
+    extension_id: number;
+    extension?: {
+      id: number;
+      name: string;
+      role_id: number;
+      role?: { id: number; name: string; slug?: string } | null;
+    } | null;
+  }[];
 }
 
 export interface Official {
@@ -419,6 +430,7 @@ export interface Role {
   name: string;
   slug?: string;
   description?: string;
+  extension?: string | null;
   wing_id?: number | null;
   subwing_id?: number | null;
   is_super_admin?: boolean;

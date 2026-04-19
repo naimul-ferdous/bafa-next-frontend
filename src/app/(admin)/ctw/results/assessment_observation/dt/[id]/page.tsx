@@ -440,7 +440,7 @@ export default function DtAssessmentResultDetailsPage() {
     return parseFloat(d?.marks || 0);
   };
 
-  const fixedColCount = (canApproveAction && pendingCadetIds.length > 0 ? 1 : 0) + 4;
+  const fixedColCount = (canApproveAction && pendingCadetIds.length > 0 ? 1 : 0) + 5;
 
   // ── Guards ─────────────────────────────────────────────────────────────────
   if (loading) {
@@ -541,23 +541,6 @@ export default function DtAssessmentResultDetailsPage() {
           <p className="font-medium text-gray-900 uppercase tracking-wider pb-2">CTW DT Assessment Observation Result Sheet</p>
         </div>
 
-        {/* Result Information */}
-        <div className="mb-6">
-          <h2 className="text-lg font-bold text-gray-900 mb-4 pb-1 border-b border-dashed border-gray-400 uppercase text-base">Result Information</h2>
-          <div className="grid grid-cols-2 gap-x-12 gap-y-3 text-sm">
-            <div className="flex"><span className="w-48 text-gray-900 font-medium">Course</span><span className="mr-4">:</span><span className="text-gray-900 flex-1 font-bold">{result.course?.name || "N/A"}</span></div>
-            <div className="flex"><span className="w-48 text-gray-900 font-medium">Semester</span><span className="mr-4">:</span><span className="text-gray-900 flex-1 font-bold">{result.semester?.name || "N/A"}</span></div>
-            <div className="flex"><span className="w-48 text-gray-900 font-medium">Exam Type</span><span className="mr-4">:</span><span className="text-gray-900 flex-1 font-bold">{result.exam_type?.name || "N/A"}</span></div>
-            <div className="flex"><span className="w-48 text-gray-900 font-medium">Instructor</span><span className="mr-4">:</span><span className="text-gray-900 flex-1 font-bold">{result.instructor?.name || "N/A"}</span></div>
-            {result.result_date && (
-              <div className="flex"><span className="w-48 text-gray-900 font-medium">Result Date</span><span className="mr-4">:</span><span className="text-gray-900 flex-1 font-bold">{new Date(result.result_date).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}</span></div>
-            )}
-            {result.remarks && (
-              <div className="flex col-span-2"><span className="w-48 text-gray-900 font-medium">Remarks</span><span className="mr-4">:</span><span className="text-gray-900 flex-1">{result.remarks}</span></div>
-            )}
-          </div>
-        </div>
-
         {/* Rejected Panel */}
         {rejectedPanelItems.length > 0 && (
           <div className="mb-6 overflow-hidden no-print">
@@ -636,11 +619,10 @@ export default function DtAssessmentResultDetailsPage() {
         {/* Cadets Marks Table */}
         {result.achieved_marks && result.achieved_marks.length > 0 && (
           <div className="mb-6">
-            <h2 className="text-lg font-bold text-gray-900 mb-4 pb-1 border-b border-dashed border-gray-400 uppercase text-base">Cadets Marks</h2>
             <div className="overflow-x-auto">
               <table className="w-full border-collapse border border-black text-xs">
                 <thead>
-                  <tr className="bg-gray-50">
+                  <tr>
                     {canApproveAction && pendingCadetIds.length > 0 && (
                       <th className="border border-black px-2 py-2 text-center align-middle no-print" rowSpan={hasDetails ? 2 : 1}>
                         <input type="checkbox" checked={allPendingSelected} onChange={toggleSelectAll} disabled={pendingCadetIds.length === 0} className="w-4 h-4" title="Select all pending" />
@@ -650,18 +632,20 @@ export default function DtAssessmentResultDetailsPage() {
                     <th className="border border-black px-2 py-2 text-center align-middle w-24" rowSpan={hasDetails ? 2 : 1}>BD/No</th>
                     <th className="border border-black px-2 py-2 text-center align-middle w-24" rowSpan={hasDetails ? 2 : 1}>Rank</th>
                     <th className="border border-black px-2 py-2 text-left align-middle min-w-[150px]" rowSpan={hasDetails ? 2 : 1}>Name</th>
+                    <th className="border border-black px-2 py-2 text-left align-middle min-w-[120px]" rowSpan={hasDetails ? 2 : 1}>Branch</th>
                     {hasDetails ? (
                       <>
                         {criteriaDetails.map((d: any) => (
                           <th key={d.id} className="border border-black px-1 py-1 text-center align-middle font-semibold max-w-[70px]">{d.name}</th>
                         ))}
                         <th className="border border-black px-2 py-2 text-center align-middle font-bold text-blue-700" rowSpan={2}>
-                          Total<br /><span className="font-normal text-gray-500">/{maxDetailTotal}</span>
+                          Total - {maxDetailTotal}
                         </th>
                       </>
                     ) : (
                       <th className="border border-black px-2 py-2 text-center align-middle text-blue-700 font-bold w-24">Achieved Mark</th>
                     )}
+                    <th className="border border-black px-2 py-2 text-left align-middle max-w-[180px]" rowSpan={hasDetails ? 2 : 1}>Remark</th>
                     {canApprove && (
                       <th className="border border-black px-2 py-2 text-center align-middle no-print" rowSpan={hasDetails ? 2 : 1}>Status</th>
                     )}
@@ -670,7 +654,7 @@ export default function DtAssessmentResultDetailsPage() {
                     )}
                   </tr>
                   {hasDetails && (
-                    <tr className="bg-gray-50">
+                    <tr>
                       {criteriaDetails.map((d: any) => (
                         <th key={d.id} className="border border-black px-1 py-1 text-center text-gray-600">
                           {parseFloat(d.male_marks || d.female_marks || 0)}
@@ -711,6 +695,13 @@ export default function DtAssessmentResultDetailsPage() {
                             {mark.cadet?.name || "N/A"}
                           </button>
                         </td>
+                        <td className="border border-black px-2 py-2 text-gray-700">
+                          {(() => {
+                            const b = mark.cadet?.assigned_branchs?.find((ab: any) => ab.is_current)?.branch
+                              || mark.cadet?.assigned_branchs?.[0]?.branch;
+                            return b?.short_name || b?.code || b?.name || "—";
+                          })()}
+                        </td>
                         {hasDetails ? (
                           <>
                             {criteriaDetails.map((d: any) => (
@@ -727,6 +718,9 @@ export default function DtAssessmentResultDetailsPage() {
                             {parseFloat(String(mark.achieved_mark || 0)).toFixed(2)}
                           </td>
                         )}
+                        <td className="border border-black px-2 py-2 text-gray-700 text-xs">
+                          {mark.remark || <span className="text-gray-300">—</span>}
+                        </td>
                         {canApprove && (
                           <td className="border border-black px-2 py-2 no-print">
                             {visibleAuthorities.length === 0 ? (
@@ -790,12 +784,6 @@ export default function DtAssessmentResultDetailsPage() {
                       </tr>
                     );
                   })}
-                  <tr className="bg-gray-50 font-black">
-                    <td colSpan={fixedColCount + (hasDetails ? criteriaDetails.length : 0)} className="border border-black px-2 py-2 text-right uppercase">Total Marks</td>
-                    <td className="border border-black px-2 py-2 text-center text-blue-700">{calculateTotalMarks().toFixed(2)}</td>
-                    {canApprove && <td className="border border-black px-2 py-2 no-print"></td>}
-                    {canApproveAction && !isForwarded && <td className="border border-black px-2 py-2 no-print"></td>}
-                  </tr>
                 </tbody>
               </table>
             </div>

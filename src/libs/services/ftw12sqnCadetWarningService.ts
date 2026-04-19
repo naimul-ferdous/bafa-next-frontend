@@ -73,7 +73,7 @@ export const ftw12sqnCadetWarningService = {
       if (params?.search) query.append('search', params.search);
       if (params?.allData) query.append('allData', 'true');
 
-      const endpoint = `/ftw12sqn-cadet-warnings${query.toString() ? `?${query.toString()}` : ''}`;
+      const endpoint = `/ftw-12sqn-cadet-warnings${query.toString() ? `?${query.toString()}` : ''}`;
       const token = getToken();
       const result = await apiClient.get<WarningApiResponse>(endpoint, token);
 
@@ -99,7 +99,7 @@ export const ftw12sqnCadetWarningService = {
   async getById(id: number): Promise<CadetWarning | null> {
     try {
       const token = getToken();
-      const result = await apiClient.get<SingleWarningApiResponse>(`/ftw12sqn-cadet-warnings/${id}`, token);
+      const result = await apiClient.get<SingleWarningApiResponse>(`/ftw-12sqn-cadet-warnings/${id}`, token);
       if (!result || !result.success) return null;
       return result.data || null;
     } catch (error) {
@@ -111,7 +111,7 @@ export const ftw12sqnCadetWarningService = {
   async getByCadet(cadetId: number): Promise<CadetWarning[]> {
     try {
       const token = getToken();
-      const result = await apiClient.get<WarningApiResponse>(`/ftw12sqn-cadet-warnings/cadet/${cadetId}`, token);
+      const result = await apiClient.get<WarningApiResponse>(`/ftw-12sqn-cadet-warnings/cadet/${cadetId}`, token);
       if (!result || !result.success) return [];
       return result.data || [];
     } catch (error) {
@@ -125,7 +125,7 @@ export const ftw12sqnCadetWarningService = {
       const token = getToken();
       if (!token) throw new Error('Authentication token not found. Please login again.');
 
-      const result = await apiClient.post<SingleWarningApiResponse>('/ftw12sqn-cadet-warnings', data, token);
+      const result = await apiClient.post<SingleWarningApiResponse>('/ftw-12sqn-cadet-warnings', data, token);
       if (!result || !result.success) throw new Error(result?.message || 'Failed to create warning');
       return result.data || null;
     } catch (error: unknown) {
@@ -139,7 +139,7 @@ export const ftw12sqnCadetWarningService = {
       const token = getToken();
       if (!token) throw new Error('Authentication token not found. Please login again.');
 
-      const result = await apiClient.put<SingleWarningApiResponse>(`/ftw12sqn-cadet-warnings/${id}`, data, token);
+      const result = await apiClient.put<SingleWarningApiResponse>(`/ftw-12sqn-cadet-warnings/${id}`, data, token);
       if (!result || !result.success) throw new Error(result?.message || 'Failed to update warning');
       return result.data || null;
     } catch (error: unknown) {
@@ -151,7 +151,7 @@ export const ftw12sqnCadetWarningService = {
   async delete(id: number): Promise<boolean> {
     try {
       const token = getToken();
-      const result = await apiClient.delete<{ success: boolean }>(`/ftw12sqn-cadet-warnings/${id}`, token);
+      const result = await apiClient.delete<{ success: boolean }>(`/ftw-12sqn-cadet-warnings/${id}`, token);
       return result?.success || false;
     } catch (error) {
       console.error(`Failed to delete ATW cadet warning ${id}:`, error);
@@ -171,7 +171,7 @@ export const ftw12sqnCadetWarningService = {
       if (params?.course_id) query.append('course_id', params.course_id.toString());
       if (params?.semester_id) query.append('semester_id', params.semester_id.toString());
 
-      const endpoint = `/ftw12sqn-cadet-warnings/grouped${query.toString() ? `?${query.toString()}` : ''}`;
+      const endpoint = `/ftw-12sqn-cadet-warnings/grouped${query.toString() ? `?${query.toString()}` : ''}`;
       const token = getToken();
       const result = await apiClient.get<any>(endpoint, token);
 

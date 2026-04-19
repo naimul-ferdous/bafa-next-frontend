@@ -10,11 +10,19 @@ import { ctwAttendenceResultService, type CtwAttendenceResult } from "@/libs/ser
 import { FilePrintType } from "@/libs/types/filePrintType";
 import PrintTypeModal from "@/components/ui/modal/PrintTypeModal";
 
-const STATUS_BADGE: Record<string, string> = {
-    present: "bg-green-100 text-green-800",
-    absent: "bg-red-100 text-red-800",
-    late: "bg-yellow-100 text-yellow-800",
-    excused: "bg-blue-100 text-blue-800",
+const STATUS_STYLE: Record<string, { bg: string; text: string; ring: string; short: string }> = {
+    present: { bg: "bg-green-50",  text: "text-green-700",  ring: "text-green-600",  short: "P" },
+    leave:   { bg: "bg-red-50",    text: "text-red-700",    ring: "text-red-600",    short: "L" },
+    off:     { bg: "bg-gray-100",  text: "text-gray-700",   ring: "text-gray-500",   short: "O" },
+};
+
+// Fallback style for dynamic medical schema statuses
+const FALLBACK_STYLE = { bg: "bg-blue-50", text: "text-blue-700", ring: "text-blue-600" };
+
+const getShortCode = (slug: string, label?: string): string => {
+    if (STATUS_STYLE[slug]?.short) return STATUS_STYLE[slug].short;
+    // Use uppercase slug or first letters of label
+    return (slug || label || "?").toUpperCase().slice(0, 3);
 };
 
 interface AttendanceTypeCard {
@@ -22,10 +30,8 @@ interface AttendanceTypeCard {
     name: string;
     short_name: string;
     total_sessions: number;
-    present_count: number;
-    absent_count: number;
-    late_count: number;
-    excused_count: number;
+    status_counts: Record<string, number>;
+    status_catalog: { slug: string; label: string }[];
 }
 
 export default function CtwAttendanceCourseSemesterPage() {
@@ -138,28 +144,28 @@ export default function CtwAttendanceCourseSemesterPage() {
             header: "Present",
             headerAlign: "center",
             className: "text-center",
-            render: (r) => <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${STATUS_BADGE.present}`}>{r.present_count ?? 0}</span>,
+            render: (r) => <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-800">{r.present_count ?? 0}</span>,
         },
         {
             key: "absent_count",
             header: "Absent",
             headerAlign: "center",
             className: "text-center",
-            render: (r) => <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${STATUS_BADGE.absent}`}>{r.absent_count ?? 0}</span>,
+            render: (r) => <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-800">{r.absent_count ?? 0}</span>,
         },
         {
             key: "late_count",
             header: "Late",
             headerAlign: "center",
             className: "text-center",
-            render: (r) => <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${STATUS_BADGE.late}`}>{r.late_count ?? 0}</span>,
+            render: (r) => <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-yellow-100 text-yellow-800">{r.late_count ?? 0}</span>,
         },
         {
             key: "excused_count",
             header: "Excused",
             headerAlign: "center",
             className: "text-center",
-            render: (r) => <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${STATUS_BADGE.excused}`}>{r.excused_count ?? 0}</span>,
+            render: (r) => <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-800">{r.excused_count ?? 0}</span>,
         },
         {
             key: "remarks",
@@ -308,6 +314,13 @@ export default function CtwAttendanceCourseSemesterPage() {
 
                 <div className="flex items-center gap-3">
                     <button
+                        onClick={()=> router.push(`/ctw/attendence/attend/course/${courseId}`)}
+                        className="px-4 py-2 border border-gray-300 rounded-lg text-white bg-blue-500 hover:bg-blue-600 flex items-center gap-2"
+                    >
+                        <Icon icon="hugeicons:note" className="w-4 h-4" />
+                        Report
+                    </button>
+                    <button
                         onClick={handlePrintClick}
                         className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 flex items-center gap-2"
                     >
@@ -362,22 +375,16 @@ export default function CtwAttendanceCourseSemesterPage() {
                                         </span>
                                     </div>
                                     <div className="grid grid-cols-4 gap-2 text-center">
-                                        <div className="bg-green-50 rounded py-1">
-                                            <div className="text-xs font-semibold text-green-700">{type.present_count}</div>
-                                            <div className="text-[10px] text-green-600">P</div>
-                                        </div>
-                                        <div className="bg-red-50 rounded py-1">
-                                            <div className="text-xs font-semibold text-red-700">{type.absent_count}</div>
-                                            <div className="text-[10px] text-red-600">A</div>
-                                        </div>
-                                        <div className="bg-yellow-50 rounded py-1">
-                                            <div className="text-xs font-semibold text-yellow-700">{type.late_count}</div>
-                                            <div className="text-[10px] text-yellow-600">L</div>
-                                        </div>
-                                        <div className="bg-blue-50 rounded py-1">
-                                            <div className="text-xs font-semibold text-blue-700">{type.excused_count}</div>
-                                            <div className="text-[10px] text-blue-600">E</div>
-                                        </div>
+                                        {(type.status_catalog || []).map((s) => {
+                                            const style = STATUS_STYLE[s.slug] || FALLBACK_STYLE;
+                                            const count = type.status_counts?.[s.slug] ?? 0;
+                                            return (
+                                                <div key={s.slug} className={`${style.bg} rounded py-1`} title={s.label}>
+                                                    <div className={`text-xs font-semibold ${style.text}`}>{count}</div>
+                                                    <div className={`text-[10px] ${style.ring}`}>{getShortCode(s.slug, s.label)}</div>
+                                                </div>
+                                            );
+                                        })}
                                     </div>
                                 </div>
                             ))}

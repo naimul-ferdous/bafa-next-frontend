@@ -122,6 +122,13 @@ const calculateMark = (detail: any, value: string, gender: string): number => {
   return parseFloat(value) || 0;
 };
 
+// Returns false when the estimated mark for this gender is 0 — station is N/A for that gender
+const isDetailApplicable = (detail: any, gender: string): boolean => {
+  const isFemale = gender.toLowerCase() === 'female';
+  const mark = parseFloat(isFemale ? detail.female_marks : detail.male_marks) || 0;
+  return mark > 0;
+};
+
 const HURDLES_MODULE_CODE = "hurdle_test";
 
 export default function HurdlesResultForm({ initialData, onSubmit, onCancel, loading, isEdit = false }: ResultFormProps) {
@@ -247,7 +254,10 @@ export default function HurdlesResultForm({ initialData, onSubmit, onCancel, loa
 
   const getTotalRawMax = (gender: string): number => {
     return hurdleDetails.reduce((sum: number, d: any) => {
-      return sum + parseFloat(gender.toLowerCase() === 'female' ? d.female_marks : d.male_marks);
+      const mark = parseFloat(gender.toLowerCase() === 'female' ? d.female_marks : d.male_marks) || 0;
+      // Skip N/A stations (estimated mark = 0 for this gender)
+      if (mark <= 0) return sum;
+      return sum + mark;
     }, 0);
   };
 
@@ -297,7 +307,9 @@ export default function HurdlesResultForm({ initialData, onSubmit, onCancel, loa
           const isFemale = (cadet.gender || "Male").toLowerCase() === "female";
 
           const cadetTotalMaxRaw = hurdleDetails.reduce((sum: number, d: any) => {
-            return sum + parseFloat(isFemale ? d.female_marks : d.male_marks);
+            const m = parseFloat(isFemale ? d.female_marks : d.male_marks) || 0;
+            if (m <= 0) return sum;
+            return sum + m;
           }, 0);
 
           const detailMarks: { [key: number]: number } = {};
@@ -440,26 +452,29 @@ export default function HurdlesResultForm({ initialData, onSubmit, onCancel, loa
         ? (!!dFirstScore?.female_time || !!dFirstScore?.female_quantity)
         : (!!dFirstScore?.male_time || !!dFirstScore?.male_quantity);
 
-      // Check if ANY non-time detail has 0 marks - if so, Time should be 0 too
-      let hasZeroNonTime = false;
-      for (const d of hurdleDetails) {
-        const dFirstScore = d.scores?.[0];
-        const dHasTime = isFemale
-          ? (!!dFirstScore?.female_time || !!dFirstScore?.female_quantity)
-          : (!!dFirstScore?.male_time || !!dFirstScore?.male_quantity);
+        // Check if ANY non-time detail has 0 marks - if so, Time should be 0 too
+        let hasZeroNonTime = false;
+        for (const d of hurdleDetails) {
+          // Skip if this detail is not applicable for this gender (estimated mark is 0)
+          if (!isDetailApplicable(d, cadet.cadet_gender)) continue;
 
-        if (!dHasTime) {
-          // Check existing marks OR new mark being entered
-          const existingMark = cadet.detail_marks[d.id];
-          const newMark = (d.id === detailId) ? mark : 0;
-          const checkMark = (d.id === detailId) ? newMark : existingMark;
+          const dFirstScore = d.scores?.[0];
+          const dHasTime = isFemale
+            ? (!!dFirstScore?.female_time || !!dFirstScore?.female_quantity)
+            : (!!dFirstScore?.male_time || !!dFirstScore?.male_quantity);
 
-          if (!checkMark || checkMark === 0) {
-            hasZeroNonTime = true;
-            break;
+          if (!dHasTime) {
+            // Check existing marks OR new mark being entered
+            const existingMark = cadet.detail_marks[d.id];
+            const newMark = (d.id === detailId) ? mark : 0;
+            const checkMark = (d.id === detailId) ? newMark : existingMark;
+
+            if (!checkMark || checkMark === 0) {
+              hasZeroNonTime = true;
+              break;
+            }
           }
         }
-      }
 
       // If current is Time detail and any non-time is 0, only set Time to 0 if Time mark is POSITIVE
       // Negative Time marks should always calculate
@@ -473,6 +488,9 @@ export default function HurdlesResultForm({ initialData, onSubmit, onCancel, loa
       // If any non-time is 0, only zero out POSITIVE time-based marks (keep negative marks)
       if (hasZeroNonTime) {
         for (const d of hurdleDetails) {
+          // Skip if this detail is not applicable for this gender (estimated mark is 0)
+          if (!isDetailApplicable(d, cadet.cadet_gender)) continue;
+
           const dFirstScore = d.scores?.[0];
           const dHasTime = isFemale
             ? (!!dFirstScore?.female_time || !!dFirstScore?.female_quantity)
@@ -487,6 +505,8 @@ export default function HurdlesResultForm({ initialData, onSubmit, onCancel, loa
       const totalRawMark = Object.values(updatedDetailMarks).reduce((sum: number, m: any) => sum + m, 0);
 
       const cadetTotalMaxRaw = hurdleDetails.reduce((sum: number, d: any) => {
+        // Skip details not applicable for this gender (estimated mark is 0)
+        if (!isDetailApplicable(d, cadet.cadet_gender)) return sum;
         return sum + parseFloat(isFemale ? d.female_marks : d.male_marks);
       }, 0);
 
@@ -537,6 +557,7 @@ export default function HurdlesResultForm({ initialData, onSubmit, onCancel, loa
         Object.entries(c.detail_marks).forEach(([detailId, val]) => {
           const detail = hurdleDetails.find((d: any) => d.id === parseInt(detailId));
           if (!detail) return;
+          if (!isDetailApplicable(detail, c.cadet_gender)) return;
 
           const isFemale = c.cadet_gender.toLowerCase() === 'female';
           const firstScore = detail.scores?.[0];
@@ -621,7 +642,7 @@ export default function HurdlesResultForm({ initialData, onSubmit, onCancel, loa
               <Label>Course <span className="text-red-500">*</span></Label>
               <select value={formData.course_id} onChange={(e) => handleChange("course_id", parseInt(e.target.value))} className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500" required>
                 <option value={0}>Select Course</option>
-                {courses.map(course => (<option key={course.id} value={course.id}>{course.name} ({course.code})</option>))}
+                {courses.map(course => (<option key={course.id} value={course.id}>{course.name}</option>))}
               </select>
             </div>
 
@@ -637,7 +658,7 @@ export default function HurdlesResultForm({ initialData, onSubmit, onCancel, loa
                 <option value={0}>
                   {loadingSemesters ? "Loading..." : !formData.course_id ? "Select course first" : "Select Semester"}
                 </option>
-                {semesters.map(semester => (<option key={semester.id} value={semester.id}>{semester.name} ({semester.code})</option>))}
+                {semesters.map(semester => (<option key={semester.id} value={semester.id}>{semester.name}</option>))}
               </select>
             </div>
 
@@ -667,11 +688,10 @@ export default function HurdlesResultForm({ initialData, onSubmit, onCancel, loa
                 })}
               </select>
             </div>
-
-            <div className="md:col-span-2">
+            {/* <div className="md:col-span-2">
               <Label>Remarks</Label>
               <textarea value={formData.remarks} onChange={(e) => handleChange("remarks", e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500" rows={3} placeholder="Enter any remarks (optional)"></textarea>
-            </div>
+            </div> */}
           </div>
         </div>
 
@@ -713,27 +733,41 @@ export default function HurdlesResultForm({ initialData, onSubmit, onCancel, loa
                     <th className="border border-black px-2 py-2 text-center align-middle" rowSpan={2}>Rank</th>
                     <th className="border border-black px-2 py-2 text-left align-middle" rowSpan={2}>Name</th>
                     <th className="border border-black px-2 py-2 text-left align-middle" rowSpan={2}>Branch</th>
-                    {hurdleDetails.map((detail: any) => {
-                      const firstScore = detail.scores?.[0];
-                      const isFemale = false;
-                      const hasTime = !!firstScore?.male_time || !!firstScore?.female_time;
+                    {/* Non-time/qty details — rowSpan=2 */}
+                    {hurdleDetails.filter((detail: any) => {
+                      const fs = detail.scores?.[0];
+                      return !fs?.male_time && !fs?.female_time && !fs?.male_quantity && !fs?.female_quantity;
+                    }).map((detail: any) => {
                       const maleMark = parseFloat(detail.male_marks) || 0;
                       const femaleMark = parseFloat(detail.female_marks) || 0;
-                      const hasQty = !!firstScore?.male_quantity || !!firstScore?.female_quantity;
-                      const colSpan = hasTime || hasQty ? 2 : 1;
                       return (
-                        <th key={detail.id} className="border border-black px-1 py-2 text-center align-middle" colSpan={colSpan} rowSpan={2}>
+                        <th key={detail.id} className="border border-black px-1 py-2 text-center align-middle" rowSpan={2}>
                           <div className="h-32 flex flex-col items-center justify-center w-12 mx-auto">
                             <span className="font-semibold" style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>{detail.name} - {maleMark}/{femaleMark}</span>
                           </div>
                         </th>
                       );
                     })}
-                    <th className="border border-black px-2 py-2 text-center align-middle bg-yellow-50" rowSpan={2}>
+                    <th className="border border-black px-2 py-2 text-center align-middle" rowSpan={2}>
                       <div className="h-32 flex flex-col items-center justify-center w-12 mx-auto">
                         <span className="font-semibold" style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>HD Mk</span>
                       </div>
                     </th>
+                    {/* Time/qty details — colSpan=2, rowSpan=1 (sub-headers in row 2) */}
+                    {hurdleDetails.filter((detail: any) => {
+                      const fs = detail.scores?.[0];
+                      return !!fs?.male_time || !!fs?.female_time || !!fs?.male_quantity || !!fs?.female_quantity;
+                    }).map((detail: any) => {
+                      const maleMark = parseFloat(detail.male_marks) || 0;
+                      const femaleMark = parseFloat(detail.female_marks) || 0;
+                      return (
+                        <th key={detail.id} className="border border-black px-1 py-2 text-center align-middle" colSpan={2}>
+                          <div className="h-32 flex flex-col items-center justify-center w-12 mx-auto">
+                            <span className="font-semibold" style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>{detail.name} - {maleMark}/{femaleMark}</span>
+                          </div>
+                        </th>
+                      );
+                    })}
                     <th className="border border-black px-2 py-2 text-center align-middle" rowSpan={2}>
                       <div className="h-32 flex flex-col items-center justify-center w-12 mx-auto">
                         <span className="font-semibold" style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>Ttl Mk</span>
@@ -744,6 +778,22 @@ export default function HurdlesResultForm({ initialData, onSubmit, onCancel, loa
                         <span className="font-semibold" style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>Conv ({getMaxConvMark()})</span>
                       </div>
                     </th>
+                  </tr>
+                  <tr>
+                    {/* Sub-headers for time/qty details only */}
+                    {hurdleDetails.filter((detail: any) => {
+                      const fs = detail.scores?.[0];
+                      return !!fs?.male_time || !!fs?.female_time || !!fs?.male_quantity || !!fs?.female_quantity;
+                    }).map((detail: any) => {
+                      const fs = detail.scores?.[0];
+                      const hasTime = !!fs?.male_time || !!fs?.female_time;
+                      return (
+                        <React.Fragment key={detail.id}>
+                          <th className="border border-black px-1 py-1 text-center align-middle text-xs">{hasTime ? "Time" : "Qty"}</th>
+                          <th className="border border-black px-1 py-1 text-center align-middle text-xs">Mk</th>
+                        </React.Fragment>
+                      );
+                    })}
                   </tr>
                 </thead>
                 <tbody>
@@ -762,52 +812,38 @@ export default function HurdlesResultForm({ initialData, onSubmit, onCancel, loa
                         </td>
                         <td className="border border-black px-2 py-1">{cadet.branch}</td>
 
-                        {hurdleDetails.map((detail: any) => {
-                          const firstScore = detail.scores?.[0];
-                          const hasTime = !!firstScore?.male_time || !!firstScore?.female_time;
-                          const hasQty = !!firstScore?.male_quantity || !!firstScore?.female_quantity;
+                        {/* Non-time/qty detail inputs */}
+                        {hurdleDetails.filter((detail: any) => {
+                          const fs = detail.scores?.[0];
+                          return !fs?.male_time && !fs?.female_time && !fs?.male_quantity && !fs?.female_quantity;
+                        }).map((detail: any) => {
                           const maxMark = isFemale ? parseFloat(detail.female_marks) || 0 : parseFloat(detail.male_marks) || 0;
-
-                          if (hasTime || hasQty) {
-                            return (
-                              <React.Fragment key={detail.id}>
-                                <td className="border border-black px-1 py-1 text-center">
-                                  <input
-                                    type={hasTime ? "text" : "number"}
-                                    min="0"
-                                    max={maxMark}
-                                    value={cadet.detail_inputs[detail.id] || ""}
-                                    onChange={(e) => handleCadetInputChange(index, detail.id, e.target.value, cadet.cadet_gender)}
-                                    className="w-12 px-1 py-1 border border-gray-300 rounded text-center text-xs focus:ring-2 focus:ring-blue-500 bg-white"
-                                    placeholder={hasTime ? "0:00" : "0"}
-                                  />
-                                </td>
-                                <td className="border border-black px-1 py-1 text-center">
-                                  {cadet.detail_marks[detail.id]?.toFixed(2) || "0.00"}
-                                </td>
-                              </React.Fragment>
-                            );
-                          }
-
+                          const applicable = isDetailApplicable(detail, cadet.cadet_gender);
                           return (
                             <td key={detail.id} className="border border-black px-1 py-1 text-center">
-                              <input
-                                type="number"
-                                min="0"
-                                max={maxMark}
-                                value={cadet.detail_inputs[detail.id] || ""}
-                                onChange={(e) => handleCadetInputChange(index, detail.id, e.target.value, cadet.cadet_gender)}
-                                className="w-12 px-1 py-1 border border-gray-300 rounded text-center text-xs focus:ring-2 focus:ring-blue-500"
-                                placeholder="0"
-                              />
+                              {applicable ? (
+                                <input
+                                  type="number"
+                                  min="0"
+                                  max={maxMark}
+                                  value={cadet.detail_inputs[detail.id] || ""}
+                                  onChange={(e) => handleCadetInputChange(index, detail.id, e.target.value, cadet.cadet_gender)}
+                                  className="w-12 px-1 py-1 border border-gray-300 rounded text-center text-xs focus:ring-2 focus:ring-blue-500"
+                                  placeholder="0"
+                                />
+                              ) : (
+                                <span className="text-gray-400 text-xs">N/A</span>
+                              )}
                             </td>
                           );
                         })}
 
-                        <td className="border border-black px-1 py-1 text-center bg-yellow-50 font-bold">
+                        {/* HD Mk */}
+                        <td className="border border-black px-1 py-1 text-center font-bold">
                           {(() => {
                             let hdSum = 0;
                             for (const d of hurdleDetails) {
+                              if (!isDetailApplicable(d, cadet.cadet_gender)) continue;
                               const dFirstScore = d.scores?.[0];
                               const dHasTime = !!dFirstScore?.male_time || !!dFirstScore?.female_time;
                               const dHasQty = !!dFirstScore?.male_quantity || !!dFirstScore?.female_quantity;
@@ -818,6 +854,39 @@ export default function HurdlesResultForm({ initialData, onSubmit, onCancel, loa
                             return hdSum;
                           })()}
                         </td>
+
+                        {/* Time/qty detail inputs */}
+                        {hurdleDetails.filter((detail: any) => {
+                          const fs = detail.scores?.[0];
+                          return !!fs?.male_time || !!fs?.female_time || !!fs?.male_quantity || !!fs?.female_quantity;
+                        }).map((detail: any) => {
+                          const firstScore = detail.scores?.[0];
+                          const hasTime = !!firstScore?.male_time || !!firstScore?.female_time;
+                          const maxMark = isFemale ? parseFloat(detail.female_marks) || 0 : parseFloat(detail.male_marks) || 0;
+                          const applicable = isDetailApplicable(detail, cadet.cadet_gender);
+                          return (
+                            <React.Fragment key={detail.id}>
+                              <td className="border border-black px-1 py-1 text-center">
+                                {applicable ? (
+                                  <input
+                                    type={hasTime ? "text" : "number"}
+                                    min="0"
+                                    max={maxMark}
+                                    value={cadet.detail_inputs[detail.id] || ""}
+                                    onChange={(e) => handleCadetInputChange(index, detail.id, e.target.value, cadet.cadet_gender)}
+                                    className="w-12 px-1 py-1 border border-gray-300 rounded text-center text-xs focus:ring-2 focus:ring-blue-500 bg-white"
+                                    placeholder={hasTime ? "0:00" : "0"}
+                                  />
+                                ) : (
+                                  <span className="text-gray-400 text-xs">N/A</span>
+                                )}
+                              </td>
+                              <td className="border border-black px-1 py-1 text-center">
+                                {applicable ? (cadet.detail_marks[detail.id]?.toFixed(2) || "0.00") : <span className="text-gray-400 text-xs">—</span>}
+                              </td>
+                            </React.Fragment>
+                          );
+                        })}
 
                         <td className="border border-black px-1 py-1 text-center font-bold">
                           {cadet.mark?.toFixed(2) || "0.00"}

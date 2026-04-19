@@ -40,6 +40,7 @@ export interface Ftw12sqnFlyingSyllabusExercise {
   take_time_hours: number | string;
   remarks?: string;
   exercise_sort: number;
+  is_non_grade: boolean;
   is_active: boolean;
   created_by?: number;
   created_at?: string;
@@ -72,7 +73,7 @@ export interface Ftw12sqnFlyingSyllabus {
   phase_shortname: string;
   phase_symbol?: string;
   phase_sort: number;
-  flying_type_id: number;
+  phase_type_id: number;
   is_active: boolean;
   created_by?: number;
   created_at?: string;
@@ -82,7 +83,47 @@ export interface Ftw12sqnFlyingSyllabus {
   flying_type?: Ftw12sqnFlyingType;
   flying_phase_type?: Ftw12sqnFlyingPhaseType;
   syllabus_types?: Ftw12sqnFlyingSyllabusType[];
+  notes?: Ftw12sqnFlyingSyllabusNote[];
   creator?: User;
+}
+
+// Flying Syllabus Note
+export interface Ftw12sqnFlyingSyllabusNote {
+  id: number;
+  ftw_12sqn_flying_syllabus_id: number;
+  note: string;
+  is_active: boolean;
+  created_by?: number | null;
+  updated_by?: number | null;
+  created_at?: string;
+  updated_at?: string;
+  creator?: { id: number; name: string } | null;
+  updater?: { id: number; name: string } | null;
+}
+
+// Flying Syllabus Global Note
+export interface Ftw12sqnFlyingSyllabusGlobalNote {
+  id: number;
+  note: string;
+  is_active: boolean;
+  created_by?: number | null;
+  updated_by?: number | null;
+  created_at?: string;
+  updated_at?: string;
+  creator?: { id: number; name: string } | null;
+  updater?: { id: number; name: string } | null;
+}
+
+export interface Ftw12sqnGroundSyllabusSimulatorGlobalNote {
+  id: number;
+  note: string;
+  is_active: boolean;
+  created_by?: number | null;
+  updated_by?: number | null;
+  created_at?: string;
+  updated_at?: string;
+  creator?: { id: number; name: string } | null;
+  updater?: { id: number; name: string } | null;
 }
 
 // Grouped Response Types
@@ -122,6 +163,7 @@ export interface Ftw12sqnFlyingSyllabusExerciseCreateData {
   take_time_hours?: number;
   remarks?: string;
   exercise_sort?: number;
+  is_non_grade?: boolean;
   is_active?: boolean;
 }
 
@@ -143,7 +185,7 @@ export interface Ftw12sqnFlyingSyllabusCreateData {
   phase_shortname: string;
   phase_symbol?: string;
   phase_sort?: number;
-  flying_type_id: number;
+  phase_type_id: number;
   is_active?: boolean;
   syllabus_types?: Ftw12sqnFlyingSyllabusTypeCreateData[];
 }
@@ -160,11 +202,16 @@ export interface Ftw12sqnGroundSyllabusExercise {
   exercise_remarks?: string;
   exercise_sort: number;
   max_mark: number | string;
+  take_time_hours?: number | string | null;
+  phase_type_id?: number | null;
+  ftw_12sqn_ground_syllabus_simulator_phase_id?: number | null;
   is_active: boolean;
   created_by?: number;
   created_at?: string;
   updated_at?: string;
   creator?: User;
+  phase_type?: Ftw12sqnFlyingPhaseType | null;
+  simulator_phase?: Ftw12sqnGroundSyllabusSimulatorPhase | null;
 }
 
 // Ground Syllabus
@@ -181,13 +228,32 @@ export interface Ftw12sqnGroundSyllabus {
   no_of_test: number;
   highest_mark: number | string;
   is_active: boolean;
+  is_flying: boolean;
+  flying_type_id?: number | null;
   created_by?: number;
   created_at?: string;
   updated_at?: string;
   course?: SystemCourse | null;
   semester?: SystemSemester | null;
   exercises?: Ftw12sqnGroundSyllabusExercise[];
+  simulator_phases?: Ftw12sqnGroundSyllabusSimulatorPhase[];
   creator?: User;
+}
+
+export interface Ftw12sqnGroundSyllabusSimulatorPhase {
+  id: number;
+  semester_id?: number | null;
+  phase_full_name: string;
+  phase_shortname: string;
+  phase_symbol?: string;
+  phase_sort: number;
+  flying_type_id?: number | null;
+  is_active: boolean;
+  created_by?: number;
+  created_at?: string;
+  updated_at?: string;
+  exercises?: Ftw12sqnGroundSyllabusExercise[];
+  flying_type?: Ftw12sqnFlyingType | null;
 }
 
 // Ground Syllabus Exercise create data
@@ -199,7 +265,22 @@ export interface Ftw12sqnGroundSyllabusExerciseCreateData {
   exercise_remarks?: string;
   exercise_sort?: number;
   max_mark?: number;
+  take_time_hours?: number | null;
+  phase_type_id?: number | null;
+  ftw_12sqn_ground_syllabus_simulator_phase_id?: number | null;
   is_active?: boolean;
+}
+
+// Ground Syllabus Simulator Phase create data
+export interface Ftw12sqnGroundSyllabusSimulatorPhaseCreateData {
+  id?: number;
+  phase_full_name: string;
+  phase_shortname: string;
+  phase_symbol?: string;
+  phase_sort?: number;
+  flying_type_id?: number | null;
+  is_active?: boolean;
+  exercises?: Ftw12sqnGroundSyllabusExerciseCreateData[];
 }
 
 // Ground Syllabus create data
@@ -213,5 +294,8 @@ export interface Ftw12sqnGroundSyllabusCreateData {
   no_of_test?: number;
   highest_mark?: number;
   is_active?: boolean;
+  is_flying?: boolean;
+  flying_type_id?: number | null;
   exercises?: Ftw12sqnGroundSyllabusExerciseCreateData[];
+  simulator_phases?: Ftw12sqnGroundSyllabusSimulatorPhaseCreateData[];
 }

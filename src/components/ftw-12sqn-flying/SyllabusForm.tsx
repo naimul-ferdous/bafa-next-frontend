@@ -14,7 +14,7 @@ import type {
 import { ftw12sqnFlyingTypeService } from "@/libs/services/ftw12sqnFlyingTypeService";
 import { ftw12sqnFlyingPhaseTypeService } from "@/libs/services/ftw12sqnFlyingPhaseTypeService";
 import { commonService } from "@/libs/services/commonService";
-import type { SystemCourse, SystemSemester } from "@/libs/types/system";
+import type { SystemSemester } from "@/libs/types/system";
 
 interface SyllabusFormProps {
   initialData?: Ftw12sqnFlyingSyllabus | null;
@@ -33,12 +33,12 @@ interface ExerciseInput {
   take_time_hours: number;
   remarks: string;
   exercise_sort: number;
+  is_non_grade: boolean;
   is_active: boolean;
   phase_type_id: number;
 }
 
 export interface SyllabusFormData {
-  course_id: number | null;
   semester_id: number | null;
   phase_full_name: string;
   phase_shortname: string;
@@ -53,7 +53,6 @@ export interface SyllabusFormData {
 
 export default function SyllabusForm({ initialData, onSubmit, onCancel, loading, isEdit = false }: SyllabusFormProps) {
   const [formData, setFormData] = useState<SyllabusFormData>({
-    course_id: null,
     semester_id: null,
     phase_full_name: "",
     phase_shortname: "",
@@ -67,7 +66,6 @@ export default function SyllabusForm({ initialData, onSubmit, onCancel, loading,
   const [errors, setErrors] = useState<Partial<Record<keyof SyllabusFormData, string>>>({});
   const [flyingTypes, setFlyingTypes] = useState<Ftw12sqnFlyingType[]>([]);
   const [phaseTypes, setPhaseTypes] = useState<Ftw12sqnFlyingPhaseType[]>([]);
-  const [courses, setCourses] = useState<SystemCourse[]>([]);
   const [semesters, setSemesters] = useState<SystemSemester[]>([]);
   const [loadingData, setLoadingData] = useState(true);
   const [exerciseTimeInputs, setExerciseTimeInputs] = useState<{ [key: string]: string }>({});
@@ -135,6 +133,7 @@ export default function SyllabusForm({ initialData, onSubmit, onCancel, loading,
             take_time_hours: 0,
             remarks: "",
             exercise_sort: 0,
+            is_non_grade: false,
             is_active: true,
             phase_type_id: phaseTypeId,
           });
@@ -174,7 +173,6 @@ export default function SyllabusForm({ initialData, onSubmit, onCancel, loading,
         setFlyingTypes(flyingTypesRes);
         setPhaseTypes(phaseTypesRes);
         if (optionsRes) {
-          setCourses(optionsRes.courses || []);
           setSemesters(optionsRes.semesters.filter(s => s.is_active && s.is_flying));
         }
       } catch (error) {
@@ -215,6 +213,7 @@ export default function SyllabusForm({ initialData, onSubmit, onCancel, loading,
             take_time_hours: parseFloat(String(ex.take_time_hours)),
             remarks: ex.remarks || "",
             exercise_sort: ex.exercise_sort,
+            is_non_grade: !!ex.is_non_grade,
             is_active: ex.is_active,
             phase_type_id: st.ftw_12sqn_flying_phase_type_id,
           });
@@ -225,7 +224,6 @@ export default function SyllabusForm({ initialData, onSubmit, onCancel, loading,
       allExercises.sort((a, b) => a.exercise_sort - b.exercise_sort);
 
       setFormData({
-        course_id: initialData.course_id || null,
         semester_id: initialData.semester_id || null,
         phase_full_name: initialData.phase_full_name,
         phase_shortname: initialData.phase_shortname,
@@ -330,6 +328,7 @@ export default function SyllabusForm({ initialData, onSubmit, onCancel, loading,
               take_time_hours: ex.take_time_hours,
               remarks: ex.remarks || undefined,
               exercise_sort: index,
+              is_non_grade: ex.is_non_grade,
               is_active: ex.is_active,
             };
             return exercise;
@@ -339,7 +338,6 @@ export default function SyllabusForm({ initialData, onSubmit, onCancel, loading,
 
       // Build the nested data structure
       const syllabusData: Ftw12sqnFlyingSyllabusCreateData = {
-        course_id: formData.course_id,
         semester_id: formData.semester_id,
         phase_full_name: formData.phase_full_name,
         phase_shortname: formData.phase_shortname,
@@ -380,23 +378,6 @@ export default function SyllabusForm({ initialData, onSubmit, onCancel, loading,
           Basic Information
         </h3>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Course <span className="text-red-500">*</span>
-            </label>
-            <select
-              value={formData.course_id || ""}
-              onChange={(e) => handleChange("course_id", e.target.value ? parseInt(e.target.value) : null)}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              required
-            >
-              <option value="">Select Course</option>
-              {courses.map((c) => (
-                <option key={c.id} value={c.id}>{c.name}</option>
-              ))}
-            </select>
-          </div>
-
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Semester <span className="text-red-500">*</span>
@@ -541,14 +522,23 @@ export default function SyllabusForm({ initialData, onSubmit, onCancel, loading,
                         {getPhaseTypeName(exercise.phase_type_id)}
                       </span>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => removeExercise(index)}
-                      className="p-1.5 text-red-600 hover:bg-red-50 rounded"
-                      title="Remove Exercise"
-                    >
-                      <Icon icon="hugeicons:delete-02" className="w-4 h-4" />
-                    </button>
+                      <label className="flex items-center gap-2 cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={!!exercise.is_non_grade}
+                          onChange={(e) => updateExercise(index, "is_non_grade", e.target.checked)}
+                          className="w-4 h-4 accent-blue-600"
+                        />
+                        <span className="text-sm text-gray-700">Non Grade</span>
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => removeExercise(index)}
+                        className="p-1.5 text-red-600 hover:bg-red-50 rounded"
+                        title="Remove Exercise"
+                      >
+                        <Icon icon="hugeicons:delete-02" className="w-4 h-4" />
+                      </button>
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
                     <div>

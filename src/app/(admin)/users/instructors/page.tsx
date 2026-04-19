@@ -20,6 +20,7 @@ import InstructorViewAssignedModulesModal from "@/components/instructors/Instruc
 import InstructorAssignRoleModal from "@/components/instructors/InstructorAssignRoleModal";
 import InstructorAssignAssessmentModal from "@/components/instructors/InstructorAssignAssessmentModal";
 import UserAssignRankModal from "@/components/users/UserAssignRankModal";
+import UserAssignExtensionModal from "@/components/users/UserAssignExtensionModal";
 import UserSignatureModal from "@/components/users/UserSignatureModal";
 import type { User, InstructorBiodata } from "@/libs/types/user";
 import type { SystemCourse, SystemSemester } from "@/libs/types/system";
@@ -80,6 +81,10 @@ function InstructorsPageContent() {
   // Assign assessment modal state
   const [assignAssessmentModalOpen, setAssignAssessmentModalOpen] = useState(false);
   const [assignAssessmentInstructor, setAssignAssessmentInstructor] = useState<InstructorBiodata | null>(null);
+
+  // Assign extension modal state
+  const [assignExtensionModalOpen, setAssignExtensionModalOpen] = useState(false);
+  const [assignExtensionInstructor, setAssignExtensionInstructor] = useState<InstructorBiodata | null>(null);
   const [instructorAssignMap, setInstructorAssignMap] = useState<Record<number, Record<string, string[]>>>({});
   const [ftw11sqnMissionMap, setFtw11sqnMissionMap] = useState<Record<number, any[]>>({});
   const [ftw11sqnGroundMap, setFtw11sqnGroundMap] = useState<Record<number, any[]>>({});
@@ -172,6 +177,7 @@ function InstructorsPageContent() {
   const handleUnblockUser = (instructor: InstructorBiodata) => { setUnblockingInstructor(instructor); setUnblockModalOpen(true); };
   const handleAssignRole = (instructor: InstructorBiodata) => { setAssigningRoleInstructor(instructor); setAssignRoleModalOpen(true); };
   const handleAssignAssessment = (instructor: InstructorBiodata) => { setAssignAssessmentInstructor(instructor); setAssignAssessmentModalOpen(true); };
+  const handleAssignExtension = (instructor: InstructorBiodata) => { setAssignExtensionInstructor(instructor); setAssignExtensionModalOpen(true); };
   const handleAssignWing = (instructor: InstructorBiodata) => { setAssigningInstructor(instructor); setAssignWingModalOpen(true); };
   const handleApproveWing = (assignmentId: number, instructor: InstructorBiodata) => { setApprovingAssignment({ assignmentId, instructor }); setApproveModalOpen(true); };
 
@@ -597,6 +603,16 @@ function InstructorsPageContent() {
       render: (instructor: InstructorBiodata) => {
         const pendingAssignment = getPendingAssignmentForUserWing(instructor);
         const isApprovedForUserWing = hasApprovedWingForUser(instructor);
+
+        // Show extension button only if instructor has a non-instructor role
+        const instructorSlugs = ['instructor', 'atw-cic', 'atw-course-tutor'];
+        const instructorNames = ['ATW CIC', 'ATW Course Tutor', 'Instructor'];
+        const hasNonInstructorRole = (instructor.user?.role_assignments || []).some((a: any) => {
+          const slug = (a.role?.slug || '').toLowerCase();
+          const name = a.role?.name || '';
+          return !instructorSlugs.includes(slug) && !instructorNames.includes(name);
+        });
+
         return (
           <div className="flex items-center justify-center gap-1" onClick={(e) => e.stopPropagation()}>
             {can('edit') && (
@@ -613,6 +629,11 @@ function InstructorsPageContent() {
                   <Icon icon="hugeicons:plus-sign-circle" className="w-3.5 h-3.5" />
                 </button>
               </>
+            )}
+            {hasNonInstructorRole && (
+              <button onClick={(e) => { e.stopPropagation(); handleAssignExtension(instructor); }} className="p-0.5 text-teal-600 hover:bg-teal-50 rounded border border-teal-100" title="Assign Extension">
+                <Icon icon="hugeicons:puzzle" className="w-3.5 h-3.5" />
+              </button>
             )}
             {pendingAssignment
               ? (
@@ -904,6 +925,13 @@ function InstructorsPageContent() {
         isOpen={signatureModalOpen}
         onClose={() => { setSignatureModalOpen(false); setSigningUser(null); }}
         user={signingUser}
+        onSuccess={() => loadAllData()}
+      />
+
+      <UserAssignExtensionModal
+        isOpen={assignExtensionModalOpen}
+        onClose={() => { setAssignExtensionModalOpen(false); setAssignExtensionInstructor(null); }}
+        user={assignExtensionInstructor?.user ?? null}
         onSuccess={() => loadAllData()}
       />
     </div>

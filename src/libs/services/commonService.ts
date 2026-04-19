@@ -258,6 +258,17 @@ export const commonService = {
       return null;
     }
   },
+
+  async getCtwMedicalDisposalSchemas(): Promise<{ id: number; name: string; code: string; slug_value: string | null }[]> {
+    try {
+      const token = getToken();
+      const result = await apiClient.get<any>('/common/ctw-medical-disposal-schemas', token);
+      return result?.data || [];
+    } catch (error) {
+      console.error('Failed to fetch CTW medical disposal schemas:', error);
+      return [];
+    }
+  },
 };
 
 export default commonService;

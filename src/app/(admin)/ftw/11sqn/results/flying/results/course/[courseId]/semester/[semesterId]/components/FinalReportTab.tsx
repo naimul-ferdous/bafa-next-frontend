@@ -273,7 +273,7 @@ const FinalReportTab: React.FC<FinalReportTabProps> = ({
               </th>
               {isBackendData && allExamPhases.map((exam) => (
                 <th key={exam.key} className="px-4 py-3 text-center text-xs font-medium text-black uppercase tracking-wider border border-black">
-                  {exam.phase_fullname || exam.key}
+                  {exam.key}
                 </th>
               ))}
               {!isBackendData && is6thSemester && (
@@ -282,7 +282,7 @@ const FinalReportTab: React.FC<FinalReportTabProps> = ({
                 </th>
               )}
               <th className="px-4 py-3 text-center text-xs font-medium text-black uppercase tracking-wider border border-black">
-                Daily Avg.
+                Daily Avg. <br /> {(reportData?.is_6th_semester || is6thSemester) ? `(IF, NAV, FMN, NF, AA, CF)` : `(ID, CCT, GF)`}
               </th>
               <th className="px-4 py-3 text-center text-xs font-medium text-black uppercase tracking-wider border border-black">
                 Total
@@ -333,7 +333,7 @@ const FinalReportTab: React.FC<FinalReportTabProps> = ({
                 400
               </th>
               <th className="px-4 py-2 text-center text-xs font-medium text-black uppercase tracking-wider border border-black">
-                {isBackendData ? 650 : (is6thSemester ? 1200 : 650)}
+                {(reportData?.is_6th_semester || is6thSemester) ? 1200 : 650}
               </th>
             </tr>
           </thead>

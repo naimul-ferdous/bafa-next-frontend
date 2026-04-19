@@ -122,6 +122,13 @@ export default function HurdlesCourseSemesterResultPage() {
 
   const stationDetails = (estimatedMark as any)?.details || [];
 
+  const secondsToTime = (seconds: number): string => {
+    if (!seconds) return "0:00";
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
   const hasStationQty = (sd: any): boolean => {
     const maleQty = sd?.male_quantity;
     const femaleQty = sd?.female_quantity;
@@ -595,17 +602,31 @@ export default function HurdlesCourseSemesterResultPage() {
                   <th rowSpan={2} className="border border-black px-2 py-2 text-center align-middle">Rank</th>
                   <th rowSpan={2} className="border border-black px-2 py-2 text-left align-middle">Name</th>
                   <th rowSpan={2} className="border border-black px-2 py-2 text-left align-middle">Branch</th>
-                  {stationDetails.map((sd: any) => {
-                    const hasQty = hasStationQty(sd);
-                    const colSpan = hasQty ? 2 : 1;
-                    return React.createElement('th', { key: sd.id, colSpan, rowSpan: 2, className: 'border border-black px-1 py-2 text-center align-middle' },
-                      React.createElement('div', { className: 'h-32 flex flex-col items-center justify-center w-12 mx-auto' },
-                        React.createElement('span', { className: 'font-semibold', style: { writingMode: 'vertical-rl', transform: 'rotate(180deg)' } },
-                          sd.name + ' - ' + (sd.male_marks || 0)
-                        )
-                      )
-                    );
-                  })}
+                  {/* Non-time/qty details — rowSpan=2 */}
+                  {stationDetails.filter((sd: any) => !hasStationQty(sd)).map((sd: any) => (
+                    <th key={sd.id} rowSpan={2} className="border border-black px-1 py-2 text-center align-middle">
+                      <div className="h-32 flex flex-col items-center justify-center w-12 mx-auto">
+                        <span className="font-semibold" style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>
+                          {sd.name} - {sd.male_marks || 0}
+                        </span>
+                      </div>
+                    </th>
+                  ))}
+                  <th rowSpan={2} className="border border-black px-2 py-2 text-center align-middle font-bold">
+                    <div className="h-32 flex flex-col items-center justify-center w-12 mx-auto">
+                      <span className="font-semibold" style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>HD Mk</span>
+                    </div>
+                  </th>
+                  {/* Time/qty details — colSpan=2, rowSpan=1 (sub-headers in row 2) */}
+                  {stationDetails.filter((sd: any) => hasStationQty(sd)).map((sd: any) => (
+                    <th key={sd.id} colSpan={2} className="border border-black px-1 py-2 text-center align-middle">
+                      <div className="h-32 flex flex-col items-center justify-center w-12 mx-auto">
+                        <span className="font-semibold" style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>
+                          {sd.name} - {sd.male_marks || 0}
+                        </span>
+                      </div>
+                    </th>
+                  ))}
                   <th rowSpan={2} className="border border-black px-2 py-2 text-center align-middle font-bold">
                     <div className="h-32 flex flex-col items-center justify-center w-12 mx-auto">
                       <span className="font-semibold" style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>Ttl Mks</span>
@@ -623,18 +644,18 @@ export default function HurdlesCourseSemesterResultPage() {
                     <th rowSpan={2} className="border border-black px-2 py-2 text-center align-middle no-print">Action</th>
                   )}
                 </tr>
-                {/* <tr>
-                  {stationDetails.map((sd: any) => {
-                    const hasQty = hasStationQty(sd);
-                    if (hasQty) {
-                      return React.createElement(React.Fragment, { key: sd.id + '-qty' },
-                        React.createElement('th', { className: 'border border-black px-1 py-1 text-center text-xs font-normal' }, 'Qty'),
-                        React.createElement('th', { className: 'border border-black px-1 py-1 text-center text-xs font-normal' }, 'Mks')
-                      );
-                    }
-                    return React.createElement('th', { key: sd.id, className: 'border border-black px-1 py-1 text-center text-xs font-normal' }, 'Mks');
+                <tr>
+                  {/* Sub-headers for time/qty details only */}
+                  {stationDetails.filter((sd: any) => hasStationQty(sd)).map((sd: any) => {
+                    const isTime = sd.scores?.some((s: any) => s?.male_time !== null || s?.female_time !== null);
+                    return (
+                      <React.Fragment key={sd.id}>
+                        <th className="border border-black px-1 py-1 text-center align-middle text-xs">{isTime ? "Time" : "Qty"}</th>
+                        <th className="border border-black px-1 py-1 text-center align-middle text-xs">Mk</th>
+                      </React.Fragment>
+                    );
                   })}
-                </tr> */}
+                </tr>
               </thead>
               <tbody>
                 {rankedData.map((item: any, index: number) => {
@@ -658,20 +679,51 @@ export default function HurdlesCourseSemesterResultPage() {
                       <td className="border border-black px-2 py-2">
                         {item.cadet?.assigned_branchs?.filter((b: any) => b.is_current)?.[0]?.branch?.name || item.cadet?.assigned_branchs?.[0]?.branch?.name || "-"}
                       </td>
-                      {stationDetails.map((sd: any) => {
+                      {/* Non-time/qty detail marks */}
+                      {stationDetails.filter((sd: any) => !hasStationQty(sd)).map((sd: any) => {
                         const sub = submissions[0];
                         const instructorId = sub?.instructor_details?.id;
                         const sdData = instructorId !== undefined ? getStationDataForCadet(item, instructorId, sd.id) : null;
-                        const needsQty = hasStationQty(sd);
-                        if (needsQty) {
-                          return React.createElement(React.Fragment, { key: sd.id },
-                            React.createElement('td', { className: 'border border-black px-1 py-1 text-center' },
-                              sdData?.qty > 0 ? sdData.qty : '-'
-                            ),
-                            React.createElement('td', { className: 'border border-black px-1 py-1 text-center' }, sdData?.marks?.toFixed(2) || '0.00')
-                          );
-                        }
-                        return React.createElement('td', { key: sd.id, className: 'border border-black px-1 py-1 text-center' }, sdData?.marks?.toFixed(2) || '0.00');
+                        return (
+                          <td key={sd.id} className="border border-black px-1 py-1 text-center">
+                            {sdData?.marks?.toFixed(2) || '0.00'}
+                          </td>
+                        );
+                      })}
+                      {/* HD Mk — sum of non-time/qty marks */}
+                      <td className="border border-black px-1 py-1 text-center font-bold">
+                        {(() => {
+                          const sub = submissions[0];
+                          const instructorId = sub?.instructor_details?.id;
+                          return stationDetails
+                            .filter((sd: any) => !hasStationQty(sd))
+                            .reduce((sum: number, sd: any) => {
+                              const sdData = instructorId !== undefined ? getStationDataForCadet(item, instructorId, sd.id) : null;
+                              return sum + (sdData?.marks || 0);
+                            }, 0).toFixed(2);
+                        })()}
+                      </td>
+                      {/* Time/qty detail qty+marks */}
+                      {stationDetails.filter((sd: any) => hasStationQty(sd)).map((sd: any) => {
+                        const sub = submissions[0];
+                        const instructorId = sub?.instructor_details?.id;
+                        const sdData = instructorId !== undefined ? getStationDataForCadet(item, instructorId, sd.id) : null;
+                        const isTime = sd.scores?.some((s: any) => s?.male_time !== null || s?.female_time !== null);
+                        const displayQty = sdData?.qty > 0
+                          ? (isTime
+                              ? (sdData?.achieved_time || secondsToTime(parseFloat(sdData.qty)))
+                              : sdData.qty)
+                          : '-';
+                        return (
+                          <React.Fragment key={sd.id}>
+                            <td className="border border-black px-1 py-1 text-center">
+                              {displayQty}
+                            </td>
+                            <td className="border border-black px-1 py-1 text-center">
+                              {sdData?.marks?.toFixed(2) || '0.00'}
+                            </td>
+                          </React.Fragment>
+                        );
                       })}
                       <td className="border border-black px-2 py-2 text-center font-bold">
                         {isComplete ? item.instructorStationData?.[submissions[0]?.instructor_details?.id]?.totalMks?.toFixed(2) || "0.00" : "-"}

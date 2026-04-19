@@ -259,7 +259,8 @@ export default function ResultDetailsPage({ params }: { params: Promise<{ id: st
           .no-print { display: none !important; }
         }
       `}</style>
-      <style dangerouslySetInnerHTML={{ __html: `
+      <style dangerouslySetInnerHTML={{
+        __html: `
         @media print {
           @page {
             size: A3 landscape;
@@ -342,12 +343,20 @@ export default function ResultDetailsPage({ params }: { params: Promise<{ id: st
               <span>Name:</span>
               <span className="font-bold text-gray-900 underline">
                 {result.result_cadets && result.result_cadets.length === 1
+                  ? (() => {
+                    const ranks = result.result_cadets[0].cadet?.assigned_ranks;
+                    const rank = ranks?.find((r: any) => r.is_current)?.rank || ranks?.[0]?.rank;
+                    return rank?.short_name || rank?.name || "—";
+                  })()
+                  : result.result_cadets && result.result_cadets.length > 1 ? "Multiple" : "—"}
+                  {' '}
+                {result.result_cadets && result.result_cadets.length === 1
                   ? result.result_cadets[0].cadet?.name
                   : result.result_cadets && result.result_cadets.length > 1 ? "Batch Report" : "—"}
               </span>
             </div>
             <div className="flex gap-1.5">
-              <span>Term/Semester:</span>
+              <span>Term:</span>
               <span className="font-bold text-gray-900 underline">{result.semester?.name || "—"}</span>
             </div>
             <div className="flex gap-1.5">
@@ -531,11 +540,10 @@ export default function ResultDetailsPage({ params }: { params: Promise<{ id: st
               <button
                 key={s}
                 onClick={() => setApprovalModal(p => ({ ...p, status: s, rejectedReason: "", error: "" }))}
-                className={`flex-1 py-2 rounded-lg border text-sm font-semibold capitalize transition-colors ${
-                  approvalModal.status === s
+                className={`flex-1 py-2 rounded-lg border text-sm font-semibold capitalize transition-colors ${approvalModal.status === s
                     ? s === "approved" ? "bg-green-600 text-white border-green-600" : "bg-red-600 text-white border-red-600"
                     : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
-                }`}
+                  }`}
               >
                 {s === "approved" ? "✓ Approve" : "✗ Reject"}
               </button>
@@ -575,9 +583,8 @@ export default function ResultDetailsPage({ params }: { params: Promise<{ id: st
             <button
               onClick={confirmApproval}
               disabled={approvalModal.loading}
-              className={`px-6 py-2 rounded-lg text-white text-sm font-semibold flex items-center gap-2 disabled:opacity-50 ${
-                approvalModal.status === "approved" ? "bg-green-600 hover:bg-green-700" : "bg-red-600 hover:bg-red-700"
-              }`}
+              className={`px-6 py-2 rounded-lg text-white text-sm font-semibold flex items-center gap-2 disabled:opacity-50 ${approvalModal.status === "approved" ? "bg-green-600 hover:bg-green-700" : "bg-red-600 hover:bg-red-700"
+                }`}
             >
               {approvalModal.loading && <Icon icon="hugeicons:fan-01" className="w-4 h-4 animate-spin" />}
               {approvalModal.status === "approved" ? "Confirm Approve" : "Confirm Reject"}

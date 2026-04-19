@@ -39,6 +39,7 @@ export default function RoleForm({
         is_role_switch: true,
         is_manage: true,
         is_marge_role: false,
+        extension: "",
     });
     const [error, setError] = useState("");
 
@@ -104,6 +105,7 @@ export default function RoleForm({
                 is_role_switch: initialData.is_role_switch !== false,
                 is_manage: (initialData as any).is_manage !== false,
                 is_marge_role: !!(initialData as any).is_marge_role,
+                extension: (initialData as any).extension || "",
             });
             // Set selected permissions from the role
             const permIds = initialData.permissions?.map(p => p.id) || [];
@@ -120,6 +122,7 @@ export default function RoleForm({
                 is_role_switch: true,
                 is_manage: true,
                 is_marge_role: false,
+                extension: "",
             });
             setSelectedPermissions([]);
         }
@@ -354,6 +357,15 @@ export default function RoleForm({
                     placeholder="Enter description (optional)"
                     rows={2}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                />
+            </div>
+
+            <div>
+                <Label>Extension</Label>
+                <Input
+                    value={formData.extension}
+                    onChange={(e) => handleChange("extension", e.target.value)}
+                    placeholder="Enter extension (optional)"
                 />
             </div>
 

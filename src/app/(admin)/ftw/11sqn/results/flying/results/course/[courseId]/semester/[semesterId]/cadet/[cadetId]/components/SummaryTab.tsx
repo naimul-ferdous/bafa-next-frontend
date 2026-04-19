@@ -112,7 +112,7 @@ const SummaryTab: React.FC<SummaryTabProps> = ({
                   <td className="px-4 py-2 text-black border border-black">
                     <div>
                       <div className="text-sm font-medium text-gray-900">
-                        {mission.exercise?.exercise_name || "N/A"}
+                        {mission.exercise?.exercise_shortname || "N/A"}
                       </div>
                     </div>
                   </td>

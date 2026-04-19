@@ -1,8 +1,8 @@
 import apiClient from '@/libs/auth/api-client';
 import { getToken } from '@/libs/auth/auth-token';
-import { Ftw12SqnPenpictureAssign, Ftw12SqnCounselingAssign, Ftw12SqnOlqAssign, Ftw12SqnWarningAssign } from '@/libs/types/ftw12sqnAssign';
+import { Ftw12SqnPenpictureAssign, Ftw12SqnCounselingAssign, Ftw12SqnOlqAssign, Ftw12SqnWarningAssign, Ftw12SqnCommandAssign } from '@/libs/types/ftw12sqnAssign';
 
-export type AssignType = 'penpicture' | 'counseling' | 'olq' | 'warning';
+export type AssignType = 'penpicture' | 'counseling' | 'olq' | 'warning' | 'command';
 
 interface AssignQueryParams {
   user_id?: number;
@@ -14,6 +14,7 @@ export interface UserAssigns {
   counseling: Ftw12SqnCounselingAssign[];
   olq:        Ftw12SqnOlqAssign[];
   warning:    Ftw12SqnWarningAssign[];
+  command:    Ftw12SqnCommandAssign[];
 }
 
 interface UserAssignsApiResponse {
@@ -25,10 +26,10 @@ interface UserAssignsApiResponse {
 interface SingleAssignApiResponse {
   success: boolean;
   message: string;
-  data: Ftw12SqnPenpictureAssign | Ftw12SqnCounselingAssign | Ftw12SqnOlqAssign | Ftw12SqnWarningAssign;
+  data: Ftw12SqnPenpictureAssign | Ftw12SqnCounselingAssign | Ftw12SqnOlqAssign | Ftw12SqnWarningAssign | Ftw12SqnCommandAssign;
 }
 
-const EMPTY: UserAssigns = { penpicture: [], counseling: [], olq: [], warning: [] };
+const EMPTY: UserAssigns = { penpicture: [], counseling: [], olq: [], warning: [], command: [] };
 
 export const ftw12sqnUserAssignService = {
   getAll: async (params?: AssignQueryParams): Promise<UserAssigns> => {
@@ -48,6 +49,7 @@ export const ftw12sqnUserAssignService = {
         counseling: result.data?.counseling || [],
         olq:        result.data?.olq        || [],
         warning:    result.data?.warning    || [],
+        command:   result.data?.command   || [],
       };
     } catch (error) {
       console.error('Failed to fetch user assigns:', error);
@@ -57,8 +59,8 @@ export const ftw12sqnUserAssignService = {
 
   store: async (
     type: AssignType,
-    data: { course_id: number; user_id: number; semester_id?: number; program_id?: number; branch_id?: number; is_active?: boolean }
-  ): Promise<Ftw12SqnPenpictureAssign | Ftw12SqnCounselingAssign | Ftw12SqnOlqAssign | Ftw12SqnWarningAssign | null> => {
+    data: { course_id: number; user_id: number; semester_id?: number; program_id?: number; branch_id?: number; is_active?: boolean; command_type_id?: number }
+  ): Promise<Ftw12SqnPenpictureAssign | Ftw12SqnCounselingAssign | Ftw12SqnOlqAssign | Ftw12SqnWarningAssign | Ftw12SqnCommandAssign | null> => {
     try {
       const token = getToken();
       const result = await apiClient.post<SingleAssignApiResponse>('/ftw12sqn-user-assigns', { ...data, type }, token);

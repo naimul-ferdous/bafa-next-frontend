@@ -40,6 +40,7 @@ export interface Ftw11sqnFlyingSyllabusExercise {
   take_time_hours: number | string;
   remarks?: string;
   exercise_sort: number;
+  is_non_grade: boolean;
   is_active: boolean;
   created_by?: number;
   created_at?: string;
@@ -121,6 +122,7 @@ export interface Ftw11sqnFlyingSyllabusExerciseCreateData {
   take_time_hours?: number;
   remarks?: string;
   exercise_sort?: number;
+  is_non_grade?: boolean;
   is_active?: boolean;
 }
 

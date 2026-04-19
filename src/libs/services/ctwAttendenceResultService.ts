@@ -1,7 +1,7 @@
 import apiClient from '@/libs/auth/api-client';
 import { getToken } from '@/libs/auth/auth-token';
 
-export type AttendanceStatus = 'present' | 'absent' | 'late' | 'excused';
+export type AttendanceStatus = string; // 'present' | 'off' | dynamic medical disposal codes
 
 export interface CtwAttendenceResultCadet {
   id: number;
@@ -214,18 +214,59 @@ export const ctwAttendenceResultService = {
     return result.data ?? [];
   },
 
+  async getClassMissingReport(courseId: number): Promise<{
+    course: { id: number; name: string; code: string } | null;
+    status_catalog: { slug: string; label: string; short: string }[];
+    cadets: {
+      cadet_id: number;
+      cadet_number: string;
+      name: string;
+      rank: string;
+      branch: string;
+      counts: Record<string, number>;
+      workingDays: number;
+      total: number;
+      percent: number;
+    }[];
+  }> {
+    const token = getToken();
+    const result = await apiClient.get<{
+      success: boolean;
+      data: {
+        course: { id: number; name: string; code: string } | null;
+        status_catalog: { slug: string; label: string; short: string }[];
+        cadets: any[];
+      };
+    }>(`/ctw-attendence-results-class-missing-report?course_id=${courseId}`, token);
+    return result.data;
+  },
+
   async getAttendanceTypesByCourseSemester(
     courseId: number,
     semesterId: number
-  ): Promise<{ id: number; name: string; short_name: string; total_sessions: number; present_count: number; absent_count: number; late_count: number; excused_count: number }[]> {
+  ): Promise<{
+    id: number;
+    name: string;
+    short_name: string;
+    total_sessions: number;
+    status_counts: Record<string, number>;
+    status_catalog: { slug: string; label: string }[];
+  }[]> {
     const query = new URLSearchParams();
     query.set('course_id', String(courseId));
     query.set('semester_id', String(semesterId));
     const token = getToken();
-    const result = await apiClient.get<{ success: boolean; data: { id: number; name: string; short_name: string; total_sessions: number; present_count: number; absent_count: number; late_count: number; excused_count: number }[] }>(
-      `/ctw-attendence-results-types?${query.toString()}`,
-      token
-    );
+    const result = await apiClient.get<{
+      success: boolean;
+      data: {
+        id: number;
+        name: string;
+        short_name: string;
+        total_sessions: number;
+        status_counts: Record<string, number>;
+        status_catalog: { slug: string; label: string }[];
+      }[];
+    }>(`/ctw-attendence-results-types?${query.toString()}`, token);
     return result.data ?? [];
   },
 

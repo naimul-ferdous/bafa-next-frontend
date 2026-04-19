@@ -87,7 +87,7 @@ export const ftw12sqnAssessmentCounselingResultService = {
         query.append('instructor_id', params.instructor_id.toString());
       }
 
-      const endpoint = `/ftw12sqn-assessment-counseling-results${query.toString() ? `?${query.toString()}` : ''}`;
+      const endpoint = `/ftw-12sqn-assessment-counseling-results${query.toString() ? `?${query.toString()}` : ''}`;
 
       const token = getToken();
       const result = await apiClient.get<ResultApiResponse>(endpoint, token);
@@ -133,7 +133,7 @@ export const ftw12sqnAssessmentCounselingResultService = {
   async getResult(id: number): Promise<Ftw12SqnAssessmentCounselingResult | null> {
     try {
       const token = getToken();
-      const result = await apiClient.get<SingleResultApiResponse>(`/ftw12sqn-assessment-counseling-results/${id}`, token);
+      const result = await apiClient.get<SingleResultApiResponse>(`/ftw-12sqn-assessment-counseling-results/${id}`, token);
 
       if (!result || !result.success) {
         return null;
@@ -157,7 +157,7 @@ export const ftw12sqnAssessmentCounselingResultService = {
         throw new Error('Authentication token not found. Please login again.');
       }
 
-      const result = await apiClient.post<ResultActionApiResponse>('/ftw12sqn-assessment-counseling-results', data, token);
+      const result = await apiClient.post<ResultActionApiResponse>('/ftw-12sqn-assessment-counseling-results', data, token);
 
       if (!result || !result.success) {
         throw new Error(result?.message || 'Failed to create result');
@@ -184,7 +184,7 @@ export const ftw12sqnAssessmentCounselingResultService = {
         throw new Error('Authentication token not found. Please login again.');
       }
 
-      const result = await apiClient.put<ResultActionApiResponse>(`/ftw12sqn-assessment-counseling-results/${id}`, data, token);
+      const result = await apiClient.put<ResultActionApiResponse>(`/ftw-12sqn-assessment-counseling-results/${id}`, data, token);
 
       if (!result || !result.success) {
         throw new Error(result?.message || 'Failed to update result');
@@ -206,7 +206,7 @@ export const ftw12sqnAssessmentCounselingResultService = {
   async deleteResult(id: number): Promise<boolean> {
     try {
       const token = getToken();
-      const result = await apiClient.delete<ResultActionApiResponse>(`/ftw12sqn-assessment-counseling-results/${id}`, token);
+      const result = await apiClient.delete<ResultActionApiResponse>(`/ftw-12sqn-assessment-counseling-results/${id}`, token);
       return result?.success || false;
     } catch (error) {
       console.error(`Failed to delete result ${id}:`, error);
@@ -229,7 +229,7 @@ export const ftw12sqnAssessmentCounselingResultService = {
       if (params?.search) query.append('search', params.search);
       if (params?.allData) query.append('allData', 'true');
 
-      const endpoint = `/ftw12sqn-assessment-counseling-results/grouped${query.toString() ? `?${query.toString()}` : ''}`;
+      const endpoint = `/ftw-12sqn-assessment-counseling-results/grouped${query.toString() ? `?${query.toString()}` : ''}`;
       const token = getToken();
       const result = await apiClient.get<any>(endpoint, token);
 
@@ -270,7 +270,7 @@ export const ftw12sqnAssessmentCounselingResultService = {
       query.append('semester_id', params.semester_id.toString());
 
       const token = getToken();
-      const res = await apiClient.get<any>(`/ftw12sqn-assessment-counseling-results/consolidated?${query.toString()}`, token);
+      const res = await apiClient.get<any>(`/ftw-12sqn-assessment-counseling-results/consolidated?${query.toString()}`, token);
       return res?.data || null;
     } catch (error) {
       console.error('Failed to fetch CTW consolidated results:', error);
@@ -295,7 +295,7 @@ export const ftw12sqnAssessmentCounselingResultService = {
       if (params?.semester_id) query.append('semester_id', params.semester_id.toString());
 
       const token = getToken();
-      const res = await apiClient.get<any>(`/ftw12sqn-assessment-counseling-results/form-options?${query.toString()}`, token);
+      const res = await apiClient.get<any>(`/ftw-12sqn-assessment-counseling-results/form-options?${query.toString()}`, token);
       return res?.data || null;
     } catch (error) {
       console.error('Failed to fetch CTW counseling form options:', error);

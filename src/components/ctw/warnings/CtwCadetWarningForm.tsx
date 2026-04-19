@@ -22,6 +22,22 @@ interface CtwCadetWarningFormProps {
 
 export default function CtwCadetWarningForm({ initialData, onSubmit, onCancel, loading, isEdit = false }: CtwCadetWarningFormProps) {
   const { user } = useAuth();
+
+  const primaryRole = user?.roles?.find((r: any) => r.pivot?.is_primary) ?? (user?.role as any);
+  let extensionRoleId: number | undefined;
+  if (primaryRole) {
+    if (primaryRole.is_marge_role === false) {
+      // Primary role is not a merge role — use it directly
+      extensionRoleId = primaryRole.id;
+    } else {
+      // Primary role is a merge role — find the assigned role where is_role_switch is false
+      const baseRole = user?.roles?.find((r: any) => !r.pivot?.is_primary && r.is_role_switch === false);
+      extensionRoleId = baseRole?.id;
+    }
+  }
+  const userExtension = user?.assigned_extensions?.find(
+    (ae) => ae.extension?.role_id === extensionRoleId
+  )?.extension?.name || null;
   const [formData, setFormData] = useState({
     cadet_id: 0,
     warning_id: 0,
@@ -120,6 +136,7 @@ export default function CtwCadetWarningForm({ initialData, onSubmit, onCancel, l
   const selectedCadetNumber = selectedCadetObj?.cadet_number || selectedCadetObj?.bd_no || "";
   const selectedCourseName = courses.find(c => c.id === formData.course_id)?.name || "N/A";
   const selectedSemesterName = semesters.find(s => s.id === formData.semester_id)?.name || "N/A";
+  const selectedWarningType = warningTypes.find(w => w.id === formData.warning_id);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -168,7 +185,7 @@ export default function CtwCadetWarningForm({ initialData, onSubmit, onCancel, l
         <div className="w-full flex justify-between mb-8 text-xs font-bold">
           <div></div>
           <div>
-            <p className="text-center font-medium text-gray-900 uppercase px-4 underline">Restricted</p>
+            <p className="text-center font-medium text-gray-900 uppercase px-4 underline">Confidencial</p>
           </div>
           <div></div>
         </div>
@@ -177,12 +194,16 @@ export default function CtwCadetWarningForm({ initialData, onSubmit, onCancel, l
         <div className="flex justify-end mb-10">
           <div className="text-left space-y-0.5">
             <FullLogo />
-            <p className="font-bold">BAFA-110 (REVISED)</p>
+            {selectedWarningType?.form_number ? (
+              <p className="font-bold">BAFA-{selectedWarningType.form_number} (REVISED)</p>
+            ) : (
+              <p className="font-bold text-gray-400">BAFA-___ (REVISED)</p>
+            )}
             <p>BAF Academy</p>
             <p>Cdts&apos; Trg Wg</p>
             <p>Jashore</p>
             <p className="mt-1 text-xs text-gray-500">
-              Tel: 02477762242 ext 5195
+              Tel: 02477762242 ext {userExtension ?? "-"}
             </p>
             <p className="mt-3 font-semibold">
               {new Date().toLocaleDateString("en-GB", {
@@ -200,7 +221,7 @@ export default function CtwCadetWarningForm({ initialData, onSubmit, onCancel, l
               <Label htmlFor="cadet_id" className="font-bold uppercase tracking-wide"> To </Label>
               {selectedCadetNumber ? (
                 <div>
-                  <p className="font-bold">{selectedCadetNumber}</p>
+                  <p className="font-bold">BD/{selectedCadetNumber}</p>
                 </div>
               ) : null}
               <div className="relative">
@@ -214,7 +235,7 @@ export default function CtwCadetWarningForm({ initialData, onSubmit, onCancel, l
                   <option value={0}>Select Cadet</option>
                   {cadets.map((cadet) => (
                     <option key={cadet.id} value={cadet.id}>
-                      {cadet.assigned_ranks?.[0]?.rank?.name} {cadet.name}
+                      {cadet.assigned_ranks?.[0]?.rank?.short_name} {cadet.name}, {cadet.assigned_branchs?.[0]?.branch?.short_name}
                     </option>
                   ))}
                 </select>
@@ -223,7 +244,7 @@ export default function CtwCadetWarningForm({ initialData, onSubmit, onCancel, l
             {selectedCourseName ? (
               <div>
                 <p className="text-gray-700 font-medium mt-1 flex items-center gap-2">
-                  {selectedCourseName}
+                  {selectedCourseName} Course
                   {loadingCadet && <Icon icon="hugeicons:loading-03" className="w-3 h-3 animate-spin text-blue-500" />}
                 </p>
               </div>
@@ -253,7 +274,7 @@ export default function CtwCadetWarningForm({ initialData, onSubmit, onCancel, l
                 <option value={0}>Select Warning Type</option>
                 {warningTypes.filter(w => w.is_active).map((warning) => (
                   <option key={warning.id} value={warning.id}>
-                    {warning.name} (-{Number(warning.reduced_mark).toFixed(1)})
+                    {warning.name}
                   </option>
                 ))}
               </select>
@@ -276,7 +297,7 @@ export default function CtwCadetWarningForm({ initialData, onSubmit, onCancel, l
 
         {/* Signature Placeholder - Mimicking the display page */}
         <div className="mt-20 flex justify-end">
-          <div className="text-start w-64 pt-2 border-t-2 border-gray-900">
+          <div className="text-start w-64 pt-2">
             <p className="font-bold uppercase">
               {isEdit && initialData?.creator?.name ? initialData.creator.name : (user?.name || "AUTHENTICATING OFFICER")}
             </p>

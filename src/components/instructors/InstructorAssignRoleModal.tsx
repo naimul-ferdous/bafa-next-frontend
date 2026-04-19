@@ -11,8 +11,9 @@ import { wingService } from "@/libs/services/wingService";
 import { subWingService } from "@/libs/services/subWingService";
 import { commonService } from "@/libs/services/commonService";
 import { atwUserAssignService } from "@/libs/services/atwUserAssignService";
-import { ctwUserAssignService } from "@/libs/services/ctwUserAssignService";
 import { ftw11sqnUserAssignService } from "@/libs/services/ftw11sqnUserAssignService";
+import { ftw12sqnUserAssignService } from "@/libs/services/ftw12sqnUserAssignService";
+import { ftw12sqnAssessmentCommandTypeService } from "@/libs/services/ftw12sqnAssessmentCommandTypeService";
 import { useAuth } from "@/libs/hooks/useAuth";
 import type { InstructorBiodata, Role, Wing, SubWing } from "@/libs/types/user";
 import type { SystemCourse } from "@/libs/types/system";
@@ -28,16 +29,18 @@ interface InstructorAssignRoleModalProps {
   onSuccess?: () => void;
 }
 
-type AssessmentType = "counseling" | "olq";
+type AssessmentType = "counseling" | "olq" | "command";
 
 const ASSESSMENTS: { key: AssessmentType; label: string; color: string }[] = [
   { key: "counseling", label: "Counseling", color: "bg-blue-100   text-blue-700   border-blue-200" },
   { key: "olq", label: "OLQ", color: "bg-green-100  text-green-700  border-green-200" },
+  { key: "command", label: "Command", color: "bg-purple-100 text-purple-700 border-purple-200" },
 ];
 
 interface ExistingAssigns {
   counseling: AtwCounselingAssign | null;
   olq: AtwOlqAssign | null;
+  command: any | null;
 }
 
 export default function InstructorAssignRoleModal({
@@ -81,14 +84,18 @@ export default function InstructorAssignRoleModal({
   // Assessment related state
   const [courses, setCourses] = useState<SystemCourse[]>([]);
   const [selectedCourseId, setSelectedCourseId] = useState<string>("");
+  const [selectedCommandTypeId, setSelectedCommandTypeId] = useState<number | "">("");
+  const [commandTypes, setCommandTypes] = useState<any[]>([]);
   const [isMergeMode, setIsMergeMode] = useState(false);
   const [checks, setChecks] = useState<Record<AssessmentType, boolean>>({
     counseling: false,
     olq: false,
+    command: false,
   });
   const [existing, setExisting] = useState<ExistingAssigns>({
     counseling: null,
     olq: null,
+    command: null,
   });
   const [loadingAssigns, setLoadingAssigns] = useState(false);
 
@@ -326,7 +333,7 @@ export default function InstructorAssignRoleModal({
   };
 
   useEffect(() => {
-    if (!selectedCourseId || !needsAssessment || !user) return;
+    if (!selectedCourseId || !user) return;
 
     const fetchAssigns = async () => {
       setLoadingAssigns(true);
@@ -335,7 +342,10 @@ export default function InstructorAssignRoleModal({
         const selectedWing = wings.find(w => w.id === Number(selectedWingId));
         const isCTWing  = selectedWing?.code === 'CTW';
         const isFTWing  = selectedWing?.is_flying === true || selectedWing?.code === 'FTW';
-        const service   = isCTWing ? ctwUserAssignService : isFTWing ? ftw11sqnUserAssignService : atwUserAssignService;
+        const is11Sqn   = selectedWing?.code?.toLowerCase().includes('11sqn') || selectedWing?.code === '11SQN';
+        const service  = isCTWing ? ctwUserAssignService : 
+                        isFTWing ? (is11Sqn ? ftw11sqnUserAssignService : ftw12sqnUserAssignService) : 
+                        atwUserAssignService;
 
         const data = await service.getAll({
           course_id: parseInt(selectedCourseId),
@@ -343,13 +353,25 @@ export default function InstructorAssignRoleModal({
 
         const cn = data.counseling[0] || null;
         const olq = data.olq[0] || null;
+        const cmd = data.command?.[0] || null;
 
-        setExisting({ counseling: cn, olq });
+        setExisting({ counseling: cn, olq, command: cmd });
         // Pre-check only if the CURRENT user already has the assignment
         setChecks({
           counseling: !!cn && cn.user_id === user.id,
           olq:        !!olq && olq.user_id === user.id,
+          command:    !!cmd && cmd.user_id === user.id,
         });
+
+        // If command checkbox is checked, also fetch command types
+        if (cmd || selectedWing?.code !== 'CTW') {
+          try {
+            const cmdTypeRes = await ftw12sqnAssessmentCommandTypeService.getAll({ per_page: 100 });
+            setCommandTypes(cmdTypeRes.data || []);
+          } catch (err) {
+            console.error('Failed to load command types:', err);
+          }
+        }
       } catch {
         setError("Failed to load existing assignments.");
       } finally {
@@ -358,7 +380,7 @@ export default function InstructorAssignRoleModal({
     };
 
     fetchAssigns();
-  }, [selectedCourseId, needsAssessment, user, wings, selectedWingId]);
+  }, [selectedCourseId, user, wings, selectedWingId]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -398,20 +420,29 @@ export default function InstructorAssignRoleModal({
         const selectedWing = wings.find(w => w.id === Number(selectedWingId));
         const isCTWing  = selectedWing?.code === 'CTW';
         const isFTWing  = selectedWing?.is_flying === true || selectedWing?.code === 'FTW';
-        const service   = isCTWing ? ctwUserAssignService : isFTWing ? ftw11sqnUserAssignService : atwUserAssignService;
+        const is11Sqn   = selectedWing?.code?.toLowerCase().includes('11sqn') || selectedWing?.code === '11SQN';
+        const service  = isCTWing ? ctwUserAssignService : 
+                        isFTWing ? (is11Sqn ? ftw11sqnUserAssignService : ftw12sqnUserAssignService) : 
+                        atwUserAssignService;
 
-        (["counseling", "olq"] as AssessmentType[]).forEach((key) => {
+        (["counseling", "olq", "command"] as AssessmentType[]).forEach((key) => {
           const isCurrentlyAssignedToThisUser = !!existing[key] && existing[key].user_id === user.id;
           
           if (checks[key]) {
             if (!existing[key]) {
               // No one assigned, create new
-              ops.push(service.store(key, payload));
+              const assignPayload = key === 'command' 
+                ? { ...payload, command_type_id: selectedCommandTypeId } 
+                : payload;
+              ops.push(service.store(key, assignPayload));
             } else if (existing[key].user_id !== user.id) {
               // Someone else assigned, replace them (delete old, then store new)
+              const assignPayload = key === 'command' 
+                ? { ...payload, command_type_id: selectedCommandTypeId } 
+                : payload;
               ops.push(
                 service.destroy(key, existing[key].id).then(() => 
-                  service.store(key, payload)
+                  service.store(key, assignPayload)
                 )
               );
             }
@@ -506,7 +537,7 @@ export default function InstructorAssignRoleModal({
     setIsPrimary(false);
     setSelectedCourseId("");
     setIsMergeMode(false);
-    setChecks({ counseling: false, olq: false });
+    setChecks({ counseling: false, olq: false, command: false });
     setError(null);
     onClose();
   };
@@ -552,6 +583,28 @@ export default function InstructorAssignRoleModal({
           ))}
         </select>
       </div>
+
+      {/* Command Type Selection - only show for FTW 11/12 Sqn */}
+      {selectedWingId && (
+        <div>
+          <label className="block text-sm font-medium text-purple-600 mb-1">
+            Command Type (for 12SQN)
+          </label>
+          <select
+            value={selectedCommandTypeId}
+            onChange={(e) => setSelectedCommandTypeId(e.target.value ? Number(e.target.value) : "")}
+            className="w-full px-3 py-2 border border-purple-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 bg-purple-50 text-gray-900 text-sm"
+            disabled={loadingAssigns || loading}
+          >
+            <option value="">Select Command Type</option>
+            {commandTypes.map((cmd: any) => (
+              <option key={cmd.id} value={cmd.id}>
+                {cmd.type_name} ({cmd.type_code})
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
 
       {selectedCourseId && (
         <div className="col-span-2">
